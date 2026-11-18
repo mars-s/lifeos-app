@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { internalMutation, type QueryCtx } from "../_generated/server";
+import type { Doc } from "../_generated/dataModel";
 import { vJobKind, type JobKind } from "./tables";
 
 export const sha256Hex = async (text: string) => {
@@ -17,8 +18,7 @@ export const workerForToken = async (ctx: QueryCtx, token: string) => {
   return worker;
 };
 
-export const workerWith = async (ctx: QueryCtx, token: string, capability: JobKind) => {
-  const worker = await workerForToken(ctx, token);
+export const requireCapability = (worker: Doc<"workers">, capability: JobKind) => {
   if (!worker.capabilities.includes(capability)) {
     throw new ConvexError(`This Worker cannot do ${capability} work.`);
   }

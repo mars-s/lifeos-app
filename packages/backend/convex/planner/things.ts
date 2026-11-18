@@ -1,8 +1,9 @@
 import { ConvexError, v, type Infer } from "convex/values";
-import { mutation, query, type MutationCtx } from "../_generated/server";
+import type { MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { startRecording, type Recorder } from "../platform/activity";
-import { workerWith } from "../platform/workers";
+import { ownerQuery, workerMutation } from "../platform/access";
+import { requireCapability } from "../platform/workers";
 import { parseIsoDate } from "../../shared/date";
 import { keyAfter, lastTaskOrder } from "./model";
 import { colours, vThingsList, vWhen, type Parent, type Status, type When } from "./tables";
@@ -313,15 +314,15 @@ const applySnapshot = async (ctx: MutationCtx, snapshot: ThingsSnapshot) => {
   return { areas, projects, tasks };
 };
 
-export const sync = mutation({
-  args: { token: v.string(), snapshot: vThingsSnapshot },
-  handler: async (ctx, { token, snapshot }) => {
-    await workerWith(ctx, token, "things");
+export const sync = workerMutation({
+  args: { snapshot: vThingsSnapshot },
+  handler: async (ctx, { snapshot }, worker) => {
+    requireCapability(worker, "things");
     return applySnapshot(ctx, snapshot);
   },
 });
 
-export const status = query({
+export const status = ownerQuery({
   args: {},
   handler: (ctx) => ctx.db.query("thingsSync").first(),
 });

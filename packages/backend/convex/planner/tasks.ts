@@ -1,7 +1,8 @@
 import { v } from "convex/values";
 import type { WithoutSystemFields } from "convex/server";
 import { Result, err, ok } from "neverthrow";
-import { query, type MutationCtx } from "../_generated/server";
+import type { MutationCtx } from "../_generated/server";
+import { ownerQuery } from "../platform/access";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { Recorder } from "../platform/activity";
 import { changeMutation } from "../platform/change";
@@ -153,7 +154,7 @@ export const restore = changeMutation({
   handler: (ctx, { taskId }, record) => edit(ctx, record, taskId, () => ok({ trashedAt: undefined })),
 });
 
-export const card = query({
+export const card = ownerQuery({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, { taskId }) => {
     const task = await ctx.db.get("tasks", taskId);

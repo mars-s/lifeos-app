@@ -4,7 +4,7 @@ import { api } from "../_generated/api";
 import { drainJobs, newBackend, registerWorker, unwrap } from "../backend.test-utils";
 
 const setup = async () => {
-  const t = newBackend();
+  const t = await newBackend();
   const things = await registerWorker(t, "things", ["things"]);
   const { taskId } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Pack for Hobart" }));
   await drainJobs(t, things);

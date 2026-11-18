@@ -38,6 +38,48 @@
           "**/*.css"
         ]
       }
+    ],
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": [
+              "**/_generated/server"
+            ],
+            "importNames": [
+              "query",
+              "mutation",
+              "action",
+              "httpAction"
+            ],
+            "message": "Public Convex functions go through ownerQuery, ownerMutation or workerMutation in convex/platform/access.ts, so only the owner or a Worker can call them. See docs/auth.md."
+          }
+        ],
+        "paths": [
+          {
+            "name": "convex/server",
+            "importNames": [
+              "queryGeneric",
+              "mutationGeneric",
+              "actionGeneric",
+              "httpActionGeneric"
+            ],
+            "message": "Public Convex functions go through ownerQuery, ownerMutation or workerMutation in convex/platform/access.ts, so only the owner or a Worker can call them. See docs/auth.md."
+          }
+        ]
+      }
     ]
-  }
+  },
+  "overrides": [
+    {
+      "files": [
+        "packages/backend/convex/platform/access.ts",
+        "packages/backend/convex/http.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    }
+  ]
 }

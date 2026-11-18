@@ -1,9 +1,16 @@
 import { McpServer, tool } from "@convex-dev/mcp";
+import type { Auth, FunctionReference, FunctionReturnType } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { components, internal } from "./_generated/api";
 
-const ownerSubject = process.env.LIFEOS_OWNER_SUBJECT;
 const ownerUserId = process.env.LIFEOS_OWNER_USER_ID ?? "owner";
+
+type RunsQueries = {
+  auth: Auth;
+  runQuery: <Query extends FunctionReference<"query", "internal">>(query: Query) => Promise<FunctionReturnType<Query>>;
+};
+
+const runsQueries = (ctx: { auth: Auth }): ctx is RunsQueries => "runQuery" in ctx && typeof ctx.runQuery === "function";
 const siteUrl = process.env.SITE_URL ?? "http://localhost:3000";
 
 export const mcp: McpServer = new McpServer(components.mcp, {
@@ -35,10 +42,8 @@ export const mcp: McpServer = new McpServer(components.mcp, {
 });
 
 export const { getAuthRequest, authorize, listConnections, revokeConnection, createApiKey } = mcp.api({
-  getUserId: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    return identity && ownerSubject && identity.subject === ownerSubject ? ownerUserId : null;
-  },
+  getUserId: async (ctx) =>
+    runsQueries(ctx) && (await ctx.runQuery(internal.platform.access.isOwner)) ? ownerUserId : null,
 });
 
 export const { createApiKeyForUser } = mcp.internalApi();

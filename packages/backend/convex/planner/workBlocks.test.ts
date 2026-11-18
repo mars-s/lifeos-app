@@ -6,7 +6,7 @@ const nineAm = Date.UTC(2026, 10, 18, 22, 0);
 const hour = 60 * 60 * 1000;
 
 const setup = async () => {
-  const t = newBackend();
+  const t = await newBackend();
   const things = await registerWorker(t, "things", ["things"]);
   const { taskId } = unwrap(
     await t.mutation(api.planner.tasks.create, { title: "Write chapter two", deadline: "2026-11-27" }),

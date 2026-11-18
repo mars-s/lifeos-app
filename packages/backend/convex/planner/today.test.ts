@@ -9,7 +9,7 @@ const scheduled = (date: string, evening = false) => ({ kind: "scheduled" as con
 const titles = (tasks: { title: string }[]) => tasks.map((task) => task.title);
 
 test("Today holds open Tasks scheduled on or before the date and Tasks due by then, with This Evening apart", async () => {
-  const t = newBackend();
+  const t = await newBackend();
   const create = async (title: string, fields: Record<string, unknown> = {}) =>
     unwrap(await t.mutation(api.planner.tasks.create, { title, ...fields })).taskId;
   await create("Overdue essay", { when: scheduled("2026-11-16") });
@@ -30,7 +30,7 @@ test("Today holds open Tasks scheduled on or before the date and Tasks due by th
 });
 
 test("Things' own Today order leads, and each Task carries its Project or Area as context", async () => {
-  const t = newBackend();
+  const t = await newBackend();
   const token = await registerWorker(t, "things", ["things"]);
   await t.mutation(api.planner.things.sync, {
     token,
@@ -68,7 +68,7 @@ test("Things' own Today order leads, and each Task carries its Project or Area a
 });
 
 test("Today refuses a date that is not a real calendar date", async () => {
-  const t = newBackend();
+  const t = await newBackend();
   expect(await t.query(api.planner.today.get, { date: "2026-13-01" })).toEqual({
     ok: false,
     error: { kind: "invalid_date", input: "2026-13-01" },
@@ -76,7 +76,7 @@ test("Today refuses a date that is not a real calendar date", async () => {
 });
 
 test("the MCP today tool reads the same Today through its internal query", async () => {
-  const t = newBackend();
+  const t = await newBackend();
   unwrap(await t.mutation(api.planner.tasks.create, { title: "Gym", when: scheduled(today) }));
   const view = unwrap(await t.query(internal.planner.today.getForAgent, { date: today }));
   expect(titles(view.tasks)).toEqual(["Gym"]);

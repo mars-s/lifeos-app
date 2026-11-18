@@ -17,7 +17,7 @@ const finishRun = async (t: Backend, { token, jobId, attempt }: { token: string;
   unwrap(await t.mutation(api.platform.jobs.complete, { token, jobId, attempt, receipt: null }));
 
 const setup = async () => {
-  const t = newBackend();
+  const t = await newBackend();
   const things = await registerWorker(t, "things", ["things"]);
   const { taskId } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Draft intro" }));
   await drainJobs(t, things);

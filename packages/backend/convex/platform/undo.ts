@@ -1,10 +1,10 @@
 import { v } from "convex/values";
 import { err, ok } from "neverthrow";
-import { mutation, type MutationCtx } from "../_generated/server";
+import type { MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { serialise } from "../../shared/result";
 import { fromStored, recordedFields, sameValue, startRecording } from "./activity";
-import { actorFor, vAgentRunCredential } from "./change";
+import { ownerMutation } from "./access";
 import type { Actor, RecordRef, UndoTarget } from "./tables";
 
 export type UndoError =
@@ -154,14 +154,12 @@ const undoAgentRun = async (ctx: MutationCtx, actor: Actor, jobId: Id<"jobs">) =
   return revert(ctx, actor, { kind: "run", jobId }, changes);
 };
 
-export const undo = mutation({
-  args: { activityId: v.id("activity"), agentRun: vAgentRunCredential },
-  handler: async (ctx, { activityId, agentRun }) =>
-    serialise(await undoActivity(ctx, await actorFor(ctx, agentRun), activityId)),
+export const undo = ownerMutation({
+  args: { activityId: v.id("activity") },
+  handler: async (ctx, { activityId }, actor) => serialise(await undoActivity(ctx, actor, activityId)),
 });
 
-export const undoRun = mutation({
-  args: { jobId: v.id("jobs"), agentRun: vAgentRunCredential },
-  handler: async (ctx, { jobId, agentRun }) =>
-    serialise(await undoAgentRun(ctx, await actorFor(ctx, agentRun), jobId)),
+export const undoRun = ownerMutation({
+  args: { jobId: v.id("jobs") },
+  handler: async (ctx, { jobId }, actor) => serialise(await undoAgentRun(ctx, actor, jobId)),
 });

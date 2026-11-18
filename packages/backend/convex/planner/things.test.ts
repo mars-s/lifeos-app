@@ -7,7 +7,7 @@ import { snapshotOf, thingsTask } from "./things.test-utils";
 const scheduled = (date: string, evening = false) => ({ kind: "scheduled" as const, date, evening });
 
 const setup = async () => {
-  const t = newBackend();
+  const t = await newBackend();
   const token = await registerWorker(t, "things", ["things"]);
   const sync = (snapshot: ReturnType<typeof snapshotOf>) => t.mutation(api.planner.things.sync, { token, snapshot });
   const taskByThingsId = (thingsId: string) =>
@@ -191,7 +191,7 @@ test("a snapshot with an impossible date is refused", async () => {
 });
 
 test("a snapshot needs a Worker token with the things capability", async () => {
-  const t = newBackend();
+  const t = await newBackend();
   const agent = await registerWorker(t, "home-server", ["agent"]);
   await expect(t.mutation(api.planner.things.sync, { token: agent, snapshot: snapshotOf({}) })).rejects.toThrow(
     "This Worker cannot do things work.",

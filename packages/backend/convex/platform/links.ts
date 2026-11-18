@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { err, ok } from "neverthrow";
-import { query, type MutationCtx } from "../_generated/server";
+import type { MutationCtx } from "../_generated/server";
+import { ownerQuery } from "./access";
 import { changeMutation } from "./change";
 import { vEntityRef, type EntityRef } from "./tables";
 
@@ -30,7 +31,7 @@ export const unlink = changeMutation({
   },
 });
 
-export const backlinks = query({
+export const backlinks = ownerQuery({
   args: { to: vEntityRef },
   handler: async (ctx, { to }) =>
     (

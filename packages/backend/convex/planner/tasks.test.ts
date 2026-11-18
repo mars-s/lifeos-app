@@ -6,7 +6,7 @@ import { drainJobs, newBackend, registerWorker, unwrap } from "../backend.test-u
 type Card = NonNullable<FunctionReturnType<typeof api.planner.tasks.card>>;
 
 const setup = async () => {
-  const t = newBackend();
+  const t = await newBackend();
   const things = await registerWorker(t, "things", ["things"]);
   const { label, area, project } = await t.run(async (ctx) => {
     const areaId = await ctx.db.insert("areas", { title: "University", colour: "teal", order: "a0" });
@@ -129,7 +129,7 @@ const edits: EditCase[] = [
 
 describe("Task mutations", () => {
   test("create adds an open Inbox Task, queues a Things create, and undo removes it", async () => {
-    const t = newBackend();
+    const t = await newBackend();
     const things = await registerWorker(t, "things", ["things"]);
     const { taskId, activityId } = unwrap(
       await t.mutation(api.planner.tasks.create, { title: "Call Mum", estimateMinutes: 15 }),
@@ -159,7 +159,7 @@ describe("Task mutations", () => {
   });
 
   test("new Tasks are ordered after the last one in their container", async () => {
-    const t = newBackend();
+    const t = await newBackend();
     const first = unwrap(await t.mutation(api.planner.tasks.create, { title: "One" }));
     const second = unwrap(await t.mutation(api.planner.tasks.create, { title: "Two" }));
     const [a, b] = await Promise.all(

@@ -71,6 +71,7 @@ export type JobKind = Infer<typeof vJobKind>;
 export type Job = Infer<typeof vJob>;
 
 export const platformTables = {
+  users: defineTable({ githubId: v.string(), login: v.string() }),
   activity: defineTable({
     actor: vActor,
     action: v.string(),

@@ -1,5 +1,6 @@
 import { v } from "convex/values";
-import { internalQuery, query, type QueryCtx } from "../_generated/server";
+import { internalQuery, type QueryCtx } from "../_generated/server";
+import { ownerQuery } from "../platform/access";
 import type { Doc, Id } from "../_generated/dataModel";
 import { parseIsoDate, type IsoDate } from "../../shared/date";
 import { serialise } from "../../shared/result";
@@ -71,7 +72,7 @@ const loadToday = async (ctx: QueryCtx, date: IsoDate) => {
 const getToday = async (ctx: QueryCtx, date: string) =>
   serialise(await parseIsoDate(date).asyncMap((day) => loadToday(ctx, day)));
 
-export const get = query({
+export const get = ownerQuery({
   args: { date: v.string() },
   handler: (ctx, { date }) => getToday(ctx, date),
 });

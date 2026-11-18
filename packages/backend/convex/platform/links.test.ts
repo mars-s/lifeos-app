@@ -3,7 +3,7 @@ import { api } from "../_generated/api";
 import { newBackend, unwrap } from "../backend.test-utils";
 
 test("linking two things shows a backlink, and undo removes it", async () => {
-  const t = newBackend();
+  const t = await newBackend();
   const thesis = unwrap(await t.mutation(api.planner.tasks.create, { title: "Write thesis" }));
   const reading = unwrap(await t.mutation(api.planner.tasks.create, { title: "Read Smith 2024" }));
   const from = { table: "tasks" as const, id: reading.taskId };

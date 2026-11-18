@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 const setup = async () => {
-  const t = newBackend();
+  const t = await newBackend();
   const mac = await registerWorker(t, "mac", ["things"]);
   const server = await registerWorker(t, "home-server", ["agent"]);
   const taskId = await t.run((ctx) =>
