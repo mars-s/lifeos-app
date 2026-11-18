@@ -4,12 +4,15 @@
 import type { PathsForPages, GetConfigResponse, SearchCodecsForPages } from 'waku/router';
 
 // prettier-ignore
+import type { getConfig as File_Design_getConfig } from './pages/design';
+// prettier-ignore
 import type { getConfig as File_Index_getConfig } from './pages/index';
 // prettier-ignore
 import type { getConfig as File_Layout_getConfig } from './pages/_layout';
 
 // prettier-ignore
 type Page =
+| ({ path: '/design' } & GetConfigResponse<typeof File_Design_getConfig>)
 | ({ path: '/' } & GetConfigResponse<typeof File_Index_getConfig>);
 
 // prettier-ignore

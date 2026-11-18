@@ -1,6 +1,10 @@
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
+import { createCn } from "cn/config";
 
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
+export const cn = createCn({
+  extend: {
+    classGroups: {
+      "font-size": [{ text: ["micro", "small", "body", "heading", "title", "display"] }],
+      shadow: [{ shadow: ["lift", "float", "well"] }],
+    },
+  },
+});

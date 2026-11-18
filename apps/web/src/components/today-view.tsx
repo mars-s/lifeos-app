@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { Circle, Star } from "lucide-react";
+import { Circle, Star } from "@phosphor-icons/react";
 import { useSyncExternalStore } from "react";
 import { api } from "@lifeos/backend/api";
 import { localIsoDate } from "@lifeos/backend/date";
@@ -30,7 +30,7 @@ export const TodayView = () => {
     <section className="mx-auto w-full max-w-xl px-6 py-16">
       <header className="mb-10">
         <h1 className="flex items-center gap-3 text-3xl font-semibold tracking-tight">
-          <Star className="size-6 fill-amber-300/70 text-amber-400/80" strokeWidth={1.5} aria-hidden />
+          <Star weight="fill" className="size-6 text-brand" aria-hidden />
           Today
         </h1>
         <p className="mt-2 min-h-5 text-sm text-muted-foreground">
@@ -73,7 +73,7 @@ const TaskList = ({ tasks }: { tasks: TodayTask[] }) => (
   <ul className="divide-y divide-border/70">
     {tasks.map((task) => (
       <li key={task._id} className="flex items-center gap-3 py-3">
-        <Circle className="size-[18px] shrink-0 text-muted-foreground/70" strokeWidth={1.5} aria-hidden />
+        <Circle className="size-[18px] shrink-0 text-muted-foreground/70" aria-hidden />
         <span className="min-w-0 truncate">{task.title}</span>
         {task.context && <span className="ml-auto shrink-0 pl-4 text-xs text-muted-foreground">{task.context}</span>}
       </li>
