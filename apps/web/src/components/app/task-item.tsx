@@ -1,8 +1,8 @@
 "use client";
 
-import { Archive, ArrowSquareOut, CalendarDots, ListChecks, Moon, Note, Stack, Star, Tray, X, type Icon } from "@phosphor-icons/react";
+import { Archive, CalendarDots, ListChecks, Moon, Note, Stack, Star, Tray, X, type Icon } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Fragment, useEffect, useRef } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { PlannerTask } from "@lifeos/backend/types";
 import { AreaDot } from "@/components/lifeos/area";
 import { DeadlineMarker, EstimateChip } from "@/components/lifeos/task-row";
@@ -12,29 +12,8 @@ import { instant, springLayout } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
 import { clockTime, deadlineMark, isToday, localDate, shortDay, whenLabel } from "./dates";
 import { useShell } from "./shell-context";
-
-const URL_PATTERN = /(https?:\/\/[^\s<>"']+[^\s<>"'.,;:!?)\]])/g;
-
-export const Linkified = ({ text }: { text: string }) => (
-  <>
-    {text.split(URL_PATTERN).map((part, index) =>
-      index % 2 === 1 ? (
-        <a
-          key={index}
-          href={part}
-          target="_blank"
-          rel="noreferrer"
-          className="rounded-sm text-brand underline-offset-2 hover:underline"
-          onClick={(event) => event.stopPropagation()}
-        >
-          {part}
-        </a>
-      ) : (
-        <Fragment key={index}>{part}</Fragment>
-      ),
-    )}
-  </>
-);
+import { Linkified, TitleLinks } from "./linkified";
+import { TaskCardBody, TitleField } from "./task-card-body";
 
 const WHEN_ICON = {
   inbox: Tray,
@@ -113,18 +92,17 @@ const ChecklistCount = ({ items }: { items: PlannerTask["checklist"] }) => (
   </span>
 );
 
-const CardBody = ({ task, today }: { task: PlannerTask; today: string }) => (
+const NotesText = ({ notes }: { notes: string }) =>
+  notes && (
+    <p className="text-small break-words whitespace-pre-wrap text-muted-foreground">
+      <Linkified text={notes} />
+    </p>
+  );
+
+const ClosedBody = ({ task, today }: { task: PlannerTask; today: string }) => (
     <div className="space-y-3 pt-1 pr-3 pb-3 pl-[2.625rem]">
-      {(task.title.match(URL_PATTERN) ?? []).map((url) => (
-        <p key={url} className="text-small break-all">
-          <Linkified text={url} />
-        </p>
-      ))}
-      {task.notes && (
-        <p className="text-small break-words whitespace-pre-wrap text-muted-foreground">
-          <Linkified text={task.notes} />
-        </p>
-      )}
+      <TitleLinks title={task.title} />
+      <NotesText notes={task.notes} />
       {task.checklist.length > 0 && (
         <ul aria-label="Checklist" className="-ml-2 rounded-xl bg-foreground/[0.035] p-1">
           {task.checklist.map((item) => (
@@ -173,20 +151,20 @@ const CardBody = ({ task, today }: { task: PlannerTask; today: string }) => (
           {task.estimateMinutes !== undefined && <EstimateChip minutes={task.estimateMinutes} />}
         </span>
       </div>
-      {task.things && task.status.kind === "open" && (
-        <p className="flex items-center justify-between gap-3 text-micro text-faint-foreground">
-          Things owns this Task. Edits made there show here within a minute.
-          <a
-            href={`things:///show?id=${task.things.id}`}
-            className="inline-flex h-6 shrink-0 items-center gap-1 rounded-full px-2 text-small text-muted-foreground transition-[background-color,color,scale] duration-(--dur-press) ease-out hover:bg-foreground/[0.06] hover:text-foreground active:scale-[0.96]"
-          >
-            Open in Things
-            <ArrowSquareOut className="size-3.5" aria-hidden="true" />
-          </a>
-        </p>
-      )}
     </div>
 );
+
+const FOCUSABLE = "button:not(:disabled), input, textarea, a[href]";
+
+const keepFocusInside = (event: React.KeyboardEvent, container: HTMLElement) => {
+  const stops = [...container.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((stop) => stop.offsetParent !== null);
+  const edge = event.shiftKey ? stops[0] : stops.at(-1);
+  if (document.activeElement !== edge) return;
+  event.preventDefault();
+  (event.shiftKey ? stops.at(-1) : stops[0])?.focus();
+};
+
+const OUTSIDE_THE_CARD = "[data-arrow-item], [data-radix-popper-content-wrapper], [data-toaster]";
 
 export type TaskItemShow = { context?: boolean; star?: boolean; when?: boolean; closedAt?: boolean };
 
@@ -194,20 +172,31 @@ export const TaskItem = ({ task, itemKey = task._id, show = {} }: { task: Planne
   const { today, openCard, setOpenCard } = useShell();
   const reduce = useReducedMotion();
   const container = useRef<HTMLLIElement>(null);
+  const [closedByKey, setClosedByKey] = useState(false);
   const open = openCard?.key === itemKey;
-  const transition = reduce || openCard?.instant ? instant : springLayout;
+  const transition = reduce || openCard?.instant || (!open && closedByKey) ? instant : springLayout;
   const closed = task.status.kind !== "open";
+  const editable = open && !closed;
+  const plannedToday = task.workBlocks.find((block) => !block.done && localDate(block.start) === today);
+
+  const close = (byKey: boolean) => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && container.current?.contains(active)) active.blur();
+    setClosedByKey(byKey);
+    setOpenCard(null);
+    if (byKey) requestAnimationFrame(() => container.current?.querySelector<HTMLElement>("[data-arrow-item]")?.focus({ preventScroll: true }));
+  };
+  const closeFromOutside = useEffectEvent((event: PointerEvent) => {
+    if (event.target instanceof Node && container.current?.contains(event.target)) return;
+    if (event.target instanceof Element && event.target.closest(OUTSIDE_THE_CARD)) return;
+    close(false);
+  });
 
   useEffect(() => {
     if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (event.target instanceof Node && container.current?.contains(event.target)) return;
-      if (event.target instanceof Element && event.target.closest("[data-arrow-item]")) return;
-      setOpenCard(null);
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [open, setOpenCard]);
+    document.addEventListener("pointerdown", closeFromOutside);
+    return () => document.removeEventListener("pointerdown", closeFromOutside);
+  }, [open]);
 
   return (
     <li ref={container}>
@@ -216,24 +205,34 @@ export const TaskItem = ({ task, itemKey = task._id, show = {} }: { task: Planne
         animate={{ marginTop: open ? 8 : 0, marginBottom: open ? 8 : 0 }}
         transition={transition}
         onKeyDown={(event) => {
-          if (event.key !== "Escape" || !open) return;
-          event.stopPropagation();
-          setOpenCard(null);
+          if (!open || !container.current?.contains(event.target as Node)) return;
+          if (event.key === "Tab") keepFocusInside(event, container.current);
+          if (event.key === "Escape" || (event.key === "Enter" && (event.metaKey || event.ctrlKey))) {
+            event.preventDefault();
+            event.stopPropagation();
+            close(true);
+          }
         }}
         className={cn(
           "group/row @container rounded-xl transition-[background-color,box-shadow] duration-(--dur-fast) ease-out",
           open
-            ? "bg-popover shadow-lift has-[[data-arrow-item]:focus-visible]:ring-2 has-[[data-arrow-item]:focus-visible]:ring-ring"
+            ? "bg-popover shadow-lift"
             : "hover:bg-foreground/[0.04] has-[[data-arrow-item]:focus-visible]:bg-brand/[0.09] has-[[data-arrow-item]:focus-visible]:ring-2 has-[[data-arrow-item]:focus-visible]:ring-ring",
         )}
       >
         <div className="flex items-start gap-3 px-3 py-2">
           <StatusBox task={task} />
+          {editable ? (
+            <TitleField task={task} today={today} />
+          ) : (
           <button
             type="button"
             data-arrow-item
             aria-expanded={open}
-            onClick={(event) => setOpenCard(open ? null : { key: itemKey, instant: event.detail === 0 })}
+            onClick={(event) => {
+              setClosedByKey(event.detail === 0);
+              setOpenCard(open ? null : { key: itemKey, instant: event.detail === 0 });
+            }}
             className="min-w-0 flex-1 rounded-md text-left outline-none"
           >
             <span className="flex items-center gap-1.5">
@@ -279,12 +278,19 @@ export const TaskItem = ({ task, itemKey = task._id, show = {} }: { task: Planne
               </span>
             )}
           </button>
+          )}
           {!open && (
             <span className="flex shrink-0 items-center gap-3 pt-px">
               {show.when && task.when.kind === "scheduled" && !isToday(task.when, today) && (
                 <span className="hidden text-small text-muted-foreground @sm:inline">{whenLabel(task.when, today)}</span>
               )}
               {task.deadline && !closed && <DeadlineMarker deadline={deadlineMark(task.deadline, today)} className="hidden @md:inline-flex" />}
+              {plannedToday && !closed && (
+                <span title="Planned start" className="hidden font-mono text-small text-muted-foreground @sm:inline">
+                  <span className="sr-only">Planned for </span>
+                  {clockTime(plannedToday.start)}
+                </span>
+              )}
               {task.estimateMinutes !== undefined && (
                 <EstimateChip minutes={task.estimateMinutes} className={cn(closed && "hidden opacity-60 @md:inline-flex")} />
               )}
@@ -305,7 +311,11 @@ export const TaskItem = ({ task, itemKey = task._id, show = {} }: { task: Planne
               transition={transition}
               className="overflow-hidden"
             >
-              <CardBody task={task} today={today} />
+              {closed ? (
+                <ClosedBody task={task} today={today} />
+              ) : (
+                <TaskCardBody task={task} today={today} />
+              )}
             </motion.div>
           )}
         </AnimatePresence>

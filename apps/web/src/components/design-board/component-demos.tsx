@@ -43,6 +43,7 @@ import {
   HEAT_HOURS,
   HEAT_MINUTES,
   HEAT_WEEKDAYS,
+  BOARD_TODAY,
   LABELS,
   PLANNABLE,
   ROW_STATES,
@@ -147,6 +148,7 @@ const TaskCardDemo = () => {
           key={task.id}
           task={task}
           labels={LABELS}
+          today={BOARD_TODAY}
           open={open === task.id}
           onOpenChange={(next) => setOpen(next ? task.id : open === task.id ? null : open)}
         />

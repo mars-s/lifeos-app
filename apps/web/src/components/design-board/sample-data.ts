@@ -70,6 +70,8 @@ export const ROW_STATES: TaskSummary[] = [
   { id: "sail", title: "Learn to sail", area: personal, someday: true },
 ];
 
+export const BOARD_TODAY = "2026-11-18";
+
 export const LABELS: TaskLabel[] = [
   { name: "Deep Work", colour: "plum" },
   { name: "Admin", colour: "slate" },
@@ -84,9 +86,10 @@ export const CARD_TASKS: TaskDetail[] = [
     project: "Honours thesis",
     estimate: 60,
     plannedAt: "10:00",
-    deadline: { label: "Fri 21 Nov", countdown: "3d left" },
+    deadlineDate: "2026-11-21",
+    blocks: [{ id: "block-outline", day: "Today", startMinute: 600, minutes: 60, done: false }],
     notes: "Three chapters at most. Start from the reading notes, not a blank page.",
-    when: "Today",
+    when: { kind: "scheduled", date: BOARD_TODAY, evening: false },
     labels: ["Deep Work"],
     items: [
       { id: "a", title: "Pull quotes from the reading notes", done: true },
@@ -100,7 +103,7 @@ export const CARD_TASKS: TaskDetail[] = [
     area: paperless,
     estimate: 15,
     notes: "",
-    when: "Today",
+    when: { kind: "scheduled", date: BOARD_TODAY, evening: false },
     labels: ["Admin"],
     items: [],
   },
@@ -110,7 +113,7 @@ export const CARD_TASKS: TaskDetail[] = [
     area: personal,
     estimate: 10,
     notes: "",
-    when: "Anytime",
+    when: { kind: "anytime" },
     labels: [],
     items: [],
   },

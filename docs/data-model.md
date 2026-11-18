@@ -178,8 +178,11 @@ Each screen reads one query that returns exactly what it draws. All go through `
 | `planner/lists:logbookTimeline` (`from`) | One completion moment per closed Task since `from`, for the dot timeline. The client buckets them by local day | `tasks.by_trashed_closed_at` |
 | `planner/lists:area` (`areaId`) | An Area page: its open Tasks and its Projects with progress | `tasks.by_area_order`, `projects.by_area_order` |
 | `planner/lists:project` (`projectId`) | A Project page: open Tasks under their Headings, and progress over every Task | `headings.by_project_order`, `tasks.by_project_order` |
+| `planner/labels:list` | The Label picker on a Task card | `labels.by_order` |
 
-Every list row has the same shape (`enrich` in `planner/rows.ts`): the Task, plus its Area (title and colour), its Project, its Labels and its Checklist Items. A Task card opens from the row it already has, with no second read.
+Every list row has the same shape (`enrich` in `planner/rows.ts`): the Task, plus its Area (title and colour), its Project, its Labels, its Checklist Items (with their Order Keys) and its Work Blocks that are not removed. A Task card opens from the row it already has, with no second read.
+
+The card writes through `planner/tasks` (`rename`, `setNotes`, `setWhen`, `setDeadline`, `setEstimate`, `setLabels`), `planner/checklist` (`add`, `edit`, `tick`, `reorder`, `remove`) and `planner/labels` (`create`, `setColour`). `labels:create` takes an optional `taskId` and adds the new Label to that Task in the same action, so one undo removes both. A Label name is used once, ignoring case: creating it again returns the Label that exists.
 
 `planner/seed.test-utils.ts` builds a realistic planner (five Areas, six Projects, Headings, Deadlines, a Logbook). The list tests use it, and a scratch local backend can run it for visual checks.
 

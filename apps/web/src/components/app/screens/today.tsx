@@ -6,6 +6,7 @@ import type { PlannerTask } from "@lifeos/backend/types";
 import { areaVar } from "@/components/lifeos/area";
 import { formatMinutes } from "@/components/lifeos/format";
 import { EmptyState } from "@/components/lifeos/states";
+import { RollingNumber } from "@/components/ui/rolling-number";
 import { longDay } from "../dates";
 import { useView, valueOf } from "../hooks";
 import { ListPage, ListSkeleton, SectionHeading } from "../list-page";
@@ -31,11 +32,15 @@ const PlannedStrip = ({ tasks }: { tasks: PlannerTask[] }) => {
     <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-2" title="One dot is 15 minutes of Estimate, in its Area colour">
       <span aria-hidden="true" className="flex flex-wrap gap-[5px]">
         {dots.map((colour, index) => (
-          <span key={index} className="size-2 rounded-full" style={{ backgroundColor: colour }} />
+          <span
+            key={index}
+            className="size-2 animate-dot-in rounded-full transition-[background-color] duration-(--dur-base) ease-out"
+            style={{ backgroundColor: colour }}
+          />
         ))}
       </span>
       <p className="text-small text-muted-foreground">
-        <span className="font-mono text-foreground">{formatMinutes(total)}</span> estimated
+        <RollingNumber value={formatMinutes(total)} className="font-mono text-foreground" /> estimated
         {planned.length < tasks.length && (
           <span className="text-faint-foreground">
             , {tasks.length - planned.length} without an Estimate

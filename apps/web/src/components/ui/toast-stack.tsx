@@ -26,9 +26,11 @@ export type ToastData = {
   /** ms before it closes on its own; loading toasts wait to be updated. */
   duration: number;
   dismissing?: boolean;
+  /** Bumped on every update, so an updated toast restarts its countdown. */
+  revision?: number;
 };
 
-type ToastOptions = Partial<Omit<ToastData, "title" | "tone" | "dismissing">>;
+type ToastOptions = Partial<Omit<ToastData, "title" | "tone" | "dismissing" | "revision">>;
 
 // One module-level store, so `toast()` works from anywhere without context.
 let toasts: ToastData[] = [];
@@ -39,7 +41,7 @@ let counter = 0;
 
 function upsert(title: React.ReactNode, tone: ToastTone, options: ToastOptions = {}) {
   const id = options.id ?? `toast-${++counter}`;
-  const next: ToastData = { duration: 4000, ...options, id, title, tone };
+  const next: ToastData = { duration: 4000, ...options, id, title, tone, revision: ++counter };
   if (tone === "error") haptic("error");
   toasts = toasts.some((t) => t.id === id)
     ? toasts.map((t) => (t.id === id ? { ...t, ...next, dismissing: false } : t))
@@ -137,6 +139,7 @@ export function Toaster({
 
   return (
     <section
+      data-toaster
       aria-label="Notifications"
       className={cn(
         "pointer-events-none fixed bottom-4 z-[60] w-[min(22rem,calc(100vw-2rem))]",
@@ -230,7 +233,7 @@ function ToastItem({
   // Reset the countdown when the toast is updated (e.g. a promise settled).
   useEffect(() => {
     remaining.current = item.duration;
-  }, [item.duration, item.tone]);
+  }, [item.duration, item.tone, item.revision]);
 
   useEffect(() => {
     if (paused || item.dismissing || !Number.isFinite(remaining.current)) return;
@@ -240,7 +243,7 @@ function ToastItem({
       clearTimeout(timer);
       remaining.current -= Date.now() - start;
     };
-  }, [paused, item.dismissing, item.id, item.duration, item.tone]);
+  }, [paused, item.dismissing, item.id, item.duration, item.tone, item.revision]);
 
   const front = index === 0;
   const dragY = drag?.y ?? 0;

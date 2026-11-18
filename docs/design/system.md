@@ -109,7 +109,7 @@ Rules:
 - A drag tracks the pointer one to one, with pointer capture and no transition. It rubber-bands at the edges and springs to the snap point on release.
 - Keyboard actions do not animate. The command palette opens instantly. Arrow keys move a Work Block or a segmented pill with no transition.
 - Numbers that change roll (`RollingNumber`). Do not fade them.
-- Every change raises an undo toast through `showUndo(title, undo)` from `lifeos/undo.ts`. Cmd+Z runs the newest one (`undoLast`).
+- Every change raises an undo toast through `showUndo(title, undo, slot)` from `lifeos/undo.ts`. Changes that share a `slot` (one Task card) reuse one toast whose title morphs, so a run of edits never stacks. Cmd+Z runs the newest one (`undoLast`).
 - Reduced motion: keyframes stop, springs become instant, fills and strikes become a short fade. Check with `useReducedMotion()` from `motion/react` or the `motion-reduce:` variant.
 - Server-rendered SVG that uses `Math.sin` or `Math.cos` must round its coordinates (`round` in `lifeos/format.ts`), or hydration will warn.
 
@@ -158,7 +158,13 @@ LifeOS (`components/lifeos`). All take plain props and make no backend calls.
 | `TaskCheckbox`, `StrikeTitle` | `task-row.tsx` | The completion: fill, tick, strike. Dashed for Someday |
 | `TaskRow`, `EstimateChip`, `DeadlineMarker` | `task-row.tsx` | The one-line Task |
 | `TaskList` | `task-list.tsx` | Rows that linger, leave and can be undone |
-| `TaskCard` | `task-card.tsx` | A Task opened in place: notes, When, Estimate chips, Labels, Checklist with drag handles, Deadline |
+| `TaskCard` | `task-card.tsx` | The board's Task card, composed from the pieces below with local state |
+| `EstimateField` | `estimate-field.tsx` | Five quick chips and a typed field that reads `45`, `1h30` or `1:30` |
+| `ChecklistEditor` | `checklist-editor.tsx` | Checklist Items: add with Enter, edit in place, tick, drag to reorder (dnd-kit, also by keyboard), delete |
+| `LabelPicker` | `label-picker.tsx` | Find, tick, create and recolour Labels from the eight colour tokens |
+| `WhenPicker`, `DeadlinePicker` | `date-pickers.tsx` | Today, This Evening, a month grid, Anytime and Someday. The Deadline has its own amber grid |
+| `WorkBlockList` | `work-blocks.tsx` | A Task's planned Work Blocks: day, time and length, tinted by Area |
+| `ToolButton`, `MenuRow` | `tool-button.tsx` | The card's icon tools that grow a label on hover, and a menu row |
 | `DayColumnHeader`, `CapacityMeter` | `capacity.tsx` | Planned time against free time as a dot strip (one dot is 15 minutes) |
 | `CalendarStrip` | `calendar-strip.tsx` | A Work Block you can drag and resize, with External Commitments hatched |
 | `FocusTimerPill`, `DotRing` | `focus-timer.tsx` | The floating timer with a draining ring of dots |
@@ -180,10 +186,12 @@ The real screens live in `apps/web/src/components/app`. They read Convex and com
 | `AppShell` | `app-shell.tsx` | The sidebar on `surface`, the main column as one `surface-inset` panel, the phone drawer, the keyboard map, and a warm subscription to the five main lists so switching never waits |
 | `Route` | `route.ts` | The one model of where you are: a list, an Area or a Project. `/area?id=` and `/project?id=` use a query string because the Mac app ships static files |
 | `Sidebar` | `sidebar.tsx` | Lists with rolling counts, Areas with their Projects, the "Synced from Things" note, Sign out |
-| `TaskItem` | `task-item.tsx` | A row that opens in place into its card. Things-owned fields are read-only for now, with "Open in Things" |
+| `TaskItem` | `task-item.tsx` | A row that opens in place into its card. Focus stays inside. Escape, Cmd+Enter or a click away closes it and saves what was typed |
+| `TaskCardBody` | `task-card-body.tsx` | The open card: title, notes with clickable links, Checklist, Work Blocks, Estimate, When, Labels and Deadline |
+| `useChange`, `useTaskActions` | `changes.ts`, `task-actions.ts` | Every edit: it shows at once (an optimistic update over every list that holds the Task), records Activity, and raises one undo toast per card |
 | Screens | `screens/` | Inbox, Today, Upcoming, Anytime, Someday, Logbook, Area, Project |
 
-Keys: `1` to `6` (and Cmd+1 to Cmd+6 in the Mac app) switch lists. Arrow keys or `J` and `K` move through rows, or through the sidebar when it has focus. Enter opens a row, Escape closes it. A pointer switch slides the selection and fades the list in. A keyboard switch is instant.
+Keys: `1` to `6` (and Cmd+1 to Cmd+6 in the Mac app) switch lists. Arrow keys or `J` and `K` move through rows, or through the sidebar when it has focus. Enter or Space opens a row, Escape or Cmd+Enter closes it. Cmd+Z undoes the newest change, unless the caret is in a field with unsaved typing. A pointer switch slides the selection and fades the list in. A keyboard switch is instant.
 
 `apps/web/scripts/screens.sh <folder>` screenshots every list in light and dark at 1440 and 390 px with agent-browser. Set `SESSION` to a JSON file with `accessToken` and `refreshToken` to start signed in.
 

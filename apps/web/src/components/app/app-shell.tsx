@@ -8,6 +8,7 @@ import { api } from "@lifeos/backend/api";
 import type { IsoDate } from "@lifeos/backend/date";
 import { isConvexConfigured } from "@/components/convex-client-provider";
 import { EmptyState } from "@/components/lifeos/states";
+import { undoLast } from "@/components/lifeos/undo";
 import { Toaster } from "@/components/ui/toast-stack";
 import { cn } from "@/lib/utils";
 import { useLocalDate, useView, valueOf } from "./hooks";
@@ -38,6 +39,7 @@ const WarmLists = ({ today }: { today: IsoDate }) => {
   useQuery(api.planner.lists.upcoming, { date: today, days: UPCOMING_DAYS });
   useQuery(api.planner.lists.anytime, { date: today });
   useQuery(api.planner.lists.someday, {});
+  useQuery(api.planner.labels.list, {});
   return null;
 };
 
@@ -87,6 +89,12 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      const undoes = (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "z";
+      const ownsUndo = isTyping(event.target) && (event.target as HTMLElement).dataset.undo !== "app";
+      if (undoes && !event.defaultPrevented && !ownsUndo) {
+        if (undoLast()) event.preventDefault();
+        return;
+      }
       if (event.defaultPrevented || isTyping(event.target) || event.altKey || event.ctrlKey || event.shiftKey) return;
       const list = LISTS[Number(event.key) - 1];
       if (list) {

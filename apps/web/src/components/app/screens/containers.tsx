@@ -13,7 +13,8 @@ import { deadlineMark } from "../dates";
 import { useView } from "../hooks";
 import { ListPage, ListSkeleton, Missing, RouteLink, SectionHeading } from "../list-page";
 import { useShell } from "../shell-context";
-import { Linkified, TaskItems } from "../task-item";
+import { Linkified } from "../linkified";
+import { TaskItems } from "../task-item";
 
 const fraction = ({ done, total }: { done: number; total: number }) => (total === 0 ? 0 : done / total);
 
