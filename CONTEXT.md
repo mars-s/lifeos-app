@@ -59,11 +59,16 @@ _Avoid_: timebox in code (fine in UI copy), event.
 
 **Activity**: the append-only record of every change. It powers undo, visualisations and the Things Bridge.
 
-**Things Bridge**: the two-way link with Things 3 while Avi moves over. It covers only the fields Things can store.
+**Things Bridge**: the two-way link with Things 3. Snapshots come in from the Mac; Things Operations go out through a queue. It covers only the fields Things owns.
+
+**Things Operation**: one queued change for Things (complete, rename, reschedule, move, create) with its receipt.
 
 ## Authority
 
-- LifeOS (Convex) holds every Task, Area, Project and planning field.
-- While the Things Bridge is on, a change made in Things to a field Things owns (title, notes, When, Deadline, Area, Project, Labels, status) updates LifeOS. A change made in LifeOS to those fields is queued and applied to Things by the Mac, then read back.
-- Estimates, Work Blocks, Checklist Items, Focus Sessions, Recurrence Rules and Templates live only in LifeOS.
-- Apple Calendar holds the timing of External Commitments and, once written back, of Work Blocks.
+Things 3 is the boss for now (Avi, 18 November 2026). He keeps working in Things while LifeOS is built.
+
+- Things owns Tasks, Areas, Projects and Headings, and these fields: title, notes, When, Deadline, Area, Project, tags and status. When Things and LifeOS disagree on one of these, Things wins.
+- LifeOS owns the planning layer: Estimates, Work Blocks, Checklist Items, Focus Sessions, Day Plans, Recurrence Rules, Templates, Area and Label colours, and LifeOS order keys. These never go to Things, and a Things sync never erases them.
+- An edit made in LifeOS to a Things-owned field is queued, applied by the Mac, read back, and confirmed by the next snapshot. Until then the Task shows it is waiting for Things.
+- Apple Calendar owns the timing of External Commitments and, once written back, of Work Blocks.
+- Later, LifeOS may become the boss. That changes the conflict rule, not the schema.
