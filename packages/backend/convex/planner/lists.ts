@@ -257,6 +257,7 @@ export const project = ownerQuery({
       project: {
         ...projectSummary(found),
         notes: found.notes,
+        areaId: found.areaId,
         when: found.when,
         deadline: found.deadline,
         status: found.status,

@@ -12,7 +12,7 @@ const found = <T>(docs: (T | null)[]) => docs.flatMap((doc) => (doc ? [doc] : []
 
 const byId = <T extends { _id: string }>(docs: T[]) => new Map(docs.map((doc) => [doc._id, doc] as const));
 
-export const areaSummary = ({ _id, title, colour }: Doc<"areas">) => ({ _id, title, colour });
+export const areaSummary = ({ _id, title, colour, icon }: Doc<"areas">) => ({ _id, title, colour, icon });
 
 export const projectSummary = ({ _id, title }: Doc<"projects">) => ({ _id, title });
 
