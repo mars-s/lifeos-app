@@ -34,7 +34,7 @@ const daysIn = (month: string) => {
 
 const ARROW_STEPS: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
 
-const MonthGrid = ({
+export const MonthGrid = ({
   value,
   today,
   tone,

@@ -51,7 +51,10 @@ export const TitleField = ({ task, today }: { task: PlannerTask; today: string }
   const { rename } = useTaskActions(task, today);
   const [draft, setDraft] = useState<string | null>(null);
   const field = useRef<HTMLInputElement>(null);
-  useEffect(() => field.current?.focus({ preventScroll: true }), []);
+  useEffect(() => {
+    field.current?.focus({ preventScroll: true });
+    if (field.current?.value === "New Task") field.current.select();
+  }, []);
   const commit = () => {
     const next = draft?.trim();
     setDraft(null);
@@ -75,7 +78,7 @@ export const TitleField = ({ task, today }: { task: PlannerTask; today: string }
   );
 };
 
-const NotesField = ({ notes, onSave }: { notes: string; onSave: (notes: string) => void }) => {
+export const NotesField = ({ notes, onSave }: { notes: string; onSave: (notes: string) => void }) => {
   const [draft, setDraft] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const field = useRef<HTMLTextAreaElement>(null);

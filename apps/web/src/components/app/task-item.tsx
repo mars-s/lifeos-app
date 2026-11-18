@@ -5,11 +5,13 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { PlannerTask } from "@lifeos/backend/types";
 import { AreaDot } from "@/components/lifeos/area";
-import { DeadlineMarker, EstimateChip } from "@/components/lifeos/task-row";
+import { DeadlineMarker, EstimateChip, TaskCheckbox } from "@/components/lifeos/task-row";
 import { haptic } from "@/lib/haptics";
 import { instant, springLayout } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
 import { clockTime, deadlineMark, isToday, localDate, shortDay, whenLabel } from "./dates";
+import { selection, useLingering, useSelected } from "./selection";
+import { useSelectionActions } from "./selection-actions";
 import { useShell } from "./shell-context";
 import { Linkified, TitleLinks } from "./linkified";
 import { TaskCardBody, TitleField } from "./task-card-body";
@@ -57,17 +59,25 @@ const StatusMark = ({ task }: { task: PlannerTask }) => (
   </>
 );
 
-const StatusBox = ({ task }: { task: PlannerTask }) => {
-  const { today } = useShell();
-  const { complete, reopen } = useTaskActions(task, today);
-  const open = task.status.kind === "open";
-  return (
+const StatusBox = ({ task, today }: { task: PlannerTask; today: string }) => {
+  const lingering = useLingering(task._id);
+  const actions = useSelectionActions(today);
+  const { reopen } = useTaskActions(task, today);
+  return task.status.kind === "open" ? (
+    <TaskCheckbox
+      checked={lingering}
+      someday={task.when.kind === "someday"}
+      label={`Complete ${task.title}`}
+      onCheckedChange={(checked) => (checked ? actions.completeSoon([task]) : actions.keepOpen(task))}
+      className="mt-[3px]"
+    />
+  ) : (
     <button
       type="button"
-      aria-label={open ? `Complete ${task.title}` : `Reopen ${task.title}`}
+      aria-label={`Reopen ${task.title}`}
       onClick={() => {
-        haptic(open ? "complete" : "toggle");
-        void (open ? complete() : reopen());
+        haptic("toggle");
+        void reopen();
       }}
       className={cn(
         STATUS_BOX,
@@ -159,7 +169,7 @@ const keepFocusInside = (event: React.KeyboardEvent, container: HTMLElement) => 
   (event.shiftKey ? stops.at(-1) : stops[0])?.focus();
 };
 
-const OUTSIDE_THE_CARD = "[data-arrow-item], [data-radix-popper-content-wrapper], [data-toaster]";
+const OUTSIDE_THE_CARD = "[data-radix-popper-content-wrapper], [data-toaster], [role=menu]";
 
 export type TaskItemShow = { context?: boolean; star?: boolean; when?: boolean; closedAt?: boolean };
 
@@ -169,6 +179,10 @@ export const TaskItem = ({ task, itemKey = task._id, show = {} }: { task: Planne
   const container = useRef<HTMLLIElement>(null);
   const [closedByKey, setClosedByKey] = useState(false);
   const open = openCard?.key === itemKey;
+  const selected = useSelected(itemKey) && !open;
+  const lingering = useLingering(task._id);
+
+  useEffect(() => selection.register(itemKey, task), [itemKey, task]);
   const transition = reduce || openCard?.instant || (!open && closedByKey) ? instant : springLayout;
   const closed = task.status.kind !== "open";
   const editable = open && !closed;
@@ -194,7 +208,7 @@ export const TaskItem = ({ task, itemKey = task._id, show = {} }: { task: Planne
   }, [open]);
 
   return (
-    <li ref={container}>
+    <li ref={container} data-task-key={itemKey} data-open-card={open ? "" : undefined} data-selected={selected ? "" : undefined}>
       <motion.div
         initial={false}
         animate={{ marginTop: open ? 8 : 0, marginBottom: open ? 8 : 0 }}
@@ -212,11 +226,13 @@ export const TaskItem = ({ task, itemKey = task._id, show = {} }: { task: Planne
           "group/row @container rounded-xl transition-[background-color,box-shadow] duration-(--dur-fast) ease-out",
           open
             ? "bg-popover shadow-lift"
-            : "hover:bg-foreground/[0.04] has-[[data-arrow-item]:focus-visible]:bg-brand/[0.09] has-[[data-arrow-item]:focus-visible]:ring-2 has-[[data-arrow-item]:focus-visible]:ring-ring",
+            : selected
+              ? "task-selected bg-brand/[0.12] dark:bg-brand/[0.17]"
+              : "hover:bg-foreground/[0.04]",
         )}
       >
         <div className="flex items-start gap-3 px-3 py-2">
-          <StatusBox task={task} />
+          <StatusBox task={task} today={today} />
           {editable ? (
             <TitleField task={task} today={today} />
           ) : (
@@ -224,9 +240,13 @@ export const TaskItem = ({ task, itemKey = task._id, show = {} }: { task: Planne
             type="button"
             data-arrow-item
             aria-expanded={open}
+            onFocus={(event) => {
+              if (event.currentTarget.matches(":focus-visible") && !selection.has(itemKey)) selection.only(itemKey);
+            }}
             onClick={(event) => {
-              setClosedByKey(event.detail === 0);
-              setOpenCard(open ? null : { key: itemKey, instant: event.detail === 0 });
+              if (event.detail !== 0) return;
+              setClosedByKey(true);
+              setOpenCard(open ? null : { key: itemKey, instant: true });
             }}
             className="min-w-0 flex-1 rounded-md text-left outline-none"
           >
@@ -241,7 +261,9 @@ export const TaskItem = ({ task, itemKey = task._id, show = {} }: { task: Planne
                 className={cn(
                   "min-w-0",
                   open ? "font-medium break-words" : "truncate",
+                  "transition-colors duration-(--dur-slow) ease-out",
                   !open && (task.when.kind === "someday" || closed) && "text-muted-foreground",
+                  lingering && "text-faint-foreground",
                   task.status.kind === "canceled" && "line-through",
                 )}
               >

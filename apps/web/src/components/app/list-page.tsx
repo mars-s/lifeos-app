@@ -9,6 +9,8 @@ import { useShell } from "./shell-context";
 
 export const ListPage = ({
   title,
+  heading,
+  menu,
   icon: IconComponent,
   leading,
   subtitle,
@@ -16,6 +18,8 @@ export const ListPage = ({
   children,
 }: {
   title?: string;
+  heading?: ReactNode;
+  menu?: { "data-menu-area": string } | { "data-menu-project": string };
   icon?: Icon;
   leading?: ReactNode;
   subtitle?: ReactNode;
@@ -24,10 +28,12 @@ export const ListPage = ({
 }) => (
   <article className="mx-auto w-full max-w-[44rem] px-5 pt-4 pb-28 md:px-10 md:pt-14">
     <title>{title ? `${title} · LifeOS` : "LifeOS"}</title>
-    <header className={cn("mb-6 flex gap-3", IconComponent ? "items-start" : "items-center")}>
+    <header {...menu} className={cn("mb-6 flex gap-3", IconComponent ? "items-start" : "items-center")}>
       {IconComponent ? <IconComponent weight="fill" className="mt-0.5 size-6 shrink-0 text-brand" aria-hidden="true" /> : leading}
       <div className="min-w-0 flex-1">
-        {title ? (
+        {heading ? (
+          heading
+        ) : title ? (
           <h1 className="text-title font-semibold text-balance">{title}</h1>
         ) : (
           <span className="block h-7 w-40 animate-delayed-in rounded-full bg-foreground/[0.06]" />

@@ -12,9 +12,12 @@ import { undoLast } from "@/components/lifeos/undo";
 import { Toaster } from "@/components/ui/toast-stack";
 import { cn } from "@/lib/utils";
 import { useLocalDate, useView, valueOf } from "./hooks";
+import { AppMenu } from "./menus";
 import { LISTS, parseRoute, routeHref, type Route, type Via } from "./route";
 import { Screen, UPCOMING_DAYS } from "./screens";
-import { ShellContext, type OpenCard, type ShellState } from "./shell-context";
+import { SelectionBar } from "./selection-bar";
+import { useSelectionGestures } from "./selection-gestures";
+import { ShellContext, type ListDraft, type OpenCard, type Renaming, type ShellState } from "./shell-context";
 import { Sidebar } from "./sidebar";
 
 const isTyping = (target: EventTarget | null) =>
@@ -50,6 +53,9 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
   const [via, setVia] = useState<Via>("keyboard");
   const [card, setCard] = useState<(OpenCard & { href: string }) | null>(null);
   const [drawer, setDrawer] = useState(false);
+  const [renaming, setRenaming] = useState<Renaming | null>(null);
+  const [draft, setDraft] = useState<ListDraft | null>(null);
+  const latest = useRef<ShellState | null>(null);
   const main = useRef<HTMLElement>(null);
   const aside = useRef<HTMLElement>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
@@ -74,8 +80,27 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
       navigate,
       openCard: card?.href === href ? card : null,
       setOpenCard: (next) => setCard(next && { ...next, href }),
+      renaming,
+      setRenaming,
+      draft,
+      setDraft: (next) => {
+        if (next) setDrawer(true);
+        setDraft(next);
+      },
     } satisfies ShellState;
-  }, [route, today, card, href, actual, router]);
+  }, [route, today, card, href, actual, router, renaming, draft]);
+
+  useEffect(() => {
+    latest.current = shell;
+  }, [shell]);
+  const gestures = useMemo(
+    () => ({
+      open: (key: string) => latest.current?.setOpenCard({ key, instant: false }),
+      cardIsOpen: () => latest.current?.openCard != null,
+    }),
+    [],
+  );
+  useSelectionGestures(main, gestures);
 
   useEffect(() => {
     if (drawer) aside.current?.querySelector<HTMLElement>("[aria-current=page], [data-arrow-item]")?.focus({ preventScroll: true });
@@ -113,7 +138,8 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
   return (
     <ShellContext value={shell}>
       <WarmLists today={today} />
-      <div className="flex h-dvh bg-surface">
+      <AppMenu sidebar={sidebar}>
+      <div className="flex h-dvh bg-surface select-none [-webkit-touch-callout:none]">
         <a
           href="#main"
           className="absolute top-2 left-2 z-[60] -translate-y-16 rounded-full bg-popover px-3 py-1.5 text-small font-medium shadow-float focus-visible:translate-y-0"
@@ -163,8 +189,10 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
             </div>
             {children}
           </main>
+          <SelectionBar />
         </div>
       </div>
+      </AppMenu>
     </ShellContext>
   );
 };

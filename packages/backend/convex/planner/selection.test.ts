@@ -31,10 +31,10 @@ test("Deadline and Estimate apply to the whole selection and clear with null", a
   const { t, taskIds, view } = await setup();
   unwrap(await t.mutation(api.planner.selection.setDeadline, { taskIds, deadline: "2026-11-27" }));
   unwrap(await t.mutation(api.planner.selection.setEstimate, { taskIds, minutes: 30 }));
-  expect(await view((card) => [card.deadline, card.estimateMinutes])).toEqual(Array(3).fill(["2026-11-27", 30]));
+  expect(await view((card) => [card.deadline, card.estimateMinutes])).toEqual(Array.from({ length: 3 }, () => ["2026-11-27", 30]));
   unwrap(await t.mutation(api.planner.selection.setDeadline, { taskIds, deadline: null }));
   unwrap(await t.mutation(api.planner.selection.setEstimate, { taskIds, minutes: null }));
-  expect(await view((card) => [card.deadline, card.estimateMinutes])).toEqual(Array(3).fill([undefined, undefined]));
+  expect(await view((card) => [card.deadline, card.estimateMinutes])).toEqual(Array.from({ length: 3 }, () => [undefined, undefined]));
 });
 
 test("an invalid value changes none of the selection", async () => {

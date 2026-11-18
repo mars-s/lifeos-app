@@ -1,10 +1,15 @@
 "use client";
 
 import { createContext, use } from "react";
+import type { Id } from "@lifeos/backend/dataModel";
 import type { IsoDate } from "@lifeos/backend/date";
 import type { Route, Via } from "./route";
 
 export type OpenCard = { key: string; instant: boolean };
+
+export type Renaming = { kind: "area"; id: Id<"areas"> } | { kind: "project"; id: Id<"projects"> };
+
+export type ListDraft = { kind: "area" } | { kind: "project"; areaId: Id<"areas"> | null };
 
 export type ShellState = {
   route: Route;
@@ -12,6 +17,10 @@ export type ShellState = {
   navigate: (route: Route, via: Via) => void;
   openCard: OpenCard | null;
   setOpenCard: (card: OpenCard | null) => void;
+  renaming: Renaming | null;
+  setRenaming: (renaming: Renaming | null) => void;
+  draft: ListDraft | null;
+  setDraft: (draft: ListDraft | null) => void;
 };
 
 export const ShellContext = createContext<ShellState | null>(null);

@@ -90,6 +90,27 @@
   --dur-linger: 1100ms;
 }
 
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+input,
+textarea,
+[contenteditable="true"],
+.select-text,
+.select-text * {
+  -webkit-user-select: text;
+  user-select: text;
+}
+li[data-selected] + li[data-selected] .task-selected {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+li[data-selected]:has(+ li[data-selected]) .task-selected {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
 .light {
   color-scheme: light;
 }

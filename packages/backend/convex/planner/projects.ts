@@ -15,7 +15,7 @@ type Changed = { changed: boolean };
 const parseArea = async (ctx: MutationCtx, areaId: Id<"areas"> | null) =>
   areaId === null
     ? ok<Id<"areas"> | undefined, PlannerError>(undefined)
-    : (await load(ctx, "areas", areaId)).map((area): Id<"areas"> | undefined => area._id);
+    : (await load(ctx, "areas", areaId)).andThen((area) => ok<Id<"areas"> | undefined, PlannerError>(area._id));
 
 const edit = async (
   ctx: MutationCtx,

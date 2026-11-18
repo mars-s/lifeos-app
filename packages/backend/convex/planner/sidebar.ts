@@ -30,6 +30,7 @@ const loadSidebar = async (ctx: QueryCtx, date: IsoDate) => {
     areas: await Promise.all(
       areas.map(async ({ area, projects }) => ({
         ...areaSummary(area),
+        order: area.order,
         projects: await Promise.all(projects.map((project) => projectEntry(ctx, project))),
       })),
     ),
