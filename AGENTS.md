@@ -43,6 +43,7 @@ Follow these before your own habits, and read them before writing code in that a
 
 ## Convex
 
+- Deploy to the dev deployment (`npx convex dev --once`) only from a commit that already contains everything on origin/main, and push that commit right after. Deploying an unpushed or stale branch removes functions the live web app needs, and leaves data the main schema rejects.
 - Backend code lives in `packages/backend/convex`. Commit `convex/_generated` after any schema or function change.
 - Do not run commands that need a browser sign-in on Avi's behalf. In a worktree, write `CONVEX_DEPLOYMENT=dev:curious-pigeon-412` to `packages/backend/.env.local`; the logged-in CLI then deploys with `npx convex dev --once`. Never delete `packages/backend/.env.local` in the main checkout: it links Avi's `npx convex dev` to his deployment. For a throwaway local backend (seed data, experiments), run `CONVEX_AGENT_MODE=anonymous npx convex dev` in a scratch copy, never in a checkout that has the real link.
 
