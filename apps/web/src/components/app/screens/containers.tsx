@@ -94,11 +94,13 @@ export const ProjectScreen = ({ projectId }: { projectId: Id<"projects"> }) => {
     <ListPage
       title={view.project.title}
       leading={
-        <ProgressRing value={fraction(view.progress)} size={52} stroke={6} colour={colour} label={`${view.project.title} progress`}>
-          <span className="sr-only">
-            {view.progress.done} of {view.progress.total} done
-          </span>
-        </ProgressRing>
+        <span className="flex h-7 shrink-0 items-center self-start">
+          <ProgressRing value={fraction(view.progress)} size={22} stroke={3} colour={colour} label={`${view.project.title} progress`}>
+            <span className="sr-only">
+              {view.progress.done} of {view.progress.total} done
+            </span>
+          </ProgressRing>
+        </span>
       }
       subtitle={
         <>
@@ -113,7 +115,7 @@ export const ProjectScreen = ({ projectId }: { projectId: Id<"projects"> }) => {
         </>
       }
       aside={
-        <p className="flex shrink-0 items-baseline font-mono" aria-hidden="true">
+        <p className="flex h-7 shrink-0 items-baseline self-start pt-1 font-mono" aria-hidden="true">
           <RollingNumber value={view.progress.done} className="text-heading font-medium" />
           <span className="text-small text-muted-foreground">/{view.progress.total}</span>
         </p>
