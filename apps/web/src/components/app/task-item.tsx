@@ -12,7 +12,9 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { PlannerTask } from "@lifeos/backend/types";
 import { AreaDot, areaVar } from "@/components/lifeos/area";
 import { ActualMeter } from "@/components/lifeos/focus-timer";
+import { EstimateField } from "@/components/lifeos/estimate-field";
 import { ActualChip, DeadlineMarker, EstimateChip, TaskCheckbox } from "@/components/lifeos/task-row";
+import { Popover } from "@/components/ui/popover-panel";
 import { haptic } from "@/lib/haptics";
 import { instant, springLayout } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
@@ -100,7 +102,7 @@ const StatusBox = ({ task, today }: { task: PlannerTask; today: string }) => {
   );
 };
 
-const TimeChip = ({ task, className: wanted }: { task: PlannerTask; className?: string }) => {
+const TimeChip = ({ task, className: wanted, plain = false }: { task: PlannerTask; className?: string; plain?: boolean }) => {
   const className = cn(useFocusOn(task._id) && "hidden @sm:inline-flex", wanted);
   const actual = Math.floor(useActualMs(task) / 60_000);
   if (actual === 0) return task.estimateMinutes === undefined ? null : <EstimateChip minutes={task.estimateMinutes} className={className} />;
@@ -109,8 +111,39 @@ const TimeChip = ({ task, className: wanted }: { task: PlannerTask; className?: 
       actual={actual}
       estimate={task.estimateMinutes}
       className={className}
-      meter={<ActualMeter size="sm" actual={actual} estimate={task.estimateMinutes} colour={task.area ? areaVar(task.area.colour) : undefined} />}
+      meter={plain ? null : <ActualMeter size="sm" actual={actual} estimate={task.estimateMinutes} colour={task.area ? areaVar(task.area.colour) : undefined} />}
     />
+  );
+};
+
+const EstimateEdit = ({ task, today }: { task: PlannerTask; today: string }) => {
+  const actions = useSelectionActions(today);
+  const idle = Math.floor(useActualMs(task) / 60_000) === 0;
+  return (
+    <Popover
+      title="Estimate"
+      side="bottom"
+      align="end"
+      className="w-64"
+      trigger={
+        <button
+          type="button"
+          data-no-select
+          aria-label={task.estimateMinutes === undefined ? `Set an Estimate for ${task.title}` : `Change the Estimate for ${task.title}`}
+          className="relative flex h-6 shrink-0 items-center rounded-md outline-offset-2 transition-[scale,opacity] duration-(--dur-press) ease-out before:absolute before:-inset-1.5 active:scale-[0.94]"
+        >
+          {task.estimateMinutes === undefined && idle ? (
+            <span className="inline-flex h-6 items-center rounded-md px-1.5 font-mono text-small text-faint-foreground opacity-0 transition-opacity duration-(--dur-fast) ease-out group-hover/row:opacity-100 group-has-[:focus-visible]/row:opacity-100 [@media(hover:none)]:opacity-100">
+              0:00
+            </span>
+          ) : (
+            <TimeChip task={task} plain />
+          )}
+        </button>
+      }
+    >
+      <EstimateField minutes={task.estimateMinutes} onChange={(minutes) => actions.setEstimate([task], minutes)} />
+    </Popover>
   );
 };
 
@@ -134,6 +167,32 @@ const RowFocus = ({ task }: { task: PlannerTask }) => {
     </button>
   );
 };
+
+const TileMeta = ({ task, today, planned }: { task: PlannerTask; today: string; planned: number | undefined }) =>
+  (task.context || task.notes || task.checklist.length > 0 || planned !== undefined || task.deadline) && (
+    <span className="flex w-full flex-wrap items-center gap-x-2.5 gap-y-0.5 pl-[1.875rem] text-small text-muted-foreground">
+      {task.context && (
+        <span className="flex max-w-full min-w-0 items-center gap-1.5">
+          {task.area && <AreaDot colour={task.area.colour} />}
+          <span className="truncate">{task.context}</span>
+        </span>
+      )}
+      {planned !== undefined && (
+        <span title="Planned start" className="shrink-0 font-mono text-faint-foreground">
+          <span className="sr-only">Planned for </span>
+          {clockTime(planned)}
+        </span>
+      )}
+      {task.notes && (
+        <>
+          <Note className="size-3.5 shrink-0 text-faint-foreground" aria-hidden="true" />
+          <span className="sr-only">Has notes</span>
+        </>
+      )}
+      {task.checklist.length > 0 && <ChecklistCount items={task.checklist} />}
+      {task.deadline && <DeadlineMarker deadline={deadlineMark(task.deadline, today)} />}
+    </span>
+  );
 
 const ChecklistCount = ({ items }: { items: PlannerTask["checklist"] }) => (
   <span className="inline-flex shrink-0 items-center gap-1 font-mono text-micro text-faint-foreground">
@@ -217,12 +276,12 @@ const keepFocusInside = (event: React.KeyboardEvent, container: HTMLElement) => 
 
 const OUTSIDE_THE_CARD = "[data-radix-popper-content-wrapper], [data-toaster], [role=menu], [data-focus-pill]";
 
-export type TaskItemShow = { context?: boolean; star?: boolean; when?: boolean; closedAt?: boolean };
+export type TaskItemShow = { context?: boolean; star?: boolean; when?: boolean; closedAt?: boolean; tileOn?: string };
 
 const ROW_HIDDEN = { height: 0, opacity: 0, overflow: "hidden" };
 const ROW_SHOWN = { height: "auto", opacity: 1, transitionEnd: { overflow: "visible" } };
 
-const TaskItem = ({
+export const TaskItem = ({
   task,
   itemKey,
   show = {},
@@ -246,7 +305,8 @@ const TaskItem = ({
   const transition = reduce || openCard?.instant || (!open && closedByKey) ? instant : springLayout;
   const closed = task.status.kind !== "open";
   const editable = open && !closed;
-  const plannedToday = task.workBlocks.find((block) => !block.done && localDate(block.start) === today);
+  const tile = show.tileOn !== undefined;
+  const plannedToday = task.workBlocks.find((block) => !block.done && localDate(block.start) === (show.tileOn || today));
   const unsaved = isDraftTask(task._id);
   const { setNodeRef, listeners, transform: dragOffset, transition: dragTransition, isDragging } = useSortable({
     id: itemKey,
@@ -283,7 +343,7 @@ const TaskItem = ({
       animate={ROW_SHOWN}
       exit={ROW_HIDDEN}
       transition={reduce || (unsaved && openCard?.instant) ? instant : springLayout}
-      className={cn(isDragging && "relative z-10")}
+      className={cn(isDragging && "relative z-10", tile && "pb-1.5")}
     >
       <div
         ref={setNodeRef}
@@ -305,14 +365,18 @@ const TaskItem = ({
         }}
         className={cn(
           "group/row @container rounded-xl transition-[background-color,box-shadow] duration-(--dur-fast) ease-out",
-          open || isDragging
+          open || (isDragging && !tile)
             ? "bg-popover shadow-lift"
-            : selected
+            : isDragging
+              ? "bg-foreground/[0.04] opacity-40"
+              : selected
               ? "task-selected bg-brand/[0.12] dark:bg-brand/[0.17]"
-              : "hover:bg-foreground/[0.04] has-[[data-arrow-item]:focus-visible]:bg-foreground/[0.07]",
+              : tile
+                ? "bg-foreground/[0.035] hover:bg-foreground/[0.06] has-[[data-arrow-item]:focus-visible]:bg-foreground/[0.085]"
+                : "hover:bg-foreground/[0.04] has-[[data-arrow-item]:focus-visible]:bg-foreground/[0.07]",
         )}
       >
-        <div className="flex items-start gap-3 px-3 py-2">
+        <div className={cn("flex items-start gap-x-3 px-3 py-2", tile && !open && "flex-wrap gap-y-0.5")}>
           <StatusBox task={task} today={today} />
           {editable ? (
             <TitleField task={task} today={today} />
@@ -331,6 +395,10 @@ const TaskItem = ({
             }}
             className="min-w-0 flex-1 rounded-md text-left outline-none"
           >
+            {tile && !open && !closed ? (
+              <span className="line-clamp-2 break-words">{task.title}</span>
+            ) : (
+              <>
             <span className="flex items-center gap-1.5">
               {show.star && isToday(task.when, today) && (
                 <>
@@ -375,6 +443,8 @@ const TaskItem = ({
                 {task.deadline && !closed && <DeadlineMarker deadline={deadlineMark(task.deadline, today)} className="ml-auto @md:hidden" />}
               </span>
             )}
+              </>
+            )}
           </button>
           )}
           {!open && (
@@ -390,7 +460,7 @@ const TaskItem = ({
                   {clockTime(plannedToday.start)}
                 </span>
               )}
-              <TimeChip task={task} className={cn(closed && "hidden opacity-60 @md:inline-flex")} />
+              {tile && !closed ? <EstimateEdit task={task} today={today} /> : <TimeChip task={task} className={cn(closed && "hidden opacity-60 @md:inline-flex")} />}
               {show.closedAt && task.status.kind !== "open" && (
                 <time dateTime={new Date(task.status.at).toISOString()} className="w-[4.5rem] text-right font-mono text-small text-faint-foreground">
                   {clockTime(task.status.at)}
@@ -398,6 +468,7 @@ const TaskItem = ({
               )}
             </span>
           )}
+          {tile && !open && !closed && <TileMeta task={task} today={today} planned={plannedToday?.start} />}
         </div>
         <AnimatePresence initial={false}>
           {open && (
@@ -431,6 +502,21 @@ const keyBetween = Result.fromThrowable(generateKeyBetween, () => "unordered" as
 
 export const useHasDrafts = () => useDraftCount(routeHref(useShell().route)) > 0;
 
+export const useHostedRows = (tasks: readonly PlannerTask[], slot: string | undefined, inline: boolean) => {
+  const { openCard, setOpenCard } = useShell();
+  const rows = useRows(tasks, slot);
+  const shown = inline ? rows.filter(({ task }) => isDraftTask(task._id) || tasks.includes(task)) : rows;
+  const vanished = rows.find((row) => !shown.includes(row))?.key;
+
+  useEffect(() => {
+    if (!vanished) return;
+    drafts.failed(vanished);
+    if (openCard?.key === vanished) setOpenCard(null);
+  }, [vanished, openCard, setOpenCard]);
+
+  return shown;
+};
+
 export const TaskItems = ({
   tasks,
   show,
@@ -444,19 +530,10 @@ export const TaskItems = ({
   hostsDrafts?: "inline" | "above";
   sortable?: boolean;
 }) => {
-  const { route, today, openCard, setOpenCard } = useShell();
+  const { route, today, openCard } = useShell();
   const actions = useSelectionActions(today);
-  const rows = useRows(tasks, hostsDrafts ? routeHref(route) : undefined);
+  const shown = useHostedRows(tasks, hostsDrafts ? routeHref(route) : undefined, hostsDrafts === "inline");
   const sensors = useSensors(useSensor(MouseSensor, { activationConstraint: { distance: DRAG_START_PX } }), useSensor(KeyboardSensor));
-  const shown = hostsDrafts === "inline" ? rows.filter(({ task }) => isDraftTask(task._id) || tasks.includes(task)) : rows;
-  const vanished = rows.find((row) => !shown.includes(row))?.key;
-
-  useEffect(() => {
-    if (!vanished) return;
-    drafts.failed(vanished);
-    if (openCard?.key === vanished) setOpenCard(null);
-  }, [vanished, openCard, setOpenCard]);
-
   const place = (key: string, to: number) => {
     const moved = shown.find((row) => row.key === key);
     const others = shown.filter((row) => row.key !== key);

@@ -115,6 +115,7 @@ No indexes: the guard reads the row by the id the session holds.
 | `status` | `open`, `completed { at }` or `canceled { at }` | LifeOS |
 | `trashedAt` | Optional moment | LifeOS |
 | `order` | Order Key inside its parent | LifeOS |
+| `plan` | Optional `{ date, order }`: the Task's place in one day's **Day Plan**. It only counts while `date` is the day the Task is planned on, so an order made for Thursday never leaks into Friday | LifeOS |
 | `things` | Optional `{ id, todayIndex, base? }`: the Things id, its position in Things' Today, and the imported fields as Things last had them | Things Import |
 
 | Index | Serves |
@@ -206,6 +207,8 @@ Each screen reads one query that returns exactly what it draws. All go through `
 | `planner/lists:area` (`areaId`) | An Area page: its open Tasks and its Projects with progress | `tasks.by_area_order`, `projects.by_area_order` |
 | `planner/lists:project` (`projectId`) | A Project page: open Tasks under their Headings, and progress over every Task | `headings.by_project_order`, `tasks.by_project_order` |
 | `planner/labels:list` | The Label picker on a Task card | `labels.by_order` |
+| `planner/plan:week` (`from`, `days` up to 31, `timeZone`) | The Planner's day columns: each day's open Tasks in Day Plan order, its planned minutes and its **Capacity**. Tasks scheduled before `from` roll into the first day | `tasks.by_trashed_status_when`, `workBlocks.by_removed_start`, and the Capacity reads |
+| `planner/workBlocks:range` (`from`, `to`, moments, up to 100 days) | The Timebox calendar: live Work Blocks with their Task rows. Blocks of completed Tasks stay (they show as done), blocks of trashed Tasks are left out | `workBlocks.by_removed_start` |
 | `planner/trash:list` | Trash: trashed Areas, Projects and Tasks, newest first. A record that went to Trash with its Area or Project is counted on that row, not listed again | `tasks.by_trashed_closed_at`, `projects.by_trashed`, `areas.by_trashed` |
 
 Every list row has the same shape (`enrich` in `planner/rows.ts`): the Task, plus its Area (title and colour), its Project, its Labels, its Checklist Items (with their Order Keys), its Work Blocks that are not removed, and `focus`: its Actual Time in milliseconds and its 12 newest Focus Sessions. A session shorter than a minute is left out of both. A Task card opens from the row it already has, with no second read.
@@ -213,6 +216,10 @@ Every list row has the same shape (`enrich` in `planner/rows.ts`): the Task, plu
 The card writes through `planner/tasks` (`rename`, `setNotes`, `setWhen`, `setDeadline`, `setEstimate`, `setLabels`), `planner/checklist` (`add`, `edit`, `tick`, `reorder`, `remove`) and `planner/labels` (`create`, `setColour`, `rename`, `remove`). `tasks:reorder` sets one Task's Order Key, for drag to reorder. `labels:rename` refuses a name another Label holds (`name_taken`). `labels:remove` takes the Label off every open Task and deletes it. It cannot be undone, because undo cannot bring a record back under its old id. `labels:create` takes an optional `taskId` and adds the new Label to that Task in the same action, so one undo removes both. A Label name is used once, ignoring case: creating it again returns the Label that exists.
 
 Focus Sessions change through `planner/focus`. `start` (`taskId`, `plan`) ends whatever session is active and starts one on the Task, in one Activity row, so one undo brings the old session back. Starting on the Task already in focus changes nothing. `pause` and `resume` are safe to repeat. `stop` ends the session. `extend` adds minutes to a planned session and forgives the time that ran past the plan. `advance` moves a Pomodoro from focus to its Break and back. `setPlan` switches a running session between Stopwatch and Pomodoro. `setMinutes` and `remove` edit a finished session, because every field is editable. Only an open, live Task can start a session (`invalid_focus`, reason `task_closed`). Completing or trashing the Task, alone, in a selection or with its Project or Area, ends its session in the same Activity row. `planner/focus:current` returns the active session with its Task title and Area colour, or `null`.
+
+The Planner changes a day through `planner/plan:place` (`taskId`, `date`, `order`). `order` is the day's Task ids as Avi sees them after the drop, with the moved Task in its new place. The Task's When becomes that Scheduled date and it gets a `plan` key between its neighbours. When a neighbour has no key for that day yet, the whole day is keyed in the order given. One Activity row, so one undo restores the When and every key. `shared/plan.ts` holds the ordering (`byDayPlan`, `placeInDay`) and the planned total (`plannedMinutes`), and the web app runs the same code for its optimistic update.
+
+A day's planned total is the sum of its Tasks' Estimates, except that a Task with Work Blocks on that day counts those blocks instead. A Work Block for a Task planned on another day also counts on the day the block starts. Completed and trashed Tasks count nothing. `planner/workBlocks:create` takes an optional `date`: the Task's When becomes that Scheduled date in the same Activity row, which is how dropping an Inbox Task on the calendar plans it for that day. No Work Block change ever touches the Deadline.
 
 A selection of Tasks changes through `planner/selection` (`setWhen`, `setDeadline`, `setEstimate`, `setLabel`, `move`, `complete`, `reopen`, `trash`, `restore`). Each takes `taskIds` (up to 500), validates the whole request first, and records one Activity row, so one undo reverts every Task. A missing Task or an invalid value changes nothing.
 
@@ -305,8 +312,7 @@ Each slice adds these as new tables, or as variants of `vEntityRef` and `vJob`. 
 
 ### Rituals
 
-- **`dayPlans`**: `date`, `capacityMinutes`, optional `shutdown { at, note }`. Index: `by_date`.
-- **`dayPlanEntries`**: `dayPlanId`, `taskId`, `order`. Indexes: `by_plan_order` (the day column), `by_task` (which days a Task was planned on). A child table, because a plan's Task list has no fixed bound.
+- **`dayPlans`**: `date`, `capacityMinutes`, optional `shutdown { at, note }`. Index: `by_date`. Added with the Shutdown ritual, to freeze what a day's plan was. Until then a Day Plan is read live from the Tasks scheduled on that date and their `plan` keys.
 
 ### Recurrence and templates
 
@@ -357,6 +363,7 @@ Until Switch Day, `planner/things:importRows` takes the rows `apps/things-sync/t
 - **A Focus Session is one row with a state, not a row per stretch.** Pausing adds to `pausedMs` and never splits the session, so "only one runs" is one index read and the history shows what Avi did, not how often he paused.
 - **Time past a planned length is not Actual Time.** A Pomodoro left running overnight records its 25 minutes, not 14 hours. Extending says "I kept going" on purpose.
 - **Work Blocks are removed with a timestamp, not deleted.** Convex cannot re-insert a row with its old id. A hard delete would break undo of every earlier change to that block.
+- **Day Plan order lives on the Task.** A Task is planned on one date at a time (its When), so its place in that day is one optional field, not a row in a child table. Moving it writes one document. Tasks without a key for the day sort after the keyed ones, in Today order.
 - **Today order starts from Things.** An imported Task sorts by its Things Today position (`things.todayIndex`), then the rest by date, Deadline and Order Key. A LifeOS overlay key for Today (`todayOrder`) arrives with drag to reorder.
 - **Nothing writes to Things.** LifeOS is the home of Avi's Tasks. The two-way bridge and its `things` Jobs were removed on 18 November 2026 (#35).
 - **Lease expiry happens at claim time.** `claim` takes expired Jobs as well as queued ones, so no cron is needed and an expired Job is reclaimed the moment a Worker asks.

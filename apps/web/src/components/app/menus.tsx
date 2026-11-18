@@ -27,6 +27,7 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUUpLeft,
+  CalendarPlus,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Popover as PopoverPrimitive } from "radix-ui";
@@ -57,6 +58,7 @@ import { useQuietView } from "./hooks";
 import { routeHref, type Route } from "./route";
 import { selection, useRegisteredTasks, useSelectionSize } from "./selection";
 import { useSelectionActions, type MoveTarget } from "./selection-actions";
+import { planCommands } from "./planner/commands";
 import { useShell } from "./shell-context";
 import { useTrashActions } from "./trash-actions";
 
@@ -428,6 +430,17 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
                       shortcut: "F",
                       onSelect: () => focusDo.start(one, viaKeyboard ? "keyboard" : "pointer"),
                     } satisfies MenuItem),
+              ]
+            : []),
+          ...(one && one.status.kind === "open" && route.kind === "planner"
+            ? [
+                {
+                  id: "block",
+                  label: "Add Work Block",
+                  icon: CalendarPlus,
+                  shortcut: "B",
+                  onSelect: () => planCommands.addBlock?.(one),
+                } satisfies MenuItem,
               ]
             : []),
           ...(touch && one

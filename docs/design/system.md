@@ -166,7 +166,9 @@ LifeOS (`components/lifeos`). All take plain props and make no backend calls.
 | `WorkBlockList` | `work-blocks.tsx` | A Task's planned Work Blocks: day, time and length, tinted by Area |
 | `ToolButton`, `MenuRow` | `tool-button.tsx` | The card's icon tools that grow a label on hover, and a menu row |
 | `DayColumnHeader`, `CapacityMeter` | `capacity.tsx` | Planned time against free time as a dot strip (one dot is 15 minutes) |
+| `CapacityDots` | `capacity.tsx` | The compact meter in a Planner day column: one dot is 15 minutes, grouped by the hour, filled in each Task's Area colour. Dots past the free time are red |
 | `CalendarStrip` | `calendar-strip.tsx` | A Work Block you can drag and resize, with External Commitments hatched |
+| `Timebox` | `timebox.tsx` | The day and week calendar. External Commitments in their calendar's colour (read only, quiet ones hatched), Work Blocks in their Area colour with a checkbox. Drag a block to move it, even to another day, or drag its bottom edge to resize. It follows the pointer one to one, ticks on each 15 minute step, shows the live time in a pill and springs to the step on release. Arrow keys move it, Shift and arrows resize it, Backspace removes it |
 | `FocusTimerPill`, `DotRing` | `focus-timer.tsx` | The floating timer with a draining ring of dots. It takes one `view` (phase, status, seconds, ring) and shows the right label and main button for it: Pause, Resume, Break, Skip or Focus |
 | `ActualMeter`, `ActualChip` | `focus-timer.tsx`, `task-row.tsx` | Actual Time against the Estimate as dots: a solid dot is time spent, a faint one is still planned, a red one is over. The unit grows so the strip never gets long |
 | `FocusHistory`, `FocusPlanPanel` | `focus-timer.tsx` | Today's Focus Sessions as chips that open to edit or remove, and the Stopwatch or Pomodoro choice with its lengths |
@@ -195,6 +197,7 @@ The real screens live in `apps/web/src/components/app`. They read Convex and com
 | `FocusPill`, `useFocusActions` | `focus.tsx` | The live Focus Session. The pill floats over every list and survives a reload, because the session lives in Convex and the clock is worked out from its timestamps. One 250 ms ticker runs only while a session is running. Start, stop and switch raise an undo toast. Pause, resume and extend answer on the pill itself. The last mode (Stopwatch or Pomodoro, with lengths) is remembered in this browser |
 | `useChange`, `useTaskActions` | `changes.ts`, `task-actions.ts` | Every edit: it shows at once (an optimistic update over every list that holds the Task), records Activity, and raises one undo toast per card |
 | Screens | `screens/` | Inbox, Today, Upcoming, Anytime, Someday, Logbook, Trash, Area, Project |
+| Planner | `screens/planner.tsx`, `planner/` | Brain Dump, day columns and the Timebox in one screen. `model.ts` builds the columns from the Inbox, the Planner week and the Work Block range, so a change shows in every pane in the same frame. `drag.tsx` is the one drag layer: a Task moves between the Brain Dump and days, or lands on the calendar as a Work Block. `actions.ts` holds the optimistic changes. Below 56rem the three panes become tabs and the week becomes three days |
 | `PanelBoundary` | `panel-boundary.tsx` | One failing query or render stays in its own part: the screen, the sidebar, the open card and the selection bar each show a calm notice with Try Again. Signed-out and not-owner errors pass through to their own screens. `useQuietView` reads a query without throwing, for the shell and the warm subscriptions |
 | `drafts` | `drafts.ts` | A new Task shows in the same frame as `N`. The draft row keeps its key when the saved Task arrives, so the caret and typed text stay |
 | `askToConfirm` | `confirm.tsx` | The one confirm dialog, for changes that cannot be undone (Delete Forever, Empty Trash, deleting a Label) |
@@ -207,13 +210,15 @@ Menus: one `AppMenu` (`components/app/menus.tsx`, built on the TuffUI action men
 
 Rows: a Task row collapses out when it is completed or trashed and opens in when it is created or comes back by undo. In Inbox, an Area and a Project, drag a row to reorder it (Cmd+Up and Cmd+Down do the same for the focused row). There a lasso starts from empty space. Other lists keep drag-across-rows to select. In the sidebar, drag an Area or a Project, drop a Project on another Area to move it, or use Move Up and Move Down in the menu (Cmd+Up and Cmd+Down on the focused row).
 
+Planner: `8` opens it. Drag a Task from the Brain Dump or a day into another day (its When becomes that date) or onto the calendar (a Work Block the length of its Estimate, 30 minutes without one). Cmd+Left and Cmd+Right move the focused Task a day back or forward, Cmd+Up and Cmd+Down reorder it in its day, Left and Right move focus between columns, and `B` (or Add Work Block in the menu) gives the selected Task a block in the next free slot of its day. The Estimate chip on a tile opens the Estimate field. A block's checkbox completes its Task at once and the block fades and strikes through. Switching Day and Week with the pointer morphs the calendar with a view transition. The keyboard switches at once.
+
 Keys: `1` to `7` (and Cmd+1 to Cmd+7 in the Mac app) switch lists. Arrow keys or `J` and `K` move through rows, or through the sidebar when it has focus. Enter or Space opens a row, Escape or Cmd+Enter closes it. Cmd+Z undoes the newest change, unless the caret is in a field with unsaved typing. A pointer switch slides the selection and fades the list in. A keyboard switch is instant.
 
 Browser checks live in `apps/web/scripts` and run with agent-browser against a throwaway local backend:
 
 | Script | What it does |
 | --- | --- |
-| `local-backend.sh` | Copies the backend to a scratch folder, starts Convex's anonymous local backend there, seeds it and writes `session.json`. Never touches the real deployment link. `npx convex run scratch:seed` in that folder wipes and reseeds |
+| `local-backend.sh` | Copies the backend to a scratch folder (`SCRATCH`), starts Convex's anonymous local backend there, seeds it (Tasks, calendars, External Commitments and Work Blocks around today) and writes `session.json`. Never touches the real deployment link. It prints the `npx convex run scratch:seed` line that wipes and reseeds |
 | `signin.sh` | Signs the check browser in from `SESSION` |
 | `screens.sh <folder>` | Screenshots every list in light and dark at 1440 and 390 px |
 | `check-trash.sh <folder>` | Trash a Task and an Area, put back, undo, Delete Forever, Empty Trash |
@@ -221,6 +226,7 @@ Browser checks live in `apps/web/scripts` and run with agent-browser against a t
 | `check-boundaries.sh <folder>` | Points one query at a missing function with `?__fail=<name>` (dev builds only) and checks the rest of the app still works |
 | `check-focus.sh <folder>` | A whole Pomodoro on the first Task: start from the card, options, pause, time up, Break, Break over and finish, at both sizes and themes. `scratch:rewindFocus` moves the session back so time runs out at once. `MOTION=reduced-motion` runs it with reduced motion |
 | `check-card.sh <folder>` | The open Task card and the Label editor at both sizes and themes |
+| `check-planner.sh <folder>` | The Planner end to end on port 4010: drag a Task to a day and undo it, drop one on the calendar, move, resize and complete the block, the week view, the keyboard paths, Add task, the Estimate chip and the open card, then the phone tabs. It signs itself in from `SCRATCH`, prints ok or FAIL per step and exits non-zero on a failure. `THEME=dark` and `MOTION=reduced-motion` run the other modes |
 | `audit-guidelines.sh` | Greps every UI file for the mechanical Web Interface Guidelines rules |
 
 Run the web app with `WAKU_PUBLIC_CONVEX_URL=http://127.0.0.1:3210 npx waku dev --port 3990`. A session works in one browser only, so make a new one (`npx convex run scratch:signIn` in the scratch folder) for a second browser session.

@@ -5,7 +5,7 @@ import { DndContext, MouseSensor, closestCenter, useSensor, useSensors, type Col
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Archive, CalendarDots, CheckSquare, Plus, Shapes, SignOut, Stack, Star, Trash, Tray, type Icon } from "@phosphor-icons/react";
+import { Archive, CalendarDots, CheckSquare, Kanban, Plus, Shapes, SignOut, Stack, Star, Trash, Tray, type Icon } from "@phosphor-icons/react";
 import { generateKeyBetween } from "fractional-indexing";
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -46,6 +46,8 @@ export const LIST_META = {
   logbook: { label: "Logbook", icon: CheckSquare },
   trash: { label: "Trash", icon: Trash },
 } as const satisfies Record<ListKind, { label: string; icon: Icon }>;
+
+export const PLANNER_META = { label: "Planner", icon: Kanban } as const;
 
 const STALE_AFTER_MS = 10 * 60_000;
 const syncedAtFormat = new Intl.DateTimeFormat("en-AU", { dateStyle: "medium", timeStyle: "short" });
@@ -501,6 +503,7 @@ export const Sidebar = ({ view, via, notice }: { view: SidebarView | undefined; 
       </div>
       <div>
         <NavItem to={{ kind: "today" }} {...LIST_META.today} count={view?.counts.today} via={via} />
+        <NavItem to={{ kind: "planner" }} {...PLANNER_META} via={via} />
         <NavItem to={{ kind: "upcoming" }} {...LIST_META.upcoming} via={via} />
         <NavItem to={{ kind: "anytime" }} {...LIST_META.anytime} via={via} />
         <NavItem to={{ kind: "someday" }} {...LIST_META.someday} via={via} />

@@ -7,7 +7,7 @@ import { useMemo } from "react";
 import { api } from "@lifeos/backend/api";
 import type { Id } from "@lifeos/backend/dataModel";
 import type { SerialisedResult } from "@lifeos/backend/result";
-import type { PlannerTask, SidebarView } from "@lifeos/backend/types";
+import type { PlannerTask, SidebarView, WorkBlockRow } from "@lifeos/backend/types";
 import type { AreaColour } from "@/components/lifeos/area";
 import { showUndo } from "@/components/lifeos/undo";
 import { toast } from "@/components/ui/toast-stack";
@@ -32,6 +32,8 @@ const TASK_VIEWS = [
   api.planner.labels.list,
   api.planner.sidebar.get,
   api.planner.trash.list,
+  api.planner.plan.week,
+  api.planner.workBlocks.range,
 ] as readonly FunctionReference<"query">[];
 
 const isTaskNode = (node: Node) => "checklist" in node && "labelIds" in node;
@@ -134,6 +136,50 @@ export const dropTasks =
     dropFromViews(store, (node) => isTaskNode(node) && ids.has(node._id as string));
   };
 
+const byStart = (a: { start: number }, b: { start: number }) => a.start - b.start;
+
+const rewriteBlocks = (store: OptimisticLocalStore, rewrite: (blocks: WorkBlockRow[], window: { from: number; to: number }) => WorkBlockRow[]) => {
+  for (const { args, value } of store.getAllQueries(api.planner.workBlocks.range)) {
+    if (value?.ok) store.setQuery(api.planner.workBlocks.range, args, { ok: true, value: rewrite(value.value, args) });
+  }
+};
+
+export const putBlock =
+  (block: WorkBlockRow) =>
+  (store: OptimisticLocalStore) => {
+    rewriteBlocks(store, (blocks, { from, to }) => {
+      const others = blocks.filter((each) => each._id !== block._id);
+      return block.start >= from && block.start < to ? [...others, block].toSorted(byStart) : others;
+    });
+    const { _id, start, minutes, done } = block;
+    patchTask(block.taskId, (task) => ({
+      ...task,
+      workBlocks: [...task.workBlocks.filter((each) => each._id !== _id), { _id, start, minutes, done }].toSorted(byStart),
+    }))(store);
+  };
+
+export const dropBlock =
+  (block: Pick<WorkBlockRow, "_id" | "taskId">) =>
+  (store: OptimisticLocalStore) => {
+    rewriteBlocks(store, (blocks) => blocks.filter((each) => each._id !== block._id));
+    patchTask(block.taskId, (task) => ({ ...task, workBlocks: task.workBlocks.filter((each) => each._id !== block._id) }))(store);
+  };
+
+export const dropBlockAt =
+  (taskId: Id<"tasks">, start: number) =>
+  (store: OptimisticLocalStore) => {
+    const id = drafts.realId(taskId);
+    rewriteBlocks(store, (blocks) => blocks.filter((each) => !(each.taskId === id && each.start === start)));
+    patchTask(taskId, (task) => ({ ...task, workBlocks: task.workBlocks.filter((each) => each.start !== start) }))(store);
+  };
+
+export const dropBlocksOf =
+  (taskIds: readonly Id<"tasks">[]) =>
+  (store: OptimisticLocalStore) => {
+    const ids = new Set<string>(taskIds);
+    rewriteBlocks(store, (blocks) => blocks.filter((each) => !ids.has(each.taskId)));
+  };
+
 export const dropContainer =
   (id: Id<"areas"> | Id<"projects">) =>
   (store: OptimisticLocalStore) =>
@@ -202,6 +248,8 @@ const REASONS: Record<string, string> = {
   not_trashed: "It is no longer in Trash.",
   not_undoable: "That change is permanent.",
   invalid_focus: "That Focus Session has already changed.",
+  invalid_block: "A Work Block needs a real time and length.",
+  invalid_plan: "That day could not be planned.",
   selection_too_large: "That is too many Tasks at once. Try 500 or fewer.",
 };
 

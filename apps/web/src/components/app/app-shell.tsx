@@ -23,6 +23,8 @@ import { useSelectionGestures } from "./selection-gestures";
 import { ShellContext, type ListDraft, type OpenCard, type Renaming, type ShellState } from "./shell-context";
 import { Sidebar } from "./sidebar";
 
+const PLANNER_KEY = "8";
+
 const isTyping = (target: EventTarget | null) =>
   target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
 
@@ -132,6 +134,10 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
       if (list) {
         event.preventDefault();
         return shell.navigate({ kind: list }, "keyboard");
+      }
+      if (event.key === PLANNER_KEY) {
+        event.preventDefault();
+        return shell.navigate({ kind: "planner" }, "keyboard");
       }
       if (event.metaKey) return;
       if (event.key === "Escape") return setDrawer(false);

@@ -68,3 +68,22 @@ export const timeAgo = (at: number, now: number) => {
   const days = Math.floor(hours / 24);
   return days === 1 ? "yesterday" : `${days} days ago`;
 };
+
+export const momentAt = (date: IsoDate, minute: number) => {
+  const [year = 0, month = 1, day = 1] = date.split("-").map(Number);
+  return new Date(year, month - 1, day, 0, minute).getTime();
+};
+
+export const minuteOfDay = (at: number) => {
+  const moment = new Date(at);
+  return moment.getHours() * 60 + moment.getMinutes();
+};
+
+export const weekdayShort = format({ weekday: "short" });
+export const dayMonth = format({ day: "numeric", month: "short" });
+export const monthYear = format({ month: "long", year: "numeric" });
+
+export const startOfWeek = (date: IsoDate) => {
+  const weekday = new Date(utc(date)).getUTCDay();
+  return new Date(utc(date) - ((weekday + 6) % 7) * DAY_MS).toISOString().slice(0, 10) as IsoDate;
+};

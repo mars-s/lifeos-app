@@ -5,6 +5,7 @@ export type ListKind = (typeof LISTS)[number];
 
 export type Route =
   | { kind: ListKind }
+  | { kind: "planner" }
   | { kind: "area"; id: Id<"areas"> }
   | { kind: "project"; id: Id<"projects"> }
   | { kind: "missing" };
@@ -22,6 +23,7 @@ export const parseRoute = (href: string) => {
   const id = new URLSearchParams(query).get("id");
   if (segment === "") return { kind: "today" } satisfies Route;
   if (isList(segment)) return { kind: segment } satisfies Route;
+  if (segment === "planner") return { kind: "planner" } satisfies Route;
   if (segment === "area" && id) return { kind: "area", id: id as Id<"areas"> } satisfies Route;
   if (segment === "project" && id) return { kind: "project", id: id as Id<"projects"> } satisfies Route;
   return { kind: "missing" } satisfies Route;

@@ -98,3 +98,50 @@ export const DayColumnHeader = ({
     </header>
   );
 };
+
+const HOUR_DOTS = 60 / DOT_MINUTES;
+
+export const CapacityDots = ({
+  capacity,
+  planned,
+  className,
+}: {
+  capacity: number;
+  planned: PlannedSlice[];
+  className?: string;
+}) => {
+  const total = planned.reduce((sum, slice) => sum + slice.minutes, 0);
+  const colours = planned.flatMap((slice) =>
+    Array.from({ length: slice.minutes <= 0 ? 0 : Math.max(1, Math.round(slice.minutes / DOT_MINUTES)) }, () => areaVar(slice.colour)),
+  );
+  const freeDots = Math.round(Math.max(0, capacity) / DOT_MINUTES);
+  const dots = Array.from({ length: Math.max(freeDots, colours.length) }, (_, index) => ({ colour: colours[index], over: index >= freeDots }));
+  const hours = Array.from({ length: Math.ceil(dots.length / HOUR_DOTS) }, (_, hour) => dots.slice(hour * HOUR_DOTS, (hour + 1) * HOUR_DOTS));
+  return (
+    <div
+      role="meter"
+      aria-label="Capacity"
+      aria-valuemin={0}
+      aria-valuemax={Math.max(0, capacity)}
+      aria-valuenow={total}
+      aria-valuetext={`${formatMinutes(total)} planned of ${formatMinutes(Math.max(0, capacity))} free`}
+      title="One dot is 15 minutes, grouped by the hour. A red dot is time past your free time."
+      className={cn("flex flex-wrap gap-x-[7px] gap-y-1.5", className)}
+    >
+      {hours.map((hour, index) => (
+        <span key={index} className="flex gap-[3px]">
+          {hour.map((dot, position) => (
+            <span
+              key={position}
+              className={cn(
+                "size-1.5 rounded-full transition-[background-color] duration-(--dur-base) ease-out",
+                dot.over ? "bg-negative" : !dot.colour && "bg-foreground/[0.11]",
+              )}
+              style={dot.over || !dot.colour ? undefined : { backgroundColor: dot.colour }}
+            />
+          ))}
+        </span>
+      ))}
+    </div>
+  );
+};

@@ -21,3 +21,5 @@ export type TrashRow = TrashView["rows"][number];
 export type CommitmentRow = Ok<FunctionReturnType<typeof api.calendar.commitments.range>>[number];
 export type CalendarsView = FunctionReturnType<typeof api.calendar.calendars.list>;
 export type CapacityView = Ok<FunctionReturnType<typeof api.calendar.capacity.days>>;
+export type PlanWeekView = Ok<FunctionReturnType<typeof api.planner.plan.week>>;
+export type WorkBlockRow = Ok<FunctionReturnType<typeof api.planner.workBlocks.range>>[number];

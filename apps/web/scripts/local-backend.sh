@@ -18,6 +18,8 @@ import { internalMutation } from "./_generated/server";
 import { localIsoDate } from "../shared/date";
 import { activeSession } from "./planner/focus";
 import { seedPlanner } from "./planner/seed.test-utils";
+import { seedTimebox } from "./planner/planSeed.test-utils";
+import { parseIsoDate } from "../shared/date";
 
 const SEEDED = [
   "areas",
@@ -31,13 +33,19 @@ const SEEDED = [
   "thingsSync",
   "activity",
   "activityChanges",
+  "calendars",
+  "externalCommitments",
+  "calendarSync",
+  "workingHours",
 ] as const;
 
 export const seed = internalMutation({
-  args: {},
-  handler: async (ctx) => {
+  args: { today: v.optional(v.string()), timeZone: v.optional(v.string()) },
+  handler: async (ctx, args) => {
     for (const table of SEEDED) for (const row of await ctx.db.query(table).collect()) await ctx.db.delete(table, row._id);
-    await seedPlanner(ctx, localIsoDate(new Date()), Date.now());
+    const today = parseIsoDate(args.today ?? "").unwrapOr(localIsoDate(new Date()));
+    await seedPlanner(ctx, today, Date.now());
+    await seedTimebox(ctx, today, args.timeZone ?? "Australia/Sydney");
     return null;
   },
 });
@@ -74,7 +82,9 @@ npx convex env set SITE_URL "${BASE:-http://localhost:3990}" >/dev/null
 npx convex env set AUTH_GITHUB_CLIENT_ID local >/dev/null
 npx convex env set AUTH_GITHUB_CLIENT_SECRET local >/dev/null
 npx convex dev --once --typecheck disable
-npx convex run scratch:seed >/dev/null
+SEED_ARGS="{\"today\":\"$(date +%F)\",\"timeZone\":\"$(node -e 'console.log(Intl.DateTimeFormat().resolvedOptions().timeZone)')\"}"
+npx convex run scratch:seed "$SEED_ARGS" >/dev/null
 npx convex run scratch:signIn > "$SCRATCH/session.json"
 echo "Local backend is seeded. Session: $SCRATCH/session.json"
+echo "Reseed with: (cd $SCRATCH && npx convex run scratch:seed '$SEED_ARGS')"
 echo "Keep it running with: (cd $SCRATCH && CONVEX_AGENT_MODE=anonymous npx convex dev)"

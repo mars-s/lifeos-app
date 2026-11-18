@@ -14,13 +14,13 @@ export const WorkBlockList = ({ blocks, colour = "slate", className }: { blocks:
       {blocks.map((block) => (
         <li
           key={block.id}
-          className={cn("flex h-7 items-center gap-2 rounded-md pr-2 pl-1 text-small", block.done && "opacity-55")}
+          className={cn("flex h-7 max-w-full items-center gap-2 rounded-md pr-2 pl-1 text-small whitespace-nowrap", block.done && "opacity-55")}
           style={{ backgroundColor: `color-mix(in oklab, ${areaVar(colour)} 16%, transparent)` }}
         >
           <span aria-hidden="true" className="h-4 w-[3px] rounded-full" style={{ backgroundColor: areaVar(colour) }} />
           <span>{block.day}</span>
           <span className="font-mono">{formatRange(block.startMinute, (block.startMinute + block.minutes) % DAY_MINUTES)}</span>
-          <span className="font-mono text-muted-foreground">{formatMinutes(block.minutes)}</span>
+          <span className="hidden font-mono text-muted-foreground @xs:inline">{formatMinutes(block.minutes)}</span>
           {block.done && (
             <>
               <Check weight="bold" className="size-3" aria-hidden="true" />
