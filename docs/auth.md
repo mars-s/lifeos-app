@@ -25,7 +25,7 @@ These public functions do not go through the builders, on purpose:
 
 - Convex Auth's own functions in `convex/auth.ts` (`startSignInWithGithub`, `completeSignInWithGithub`, `refreshSession`, `signOut`, `isAuthenticated`). They must work before sign-in.
 - The MCP component's functions in `convex/mcp.ts`. The component checks each call with `getUserId`, which returns the owner id only for the owner's Convex Auth session (it runs the internal query `platform/access:isOwner`).
-- The `/auth/iphone` HTTP route in `convex/http.ts`. It reads no data. It redirects to `lifeos://auth` with the same query string, for the iPhone sign-in below.
+- The `/auth/iphone` and `/auth/mac` HTTP routes in `convex/http.ts`. They read no data. Each redirects to `lifeos://auth` with the same query string, for the iPhone and packaged Mac sign-ins below.
 
 ## What Avi sets up once
 
@@ -58,7 +58,7 @@ The deployment already has `LIFEOS_OWNER_GITHUB_ID` (71009876, the id of `mars-s
 
 - **Web.** `apps/web/src/components/convex-client-provider.tsx` wraps the app in `ConvexAuthProvider`. `owner-gate.tsx` shows the signed-out screen until the session is live, and turns a `not_owner` error into a calm "Not your LifeOS" screen with Sign out. The design board at `/design` stays public, since it shows sample data only. The OAuth flow returns to the page it started on, so the origin must be listed in `SITE_URL`.
 - **Mac (Tauri), development.** The window loads `http://localhost:3000`, so sign-in runs inside the webview exactly as on the web.
-- **Mac, packaged build.** Not done. The bundle is served from `tauri://localhost`, and Convex Auth 2 only returns to `http` and `https` origins. Tracked in [#28](https://github.com/mars-s/lifeos-app/issues/28).
+- **Mac, packaged build.** The bundle is served from `tauri://localhost`, and Convex Auth 2 only returns to `http` and `https` origins, so sign-in goes through the system browser. `owner-gate.tsx` starts the flow with `redirectTo` set to `https://<deployment>.convex.site/auth/mac`. Convex Auth then sets `window.location` to GitHub. The Mac app's navigation guard (`apps/desktop/src-tauri/src/lib.rs`) cancels any navigation away from the bundle and opens it in the default browser instead. When GitHub is done, the `/auth/mac` route bounces the browser to `lifeos://auth?convexAuthCode=...`. `tauri-plugin-deep-link` owns the `lifeos` scheme, the app brings its window forward, and the web app finishes with `signIn({ code })`. The code is useless without the `state` the webview kept in `localStorage`. There is nothing extra to set up: the GitHub callback stays `/oauth/github/callback`, and `CONVEX_SITE_URL` is already an allowed return origin. Development builds (`pnpm dev:desktop`) keep the in-webview flow, because macOS only routes deep links to a bundled app.
 - **iPhone (Expo).** `apps/mobile/src/components/owner-gate.tsx` starts the flow with `redirectTo` set to `https://<deployment>.convex.site/auth/iphone`, opens it with `WebBrowser.openAuthSessionAsync`, and listens for `lifeos://auth`. The bounce route turns the return into that deep link, and the app finishes with `signIn({ code })`. The one-time code is useless without the `state` the app kept in SecureStore. Tokens live in SecureStore. This path typechecks and bundles but has not run on a device yet ([#29](https://github.com/mars-s/lifeos-app/issues/29)).
 
 ## Environment variables
