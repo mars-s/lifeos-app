@@ -10,7 +10,7 @@
 
 import type * as http from "../http.js";
 import type * as mcp from "../mcp.js";
-import type * as tasks from "../tasks.js";
+import type * as things from "../things.js";
 import type * as today from "../today.js";
 
 import type {
@@ -22,7 +22,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   http: typeof http;
   mcp: typeof mcp;
-  tasks: typeof tasks;
+  things: typeof things;
   today: typeof today;
 }>;
 

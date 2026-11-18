@@ -1,12 +1,12 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { Circle, CircleCheck, Star } from "lucide-react";
+import { Circle, Star } from "lucide-react";
 import { useSyncExternalStore } from "react";
 import { api } from "@lifeos/backend/api";
 import { localIsoDate } from "@lifeos/backend/date";
-import type { Doc } from "@lifeos/backend/dataModel";
 import { deserialise } from "@lifeos/backend/result";
+import type { TodayTask } from "@lifeos/backend/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { isConvexConfigured } from "@/components/convex-client-provider";
 
@@ -45,29 +45,43 @@ export const TodayView = () => {
 const TodayTasks = ({ date }: { date: string }) => {
   const response = useQuery(api.today.get, { date });
   if (response === undefined) return <p className="text-sm text-muted-foreground">Loading…</p>;
-  return deserialise(response).match(
-    ({ tasks }) => (tasks.length === 0 ? <EmptyDay /> : <TaskList tasks={tasks} />),
-    (error) => <p className="text-sm text-destructive">Could not read the date {error.input}.</p>,
+  return (
+    <>
+      {deserialise(response).match(
+        ({ tasks }) => (tasks.length === 0 ? <EmptyDay /> : <TaskList tasks={tasks} />),
+        (error) => <p className="text-sm text-destructive">Could not read the date {error.input}.</p>,
+      )}
+      <SyncNote />
+    </>
   );
 };
 
-const TaskList = ({ tasks }: { tasks: Doc<"tasks">[] }) => (
+const clockTime = (ms: number) =>
+  new Intl.DateTimeFormat("en-AU", { hour: "numeric", minute: "2-digit" }).format(new Date(ms));
+
+const SyncNote = () => {
+  const status = useQuery(api.things.syncStatus);
+  if (status === undefined) return null;
+  return (
+    <p className="mt-10 text-xs text-muted-foreground/80">
+      {status ? `Synced from Things at ${clockTime(status.syncedAt)}.` : "Not synced from Things yet. Run pnpm sync:things."}
+    </p>
+  );
+};
+
+const TaskList = ({ tasks }: { tasks: TodayTask[] }) => (
   <ul className="divide-y divide-border/70">
     {tasks.map((task) => (
       <li key={task._id} className="flex items-center gap-3 py-3">
-        {task.status === "done" ? (
-          <CircleCheck className="size-[18px] text-muted-foreground" strokeWidth={1.5} aria-label="Done" />
-        ) : (
-          <Circle className="size-[18px] text-muted-foreground/70" strokeWidth={1.5} aria-label="Open" />
-        )}
-        <span className={task.status === "done" ? "text-muted-foreground line-through" : ""}>{task.title}</span>
-        {task.area && <span className="ml-auto text-xs text-muted-foreground">{task.area}</span>}
+        <Circle className="size-[18px] shrink-0 text-muted-foreground/70" strokeWidth={1.5} aria-hidden />
+        <span className="min-w-0 truncate">{task.title}</span>
+        {task.context && <span className="ml-auto shrink-0 pl-4 text-xs text-muted-foreground">{task.context}</span>}
       </li>
     ))}
   </ul>
 );
 
-const EmptyDay = () => <p className="text-sm text-muted-foreground">Nothing planned. Enjoy the space.</p>;
+const EmptyDay = () => <p className="text-sm text-muted-foreground">Nothing in Today. Enjoy the space.</p>;
 
 const SetupNotice = () => (
   <Card className="border-dashed shadow-none">

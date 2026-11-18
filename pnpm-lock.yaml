@@ -82,6 +82,25 @@ importers:
         specifier: ~6.0.3
         version: 6.0.3
 
+  apps/things-sync:
+    dependencies:
+      '@lifeos/backend':
+        specifier: workspace:*
+        version: link:../../packages/backend
+      convex:
+        specifier: ^1.51.0
+        version: 1.51.0(react@19.3.1)
+      neverthrow:
+        specifier: ^8.2.0
+        version: 8.2.0
+    devDependencies:
+      '@types/node':
+        specifier: ^24
+        version: 24.19.2
+      typescript:
+        specifier: ~6.0.3
+        version: 6.0.3
+
   apps/web:
     dependencies:
       '@fontsource-variable/inter':

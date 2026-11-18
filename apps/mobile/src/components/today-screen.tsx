@@ -1,12 +1,12 @@
 import { useQuery } from "convex/react";
-import { Circle, CircleCheck, Star } from "lucide-react-native";
+import { Circle, Star } from "lucide-react-native";
 import { useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "@lifeos/backend/api";
 import { localIsoDate } from "@lifeos/backend/date";
-import type { Doc } from "@lifeos/backend/dataModel";
 import { deserialise } from "@lifeos/backend/result";
+import type { TodayTask } from "@lifeos/backend/types";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ListItem, ListSection } from "@/components/ui/list-item";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -42,10 +42,10 @@ const TodayTasks = ({ date }: { date: string }) => {
   const { colors, text } = useKit();
   const response = useQuery(api.today.get, { date });
   if (response === undefined) return <LoadingRows />;
-  return deserialise(response).match(
+  const content = deserialise(response).match(
     ({ tasks }) =>
       tasks.length === 0 ? (
-        <Text style={[text.sm, styles.body, { color: colors.mutedForeground }]}>Nothing planned. Enjoy the space.</Text>
+        <Text style={[text.sm, styles.body, { color: colors.mutedForeground }]}>Nothing in Today. Enjoy the space.</Text>
       ) : (
         <ListSection>
           {tasks.map((task) => (
@@ -57,19 +57,36 @@ const TodayTasks = ({ date }: { date: string }) => {
       <Text style={[text.sm, styles.body, { color: colors.danger }]}>Could not read the date {error.input}.</Text>
     ),
   );
+  return (
+    <>
+      {content}
+      <SyncNote />
+    </>
+  );
 };
 
-const TaskRow = ({ task }: { task: Doc<"tasks"> }) => {
+const clockTime = (ms: number) =>
+  new Intl.DateTimeFormat("en-AU", { hour: "numeric", minute: "2-digit" }).format(new Date(ms));
+
+const SyncNote = () => {
+  const { colors, text } = useKit();
+  const status = useQuery(api.things.syncStatus);
+  if (status === undefined) return null;
+  return (
+    <Text style={[text.xs, styles.note, { color: colors.mutedForeground }]}>
+      {status ? `Synced from Things at ${clockTime(status.syncedAt)}.` : "Not synced from Things yet."}
+    </Text>
+  );
+};
+
+const TaskRow = ({ task }: { task: TodayTask }) => {
   const { colors } = useKit();
-  const done = task.status === "done";
-  const Icon = done ? CircleCheck : Circle;
   return (
     <ListItem
       title={task.title}
-      value={task.area}
-      leading={<Icon size={20} color={colors.mutedForeground} strokeWidth={1.5} />}
-      titleStyle={done ? { color: colors.mutedForeground, textDecorationLine: "line-through" } : undefined}
-      accessibilityLabel={`${task.title}, ${done ? "done" : "open"}`}
+      value={task.context}
+      leading={<Circle size={20} color={colors.mutedForeground} strokeWidth={1.5} />}
+      accessibilityLabel={task.context ? `${task.title}, ${task.context}` : task.title}
       chevron={false}
     />
   );
@@ -99,4 +116,5 @@ const styles = StyleSheet.create({
   subtitle: { fontFamily: fonts.regular, marginTop: 6, marginBottom: 24, paddingHorizontal: 4 },
   body: { fontFamily: fonts.regular, paddingHorizontal: 4 },
   loading: { gap: 18, paddingHorizontal: 4, paddingTop: 8 },
+  note: { fontFamily: fonts.regular, marginTop: 32, paddingHorizontal: 4 },
 });

@@ -16,8 +16,11 @@
     "build": "pnpm --filter @lifeos/web build",
     "build:mobile": "pnpm --filter @lifeos/mobile export:ios",
     "build:desktop": "pnpm --filter @lifeos/desktop build",
-    "check": "pnpm lint && pnpm lint:rust && pnpm typecheck && pnpm build",
-    "lint:rust": "pnpm --filter @lifeos/desktop lint"
+    "check": "pnpm lint && pnpm lint:rust && pnpm typecheck && pnpm test && pnpm build",
+    "lint:rust": "pnpm --filter @lifeos/desktop lint",
+    "sync:things": "pnpm --filter @lifeos/things-sync sync",
+    "sync:things:watch": "pnpm --filter @lifeos/things-sync watch",
+    "test": "pnpm -r --if-present test"
   },
   "devDependencies": {
     "@interfere/landmines": "0.1.0",

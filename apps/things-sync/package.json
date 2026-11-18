@@ -1,0 +1,20 @@
+{
+  "name": "@lifeos/things-sync",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync": "node --env-file-if-exists=.env.local src/main.ts",
+    "watch": "node --env-file-if-exists=.env.local src/main.ts --watch",
+    "test": "node --test src/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@lifeos/backend": "workspace:*",
+    "convex": "^1.51.0",
+    "neverthrow": "^8.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "typescript": "~6.0.3"
+  }
+}

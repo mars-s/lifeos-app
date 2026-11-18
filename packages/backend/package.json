@@ -8,14 +8,16 @@
       "types": "./convex/_generated/dataModel.d.ts"
     },
     "./result": "./shared/result.ts",
-    "./date": "./shared/date.ts"
+    "./date": "./shared/date.ts",
+    "./types": {
+      "types": "./shared/types.ts"
+    }
   },
   "scripts": {
     "dev": "convex dev",
     "codegen": "convex codegen",
     "deploy": "convex deploy",
-    "seed": "convex run tasks:seedSample",
-    "typecheck": "tsc -p convex && tsc -p shared"
+    "typecheck": "tsc -p convex"
   },
   "dependencies": {
     "@convex-dev/mcp": "0.1.0-alpha.7",

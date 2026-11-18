@@ -9,7 +9,7 @@ A calm personal planner for one person, Avi. Web, iPhone and Mac apps share one 
 
 ## Code
 
-- TypeScript first, `strict` everywhere. Run `pnpm check` (oxlint, clippy, typecheck, web build) before you call work done.
+- TypeScript first, `strict` everywhere. Run `pnpm check` (oxlint, clippy, typecheck, tests, web build) before you call work done.
 - Keep it lean. Add a dependency, file or abstraction only when the current task needs it.
 - Declare each domain type once, in `packages/backend/convex/schema.ts`. Apps import `Doc`, `Id` and function types from `@lifeos/backend/*`. Never redeclare a table shape in an app.
 - Handle expected failures with `neverthrow`. A `Result` that crosses the server/client boundary goes through `serialise` and `deserialise` from `@lifeos/backend/result`, because a class instance does not survive Convex's JSON transport.

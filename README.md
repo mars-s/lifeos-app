@@ -16,6 +16,7 @@ This repo replaces the old LifeOS ([`mars-s/lifeos`](https://github.com/mars-s/l
 | `apps/web` | Waku 1.0 RC. `ConvexProvider` lives in a `'use client'` component mounted from the root layout. |
 | `apps/mobile` | Expo SDK 58 with Expo Router, ExpoKit components and `convex/react`. iPhone first. |
 | `apps/desktop` | Tauri 2. Wraps the static web build. |
+| `apps/things-sync` | Reads Things 3 on your Mac and mirrors it into Convex. |
 | `docs` | Design notes, starting with the [MCP connector](docs/mcp.md). |
 
 It is a plain pnpm workspace. There is no Turborepo.
@@ -55,11 +56,7 @@ npx convex dev
 
 Sign in when it asks, and create a new project called `lifeos-app` on the free tier. Leave it running: it watches `convex/` and regenerates `convex/_generated`. It writes the deployment URL to `packages/backend/.env.local`.
 
-Add sample tasks for today:
-
-```sh
-npx convex run tasks:seedSample "{\"date\":\"$(date +%F)\"}"
-```
+Things 3 fills the app. See "Things 3 sync" below.
 
 ### 2. Point the apps at it
 
@@ -78,14 +75,31 @@ pnpm dev:mobile    # then press i for the iOS Simulator
 pnpm dev:desktop   # starts the web dev server and opens the Mac app
 ```
 
+## Things 3 sync
+
+Things 3 stays the source of truth. `apps/things-sync` reads it on your Mac with Apple's supported scripting (never Things' private database) and sends one snapshot to Convex. Convex checks it against the schema, updates only what changed, and removes tasks that left Things' open lists.
+
+```sh
+pnpm sync:things          # sync once
+pnpm sync:things:watch    # sync every 2 minutes while the terminal stays open
+```
+
+It needs two things on the Mac:
+
+- `apps/things-sync/.env.local` with `CONVEX_URL` (see `.env.example`).
+- A sync token in your Keychain under `lifeos-app-things-sync`. Convex keeps only its SHA-256 in the `THINGS_SYNC_TOKEN_SHA256` environment variable. To rotate it, store a new token with `security add-generic-password -U -s lifeos-app-things-sync -a "$USER" -w <token>`, then set the new hash with `npx convex env set`.
+
+The first run asks macOS for permission to control Things. Today shows Things' Today list, plus anything whose start date or deadline has arrived, so it stays right even when the last sync was yesterday.
+
 ## Commands
 
 | Command | What it does |
 | --- | --- |
-| `pnpm check` | oxlint, clippy, typecheck every package, build the web app. |
+| `pnpm check` | oxlint, clippy, typecheck, tests, web build. |
 | `pnpm lint` | oxlint with landmines. |
 | `pnpm lint:rust` | rustfmt check and clippy with BeautifulRust's lints, warnings as errors. |
 | `pnpm typecheck` | `tsc` in each package. |
+| `pnpm test` | Unit tests (the Things snapshot mapping). |
 | `pnpm build` | Static web build into `apps/web/dist/public`. |
 | `pnpm build:mobile` | Bundle the iPhone JavaScript with `expo export`. |
 | `pnpm build:desktop` | Build `LifeOS.app` with Tauri. |

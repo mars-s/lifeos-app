@@ -19,7 +19,8 @@ export const mcp: McpServer = new McpServer(components.mcp, {
   tools: {
     today: tool({
       title: "Today",
-      description: "List the tasks scheduled for one local date (YYYY-MM-DD), open tasks first.",
+      description:
+        "List Avi's Today tasks from Things 3 for one local date (YYYY-MM-DD): the Today list, anything starting on or before that date, and anything due by then. Each task has its project or area as context.",
       args: { date: v.string() },
       annotations: { readOnlyHint: true },
       scope: "lifeos:read",
