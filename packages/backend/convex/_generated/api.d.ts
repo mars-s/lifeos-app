@@ -25,6 +25,7 @@ import type * as planner_focus from "../planner/focus.js";
 import type * as planner_labels from "../planner/labels.js";
 import type * as planner_lists from "../planner/lists.js";
 import type * as planner_model from "../planner/model.js";
+import type * as planner_plan from "../planner/plan.js";
 import type * as planner_projects from "../planner/projects.js";
 import type * as planner_rows from "../planner/rows.js";
 import type * as planner_selection from "../planner/selection.js";
@@ -70,6 +71,7 @@ declare const fullApi: ApiFromModules<{
   "planner/labels": typeof planner_labels;
   "planner/lists": typeof planner_lists;
   "planner/model": typeof planner_model;
+  "planner/plan": typeof planner_plan;
   "planner/projects": typeof planner_projects;
   "planner/rows": typeof planner_rows;
   "planner/selection": typeof planner_selection;

@@ -4,10 +4,16 @@ import type { WithoutSystemFields } from "convex/server";
 import type { MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { Recorder } from "../platform/activity";
+import { ownerQuery } from "../platform/access";
 import { changeMutation } from "../platform/change";
+import { parseRange } from "../calendar/commitments";
+import { parseIsoDate } from "../../shared/date";
+import { serialise } from "../../shared/result";
 import { load, type PlannerError } from "./model";
+import { enrich, isLive } from "./rows";
 
 const MAX_BLOCK_MINUTES = 24 * 60;
+const RANGE_LIMIT = 1000;
 
 type BlockFields = Partial<WithoutSystemFields<Doc<"workBlocks">>>;
 
@@ -34,15 +40,20 @@ const parseTimeZone = (timeZone: string) =>
     ? ok<string, PlannerError>(timeZone)
     : err<string, PlannerError>({ kind: "invalid_block", reason: "time_zone" });
 
+const parseDay = (date: string | undefined) =>
+  date === undefined ? ok<string | undefined, PlannerError>(undefined) : parseIsoDate(date).map(String).mapErr<PlannerError>((error) => error);
+
 export const create = changeMutation({
   action: "workBlock.create",
-  args: { taskId: v.id("tasks"), start: v.number(), minutes: v.number(), timeZone: v.string() },
-  handler: async (ctx, { taskId, start, minutes, timeZone }, record) => {
+  args: { taskId: v.id("tasks"), start: v.number(), minutes: v.number(), timeZone: v.string(), date: v.optional(v.string()) },
+  handler: async (ctx, { taskId, start, minutes, timeZone, date }, record) => {
     const task = await load(ctx, "tasks", taskId);
     if (task.isErr()) return err<{ blockId: Id<"workBlocks"> }, PlannerError>(task.error);
-    const fields = Result.combine([parseStart(start), parseMinutes(minutes), parseTimeZone(timeZone)]);
+    const fields = Result.combine([parseStart(start), parseMinutes(minutes), parseTimeZone(timeZone), parseDay(date)]);
     if (fields.isErr()) return err<{ blockId: Id<"workBlocks"> }, PlannerError>(fields.error);
-    const [validStart, validMinutes, validZone] = fields.value;
+    const [validStart, validMinutes, validZone, day] = fields.value;
+    const evening = task.value.when.kind === "scheduled" && task.value.when.evening;
+    if (day) await record.patch("tasks", taskId, { when: { kind: "scheduled", date: day, evening } });
     const blockId = await record.insert("workBlocks", {
       taskId,
       start: validStart,
@@ -94,4 +105,24 @@ export const remove = changeMutation({
   action: "workBlock.remove",
   args: { blockId: v.id("workBlocks") },
   handler: (ctx, { blockId }, record) => patchBlock(ctx, record, blockId, ok({ removedAt: Date.now() })),
+});
+
+export const range = ownerQuery({
+  args: { from: v.number(), to: v.number() },
+  handler: async (ctx, { from, to }) =>
+    serialise(
+      await parseRange(from, to).asyncMap(async (window) => {
+        const blocks = await ctx.db
+          .query("workBlocks")
+          .withIndex("by_removed_start", (q) => q.eq("removedAt", undefined).gte("start", window.from).lt("start", window.to))
+          .take(RANGE_LIMIT);
+        const ids = [...new Set(blocks.map((block) => block.taskId))];
+        const tasks = (await Promise.all(ids.map((id) => ctx.db.get("tasks", id)))).flatMap((task) => (task && isLive(task) ? [task] : []));
+        const rows = new Map((await enrich(ctx, tasks)).map((row) => [row._id, row]));
+        return blocks.flatMap(({ _id, taskId, start, minutes, done }) => {
+          const task = rows.get(taskId);
+          return task ? [{ _id, taskId, start, minutes, done, task }] : [];
+        });
+      }),
+    ),
 });

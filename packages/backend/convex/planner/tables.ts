@@ -85,6 +85,7 @@ const taskFields = {
   status: vStatus,
   trashedAt: v.optional(v.number()),
   order: v.string(),
+  plan: v.optional(v.object({ date: v.string(), order: v.string() })),
 };
 
 const checklistItemFields = {

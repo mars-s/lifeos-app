@@ -11,6 +11,7 @@
     "./date": "./shared/date.ts",
     "./estimate": "./shared/estimate.ts",
     "./focus": "./shared/focus.ts",
+    "./plan": "./shared/plan.ts",
     "./types": {
       "types": "./shared/types.ts"
     }

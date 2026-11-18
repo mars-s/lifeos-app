@@ -12,7 +12,7 @@ const thingsTodayRank = (task: Doc<"tasks">) => task.things?.todayIndex ?? Numbe
 
 const scheduledDate = (task: Doc<"tasks">) => (task.when.kind === "scheduled" ? task.when.date : "9999-12-31");
 
-const byTodayOrder = (a: Doc<"tasks">, b: Doc<"tasks">) =>
+export const byTodayOrder = (a: Doc<"tasks">, b: Doc<"tasks">) =>
   compare(thingsTodayRank(a), thingsTodayRank(b)) ||
   compare(scheduledDate(a), scheduledDate(b)) ||
   compare(a.deadline ?? "9999-12-31", b.deadline ?? "9999-12-31") ||
