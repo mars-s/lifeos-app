@@ -25,6 +25,8 @@ The key is shown once. Store it in your password manager, not in the repo.
 
 ## What is not built yet
 
+Tracked in [#9](https://github.com/mars-s/lifeos-app/issues/9).
+
 claude.ai custom connectors, and agents that use the device flow, need OAuth. OAuth needs two things Avi has to set up in a browser:
 
 1. **A sign-in for the owner.** The consent page must know it is Avi. The plan is Convex Auth with a GitHub OAuth app, because it keeps everything in Convex. `getUserId` in `mcp.ts` already returns the owner only when the signed-in identity's `subject` matches `LIFEOS_OWNER_SUBJECT`, so a stranger who signs in can never approve a connection.
