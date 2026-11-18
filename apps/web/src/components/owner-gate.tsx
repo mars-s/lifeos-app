@@ -33,7 +33,7 @@ const flowMessage = (flowError: OauthFlowError) => {
 
 const Screen = ({ title, hint, children }: { title: string; hint: ReactNode; children: ReactNode }) => (
   <section className="mx-auto flex min-h-dvh w-full max-w-sm flex-col items-center justify-center gap-6 px-6 text-center">
-    <LifeosMark className="size-10" />
+    <LifeosMark fill="enter" className="size-10" />
     <div className="space-y-1.5">
       <h1 className="text-title font-semibold">{title}</h1>
       <p className="text-small text-pretty text-muted-foreground">{hint}</p>
@@ -106,7 +106,13 @@ export const SignOutButton = () => {
 
 export const OwnerGate = ({ children }: { children: ReactNode }) => {
   const { isLoading, isAuthenticated } = useConvexAuth();
-  if (isLoading) return <div aria-busy="true" className="min-h-dvh" />;
+  if (isLoading) {
+    return (
+      <div aria-busy="true" className="grid min-h-dvh place-items-center">
+        <LifeosMark fill="loop" className="size-10 animate-delayed-in" />
+      </div>
+    );
+  }
   if (!isAuthenticated) return <SignInScreen />;
   return <AccessBoundary>{children}</AccessBoundary>;
 };

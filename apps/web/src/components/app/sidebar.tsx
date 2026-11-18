@@ -134,7 +134,7 @@ export const Sidebar = ({ view, via }: { view: SidebarView | undefined; via: Via
   <nav aria-label="Lists" data-arrow-scope className="flex h-full flex-col gap-4 overflow-y-auto overscroll-contain px-2 pb-2">
     <div data-tauri-drag-region className="flex h-12 shrink-0 items-end px-2.5 pb-1">
       <span className="flex items-center gap-2 text-small font-semibold md:hidden">
-        <LifeosMark />
+        <LifeosMark fill="enter" />
         LifeOS
       </span>
     </div>

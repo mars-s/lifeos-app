@@ -177,6 +177,32 @@
   --animate-refuse: refuse 260ms var(--ease-out);
   --animate-dot-in: dot-in 220ms var(--ease-out) both;
 
+  --animate-mark-fill: mark-fill 420ms var(--ease-out) both;
+  --animate-mark-loop: mark-loop 1800ms var(--ease-out) infinite both;
+
+  @keyframes mark-fill {
+    from {
+      opacity: 0;
+      transform: scale(0.6);
+    }
+  }
+
+  @keyframes mark-loop {
+    0% {
+      opacity: 0;
+      transform: scale(0.6);
+    }
+    14%,
+    78% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1);
+    }
+  }
+
   @keyframes refuse {
     25% {
       transform: translateX(-3px);
