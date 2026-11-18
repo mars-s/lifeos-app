@@ -58,3 +58,16 @@ test("a Work Block needs a real start, a positive length and a real time zone", 
     error: { kind: "invalid_block", reason: "time_zone" },
   });
 });
+
+test("a removed Work Block cannot be moved, resized, completed or removed again", async () => {
+  const { t, taskId } = await setup();
+  const { blockId } = unwrap(
+    await t.mutation(api.planner.workBlocks.create, { taskId, start: nineAm, minutes: 30, timeZone: "Australia/Sydney" }),
+  );
+  unwrap(await t.mutation(api.planner.workBlocks.remove, { blockId }));
+  const missing = { ok: false, error: { kind: "not_found", table: "workBlocks", id: blockId } };
+  expect(await t.mutation(api.planner.workBlocks.move, { blockId, start: nineAm + hour })).toEqual(missing);
+  expect(await t.mutation(api.planner.workBlocks.resize, { blockId, minutes: 60 })).toEqual(missing);
+  expect(await t.mutation(api.planner.workBlocks.complete, { blockId, done: true })).toEqual(missing);
+  expect(await t.mutation(api.planner.workBlocks.remove, { blockId })).toEqual(missing);
+});

@@ -60,7 +60,11 @@ const patchBlock = async (
   blockId: Id<"workBlocks">,
   fields: Result<BlockFields, PlannerError>,
 ) => {
-  const block = await load(ctx, "workBlocks", blockId);
+  const block = (await load(ctx, "workBlocks", blockId)).andThen((found) =>
+    found.removedAt === undefined
+      ? ok<Doc<"workBlocks">, PlannerError>(found)
+      : err<Doc<"workBlocks">, PlannerError>({ kind: "not_found", table: "workBlocks", id: blockId }),
+  );
   if (block.isErr()) return err<{ changed: boolean }, PlannerError>(block.error);
   if (fields.isErr()) return err<{ changed: boolean }, PlannerError>(fields.error);
   return ok<{ changed: boolean }, PlannerError>({ changed: await record.patch("workBlocks", blockId, fields.value) });

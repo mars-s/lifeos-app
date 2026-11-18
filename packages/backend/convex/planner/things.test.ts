@@ -103,18 +103,18 @@ test("Things wins over a pending LifeOS edit to a Things-owned field, and inboun
 test("a Task that leaves Things is completed, or trashed if it sits in Things' Trash, never deleted", async () => {
   const { t, sync, taskByThingsId, card } = await setup();
   const errand = thingsTask("T2", "Post letter");
-  await sync(snapshotOf({ tasks: [walk, errand] }));
+  await sync(snapshotOf({ areas: [area], tasks: [walk, errand] }));
   const walkId = (await taskByThingsId("T1"))!;
   const errandId = (await taskByThingsId("T2"))!;
   unwrap(await t.mutation(api.planner.tasks.setEstimate, { taskId: walkId, minutes: 30 }));
 
-  const result = await sync(snapshotOf({ trash: ["T2"] }));
+  const result = await sync(snapshotOf({ areas: [area], trash: ["T2"] }));
   expect(result.tasks).toEqual({ inserted: 0, updated: 0, departed: 2 });
   expect(await card(walkId)).toMatchObject({ status: { kind: "completed" }, estimateMinutes: 30 });
   expect(await card(errandId)).toMatchObject({ status: { kind: "open" }, trashedAt: expect.any(Number) });
-  expect((await sync(snapshotOf({ trash: ["T2"] }))).tasks).toEqual({ inserted: 0, updated: 0, departed: 0 });
+  expect((await sync(snapshotOf({ areas: [area], trash: ["T2"] }))).tasks).toEqual({ inserted: 0, updated: 0, departed: 0 });
 
-  await sync(snapshotOf({ tasks: [walk, errand] }));
+  await sync(snapshotOf({ areas: [area], tasks: [walk, errand] }));
   expect(await card(walkId)).toMatchObject({ status: { kind: "open" }, estimateMinutes: 30 });
   expect((await card(errandId)).trashedAt).toBeUndefined();
 });
@@ -141,13 +141,53 @@ test("Areas and Projects that leave Things are trashed or completed, not deleted
     modifiedAt: 1,
   };
   await sync(snapshotOf({ areas: [area], projects: [project] }));
-  const result = await sync(snapshotOf({}));
+  const result = await sync(snapshotOf({ tasks: [walk], trash: ["P1"] }));
   expect(result.areas.departed).toBe(1);
   expect(result.projects.departed).toBe(1);
   const [mirroredArea] = await t.run((ctx) => ctx.db.query("areas").collect());
   const [mirroredProject] = await t.run((ctx) => ctx.db.query("projects").collect());
   expect(mirroredArea?.trashedAt).toEqual(expect.any(Number));
-  expect(mirroredProject?.status.kind).toBe("completed");
+  expect(mirroredProject?.status.kind).toBe("open");
+  expect(mirroredProject?.trashedAt).toEqual(expect.any(Number));
+});
+
+test("a Project listed by Things but sitting in its Trash is trashed, not kept live", async () => {
+  const { t, sync } = await setup();
+  const project = {
+    thingsId: "P1",
+    title: "Thesis",
+    notes: "",
+    status: "open" as const,
+    when: { kind: "anytime" as const },
+    tags: [],
+    index: 0,
+    modifiedAt: 1,
+  };
+  await sync(snapshotOf({ projects: [project] }));
+  await sync(snapshotOf({ projects: [project], trash: ["P1"] }));
+  const [mirrored] = await t.run((ctx) => ctx.db.query("projects").collect());
+  expect(mirrored?.trashedAt).toEqual(expect.any(Number));
+});
+
+test("a Task listed by Things but sitting in its Trash is trashed", async () => {
+  const { sync, taskByThingsId, card } = await setup();
+  await sync(snapshotOf({ tasks: [walk] }));
+  await sync(snapshotOf({ tasks: [walk], trash: ["T1"] }));
+  expect((await card((await taskByThingsId("T1"))!)).trashedAt).toEqual(expect.any(Number));
+});
+
+test("an empty snapshot after a full one is refused and changes nothing", async () => {
+  const { sync, taskByThingsId, card } = await setup();
+  await sync(snapshotOf({ areas: [area], tasks: [walk] }));
+  await expect(sync(snapshotOf({}))).rejects.toThrow("This Things snapshot is empty");
+  expect((await card((await taskByThingsId("T1"))!)).status).toEqual({ kind: "open" });
+});
+
+test("a snapshot with an impossible date is refused", async () => {
+  const { sync } = await setup();
+  await expect(sync(snapshotOf({ tasks: [{ ...walk, deadline: "2026-02-30" }] }))).rejects.toThrow(
+    "This Things snapshot has an invalid date: 2026-02-30.",
+  );
 });
 
 test("a snapshot needs a Worker token with the things capability", async () => {

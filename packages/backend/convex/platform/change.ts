@@ -14,7 +14,10 @@ export const actorFor = async (ctx: MutationCtx, agentRun: { token: string; jobI
   const worker = await workerForToken(ctx, agentRun.token);
   const run = await ctx.db.get("jobs", agentRun.jobId);
   const active =
-    run?.job.kind === "agent" && run.status.kind === "claimed" && run.status.workerId === worker._id;
+    run?.job.kind === "agent" &&
+    run.status.kind === "claimed" &&
+    run.status.workerId === worker._id &&
+    run.status.leaseUntil >= Date.now();
   if (!active) throw new ConvexError("This Agent Run is not active.");
   return { kind: "agentRun", jobId: agentRun.jobId } satisfies Actor;
 };

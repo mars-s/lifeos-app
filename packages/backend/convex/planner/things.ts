@@ -1,8 +1,9 @@
-import { v, type Infer } from "convex/values";
+import { ConvexError, v, type Infer } from "convex/values";
 import { mutation, query, type MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { startRecording, type Recorder } from "../platform/activity";
 import { workerWith } from "../platform/workers";
+import { parseIsoDate } from "../../shared/date";
 import { keyAfter, lastTaskOrder } from "./model";
 import { colours, vThingsList, vWhen, type Parent, type Status, type When } from "./tables";
 
@@ -154,7 +155,7 @@ const syncProjects = async (
   const counts = emptyCounts();
   const seen = new Set<string>();
   const trash = new Set(snapshot.trash);
-  for (const project of snapshot.projects) {
+  for (const project of snapshot.projects.filter(({ thingsId }) => !trash.has(thingsId))) {
     seen.add(project.thingsId);
     const link = { id: project.thingsId, index: project.index };
     const areaId = await ids.area(project.areaThingsId);
@@ -226,7 +227,7 @@ const syncTasks = async (
   const counts = emptyCounts();
   const seen = new Set<string>();
   const trash = new Set(snapshot.trash);
-  for (const task of snapshot.tasks) {
+  for (const task of snapshot.tasks.filter(({ thingsId }) => !trash.has(thingsId))) {
     seen.add(task.thingsId);
     const link = { id: task.thingsId, list: task.list, index: task.index, modifiedAt: task.modifiedAt };
     const existing = await ctx.db
@@ -273,7 +274,24 @@ const syncTasks = async (
   return counts;
 };
 
+const datesOf = (snapshot: ThingsSnapshot) =>
+  [...snapshot.projects, ...snapshot.tasks].flatMap(({ when, deadline }) => [
+    ...(when.kind === "scheduled" ? [when.date] : []),
+    ...(deadline ? [deadline] : []),
+  ]);
+
+const assertSensible = async (ctx: MutationCtx, snapshot: ThingsSnapshot) => {
+  const badDate = datesOf(snapshot).find((date) => parseIsoDate(date).isErr());
+  if (badDate !== undefined) throw new ConvexError(`This Things snapshot has an invalid date: ${badDate}.`);
+  const previous = await ctx.db.query("thingsSync").first();
+  const wasMirroring = previous !== null && previous.counts.areas + previous.counts.tasks > 0;
+  if (wasMirroring && snapshot.areas.length + snapshot.tasks.length === 0) {
+    throw new ConvexError("This Things snapshot is empty, so nothing was changed. Check that Things is open.");
+  }
+};
+
 const applySnapshot = async (ctx: MutationCtx, snapshot: ThingsSnapshot) => {
+  await assertSensible(ctx, snapshot);
   const now = Date.now();
   const record = startRecording(ctx, { kind: "things" }, "things.snapshot");
   const ids = linkedIds(ctx);

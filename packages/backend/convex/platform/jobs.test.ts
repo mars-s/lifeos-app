@@ -58,11 +58,11 @@ test("an expired lease returns the Job to the queue, and the old holder can no l
   expect(await t.mutation(api.platform.jobs.claim, { token: other })).toBeNull();
   vi.advanceTimersByTime(31_000);
   expect(await t.mutation(api.platform.jobs.claim, { token: other })).toMatchObject({ jobId, attempts: 2 });
-  expect(await t.mutation(api.platform.jobs.complete, { token: mac, jobId, receipt: null })).toEqual({
+  expect(await t.mutation(api.platform.jobs.complete, { token: mac, jobId, attempt: 1, receipt: null })).toEqual({
     ok: false,
     error: { kind: "not_claimed", jobId },
   });
-  unwrap(await t.mutation(api.platform.jobs.complete, { token: other, jobId, receipt: { thingsId: "T1" } }));
+  unwrap(await t.mutation(api.platform.jobs.complete, { token: other, jobId, attempt: 2, receipt: { thingsId: "T1" } }));
   expect(await t.mutation(api.platform.jobs.claim, { token: mac })).toBeNull();
 });
 
@@ -71,7 +71,7 @@ test("a heartbeat keeps the lease alive", async () => {
   const other = await registerWorker(t, "mac-mini", ["things"]);
   await t.mutation(api.platform.jobs.claim, { token: mac });
   vi.advanceTimersByTime(50_000);
-  unwrap(await t.mutation(api.platform.jobs.heartbeat, { token: mac, jobId }));
+  unwrap(await t.mutation(api.platform.jobs.heartbeat, { token: mac, jobId, attempt: 1 }));
   vi.advanceTimersByTime(50_000);
   expect(await t.mutation(api.platform.jobs.claim, { token: other })).toBeNull();
 });
@@ -80,14 +80,14 @@ test("a failed Job retries after a backoff, then fails for good after its last a
   const { t, mac, jobId } = await setup();
   for (let attempt = 1; attempt <= 4; attempt += 1) {
     expect(await t.mutation(api.platform.jobs.claim, { token: mac })).toMatchObject({ jobId, attempts: attempt });
-    expect(unwrap(await t.mutation(api.platform.jobs.fail, { token: mac, jobId, error: "Things busy", retry: true }))).toEqual({
+    expect(unwrap(await t.mutation(api.platform.jobs.fail, { token: mac, jobId, attempt, error: "Things busy", retry: true }))).toEqual({
       retrying: true,
     });
     expect(await t.mutation(api.platform.jobs.claim, { token: mac })).toBeNull();
     vi.advanceTimersByTime(5 * 60_000);
   }
   await t.mutation(api.platform.jobs.claim, { token: mac });
-  expect(unwrap(await t.mutation(api.platform.jobs.fail, { token: mac, jobId, error: "Things busy", retry: true }))).toEqual({
+  expect(unwrap(await t.mutation(api.platform.jobs.fail, { token: mac, jobId, attempt: 5, error: "Things busy", retry: true }))).toEqual({
     retrying: false,
   });
   vi.advanceTimersByTime(60 * 60_000);
@@ -108,4 +108,28 @@ test("a Job whose lease keeps expiring fails after its last attempt", async () =
   expect(await t.run((ctx) => ctx.db.get("jobs", jobId))).toMatchObject({
     status: { kind: "failed", error: "lease_expired" },
   });
+});
+
+test("a stale attempt cannot finish a Job its own Worker has claimed again", async () => {
+  const { t, mac, jobId } = await setup();
+  await t.mutation(api.platform.jobs.claim, { token: mac });
+  vi.advanceTimersByTime(61_000);
+  expect(await t.mutation(api.platform.jobs.claim, { token: mac })).toMatchObject({ jobId, attempts: 2 });
+  expect(await t.mutation(api.platform.jobs.complete, { token: mac, jobId, attempt: 1, receipt: null })).toEqual({
+    ok: false,
+    error: { kind: "not_claimed", jobId },
+  });
+  unwrap(await t.mutation(api.platform.jobs.complete, { token: mac, jobId, attempt: 2, receipt: null }));
+});
+
+test("only the Worker holding the Job can heartbeat, complete or fail it", async () => {
+  const { t, mac, jobId } = await setup();
+  const other = await registerWorker(t, "mac-mini", ["things"]);
+  await t.mutation(api.platform.jobs.claim, { token: mac });
+  const refused = { ok: false, error: { kind: "not_claimed", jobId } };
+  expect(await t.mutation(api.platform.jobs.heartbeat, { token: other, jobId, attempt: 1 })).toEqual(refused);
+  expect(await t.mutation(api.platform.jobs.complete, { token: other, jobId, attempt: 1, receipt: null })).toEqual(refused);
+  expect(await t.mutation(api.platform.jobs.fail, { token: other, jobId, attempt: 1, error: "no", retry: false })).toEqual(
+    refused,
+  );
 });

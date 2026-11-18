@@ -77,7 +77,7 @@ One unit of background work.
 | `by_kind_status_available` (`job.kind`, `status.kind`, `status.availableAt`) | Claim the oldest queued Job of a kind whose retry delay has passed |
 | `by_kind_status_lease` (`job.kind`, `status.kind`, `status.leaseUntil`) | Claim a Job whose lease expired |
 
-Each kind sets its own limits in `jobKinds` (`platform/jobs.ts`): `things` allows 5 attempts with a 60 second lease, `agent` allows 1 attempt with a 15 minute lease. A failed attempt with `retry: true` waits 5 seconds, doubling up to 5 minutes. An expired lease returns the Job to whichever Worker claims next. After the last attempt the Job fails with `lease_expired`.
+`claim` returns the Job with its attempt number. `heartbeat`, `complete` and `fail` must name that attempt, so a stale attempt cannot finish a Job its Worker has claimed again. Each kind sets its own limits in `jobKinds` (`platform/jobs.ts`): `things` allows 5 attempts with a 60 second lease, `agent` allows 1 attempt with a 15 minute lease. A failed attempt with `retry: true` waits 5 seconds, doubling up to 5 minutes. An expired lease returns the Job to whichever Worker claims next. After the last attempt the Job fails with `lease_expired`.
 
 ### `workers`
 
@@ -193,14 +193,15 @@ One search across modules: a search index on `title` for `tasks` and `projects`,
 3. When the action changed a field listed in `thingsOwnedFields` (`planner/tables.ts`) and the actor is not Things, the recorder enqueues one `things` Job per record, keyed `things:<activityId>:<recordId>`, carrying only the changed Things-owned fields.
 4. The mutation returns `serialise(result)` with the `activityId`, so the client can offer undo.
 
-Undo (`platform/undo:undo` and `undoRun`) checks that every touched record still holds the values the action left. If a later action changed them, it refuses with `changed_since` and writes nothing. Otherwise it writes the inverse as a new Activity row, which queues the inverse Things Operation too. Undo refuses to undo an undo or a Things snapshot.
+Undo (`platform/undo:undo` and `undoRun`) checks that every touched record still holds the values the action left. If a later action changed them, it refuses with `changed_since` and writes nothing. Undoing a create is refused the same way while the record has Checklist Items, Work Blocks or links that the undo would not also remove. Otherwise undo writes the inverse as a new Activity row, which queues the inverse Things Operation too. A record the undone actions both created and deleted is skipped. Undo refuses to undo an undo or a Things snapshot. `undoRun` refuses with `run_active` while the run's Job is still claimed, and an Agent Run can act only while its lease holds.
 
 ## How a Things snapshot lands
 
 `planner/things:sync` takes a snapshot from the Things Worker (token checked against `workers`, capability `things`).
 
+- A snapshot with an invalid date is refused. A snapshot with no Areas and no Tasks is refused when the last one had some, so a Things hiccup cannot complete the whole mirror.
 - Linked records get only their Things-owned fields patched. Estimates, Checklist Items, Work Blocks, Order Keys, colours and the This Evening flag (while the date is unchanged) survive.
-- A linked open Task or Project missing from the snapshot moves to Trash if its id is in the snapshot's `trash` list, and otherwise becomes completed. An Area missing from the snapshot moves to Trash. Nothing is deleted.
+- A linked open Task or Project leaves Things when it is missing from the snapshot or sits in the snapshot's `trash` list. It moves to Trash when its id is in `trash`, and is completed otherwise. Things scripting does not say whether a Task that left was completed or canceled, so it is recorded as completed. An Area missing from the snapshot moves to Trash. Nothing is deleted.
 - A record that comes back to Things is restored by the next snapshot.
 - Changes are recorded as one Activity row with the actor Things, and queue no Things Operations. An unchanged snapshot records nothing.
 
@@ -210,6 +211,7 @@ Undo (`platform/undo:undo` and `undoRun`) checks that every touched record still
 - **Undo refuses rather than merges.** When a later action touched the same fields, a silent overwrite would lose Avi's later edit. The error names the record, so the UI can say why.
 - **Work Blocks are removed with a timestamp, not deleted.** Convex cannot re-insert a row with its old id. A hard delete would break undo of every earlier change to that block.
 - **Today order comes from Things.** A Task in Things' Today list sorts by its Things position (`things.index`), then the rest by date, Deadline and Order Key. A LifeOS overlay key for Today (`todayOrder`) arrives with drag to reorder.
+- **Queued Things Operations wait for the outbound Worker.** Nothing applies them yet. A Things snapshot can overwrite the field first, so the Worker must read the record's current values when it claims a Job, not trust `set`, and must fail Jobs queued before it shipped.
 - **Lease expiry happens at claim time.** `claim` takes expired Jobs as well as queued ones, so no cron is needed and an expired Job is reclaimed the moment a Worker asks.
 - **Planner tables are plain folders in the main app, not Convex components.** Components isolate tables, which would block cross-module links and shared Activity (`docs/architecture.md`).
 - **Mutations have no user authentication yet.** They are as open as the existing Today query. Locking the public API to Avi's identity is tracked in #17 and must land before the Things Worker applies queued Things Operations.

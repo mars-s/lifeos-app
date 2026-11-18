@@ -12,9 +12,12 @@ export type UndoError =
   | { readonly kind: "not_undoable"; readonly reason: "undo" | "things" }
   | { readonly kind: "already_undone" }
   | { readonly kind: "nothing_to_undo" }
+  | { readonly kind: "run_active" }
   | { readonly kind: "changed_since"; readonly entity: RecordRef };
 
 type Expected = { entity: RecordRef; fields: Map<string, unknown> | null; exact: boolean };
+
+const DEPENDENT_SCAN_LIMIT = 100;
 
 const changesOf = (ctx: MutationCtx, activityId: Id<"activity">) =>
   ctx.db
@@ -54,7 +57,47 @@ const expectedState = (changes: Doc<"activityChanges">[]) => {
   return [...expected.values()];
 };
 
+const dependentsOf = async (ctx: MutationCtx, entity: RecordRef) => {
+  if (entity.table === "entityLinks") return [];
+  const links = [
+    ...(await ctx.db
+      .query("entityLinks")
+      .withIndex("by_from", (q) => q.eq("from.id", entity.id))
+      .take(DEPENDENT_SCAN_LIMIT)),
+    ...(await ctx.db
+      .query("entityLinks")
+      .withIndex("by_to", (q) => q.eq("to.id", entity.id))
+      .take(DEPENDENT_SCAN_LIMIT)),
+  ];
+  if (entity.table !== "tasks") return links.map(({ _id }) => _id as string);
+  const [items, blocks] = await Promise.all([
+    ctx.db
+      .query("checklistItems")
+      .withIndex("by_task_order", (q) => q.eq("taskId", entity.id))
+      .take(DEPENDENT_SCAN_LIMIT),
+    ctx.db
+      .query("workBlocks")
+      .withIndex("by_task_start", (q) => q.eq("taskId", entity.id))
+      .take(DEPENDENT_SCAN_LIMIT),
+  ]);
+  return [...links, ...items, ...blocks].map(({ _id }) => _id as string);
+};
+
+const insertedIn = (changes: Doc<"activityChanges">[]) =>
+  new Set(changes.flatMap(({ entity, change }) => (change.kind === "insert" ? [entity.id as string] : [])));
+
+const transientIn = (changes: Doc<"activityChanges">[]) => {
+  const first = new Map<string, string>();
+  const last = new Map<string, string>();
+  for (const { entity, change } of changes) {
+    if (!first.has(entity.id)) first.set(entity.id, change.kind);
+    last.set(entity.id, change.kind);
+  }
+  return new Set([...first].flatMap(([id, kind]) => (kind === "insert" && last.get(id) === "delete" ? [id] : [])));
+};
+
 const firstConflict = async (ctx: MutationCtx, changes: Doc<"activityChanges">[]) => {
+  const removedByUndo = insertedIn(changes);
   for (const { entity, fields, exact } of expectedState(changes)) {
     const doc = await ctx.db.get(entity.id);
     if (fields === null) {
@@ -65,6 +108,7 @@ const firstConflict = async (ctx: MutationCtx, changes: Doc<"activityChanges">[]
     const current: Record<string, unknown> = recordedFields(doc);
     const keys = exact ? new Set([...fields.keys(), ...Object.keys(current)]) : new Set(fields.keys());
     if ([...keys].some((key) => !sameValue(current[key], fields.get(key)))) return entity;
+    if (exact && (await dependentsOf(ctx, entity)).some((id) => !removedByUndo.has(id))) return entity;
   }
   return null;
 };
@@ -73,7 +117,9 @@ const revert = async (ctx: MutationCtx, actor: Actor, undoes: UndoTarget, change
   const conflict = await firstConflict(ctx, changes);
   if (conflict) return err<{ undoActivityId: Id<"activity"> | null }, UndoError>({ kind: "changed_since", entity: conflict });
   const record = startRecording(ctx, actor, "undo", undoes);
+  const transient = transientIn(changes);
   for (const { entity, change } of changes.toReversed()) {
+    if (transient.has(entity.id)) continue;
     if (change.kind === "insert") await record.remove(entity.table, entity.id);
     else if (change.kind === "patch") await record.patch(entity.table, entity.id, fromStored(change.before));
     else await record.insert(entity.table, fromStored(change.before) as never);
@@ -92,6 +138,8 @@ const undoActivity = async (ctx: MutationCtx, actor: Actor, activityId: Id<"acti
 
 const undoAgentRun = async (ctx: MutationCtx, actor: Actor, jobId: Id<"jobs">) => {
   if (await runUndone(ctx, jobId)) return err<never, UndoError>({ kind: "already_undone" });
+  const run = await ctx.db.get("jobs", jobId);
+  if (run?.status.kind === "claimed") return err<never, UndoError>({ kind: "run_active" });
   const groups = await ctx.db
     .query("activity")
     .withIndex("by_run", (q) => q.eq("actor.jobId", jobId))

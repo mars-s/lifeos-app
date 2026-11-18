@@ -80,18 +80,18 @@ export const claim = mutation({
   },
 });
 
-const heldBy = async (ctx: MutationCtx, token: string, jobId: Id<"jobs">) => {
+const heldBy = async (ctx: MutationCtx, token: string, jobId: Id<"jobs">, attempt: number) => {
   const worker = await workerForToken(ctx, token);
   const job = await ctx.db.get("jobs", jobId);
-  const held = job?.status.kind === "claimed" && job.status.workerId === worker._id;
+  const held = job?.status.kind === "claimed" && job.status.workerId === worker._id && job.attempts === attempt;
   return held ? ok<Doc<"jobs">, JobError>(job) : err<Doc<"jobs">, JobError>({ kind: "not_claimed", jobId });
 };
 
 export const heartbeat = mutation({
-  args: { token: v.string(), jobId: v.id("jobs") },
-  handler: async (ctx, { token, jobId }) =>
+  args: { token: v.string(), jobId: v.id("jobs"), attempt: v.number() },
+  handler: async (ctx, { token, jobId, attempt }) =>
     serialise(
-      await (await heldBy(ctx, token, jobId)).asyncMap(async (job) => {
+      await (await heldBy(ctx, token, jobId, attempt)).asyncMap(async (job) => {
         const now = Date.now();
         const leaseUntil = now + jobKinds[job.job.kind].leaseMs;
         if (job.status.kind === "claimed") {
@@ -103,10 +103,10 @@ export const heartbeat = mutation({
 });
 
 export const complete = mutation({
-  args: { token: v.string(), jobId: v.id("jobs"), receipt: v.any() },
-  handler: async (ctx, { token, jobId, receipt }) =>
+  args: { token: v.string(), jobId: v.id("jobs"), attempt: v.number(), receipt: v.any() },
+  handler: async (ctx, { token, jobId, attempt, receipt }) =>
     serialise(
-      await (await heldBy(ctx, token, jobId)).asyncMap(async () => {
+      await (await heldBy(ctx, token, jobId, attempt)).asyncMap(async () => {
         await ctx.db.patch("jobs", jobId, { status: { kind: "done", at: Date.now(), receipt } });
         return { jobId };
       }),
@@ -114,10 +114,10 @@ export const complete = mutation({
 });
 
 export const fail = mutation({
-  args: { token: v.string(), jobId: v.id("jobs"), error: v.string(), retry: v.boolean() },
-  handler: async (ctx, { token, jobId, error, retry }) =>
+  args: { token: v.string(), jobId: v.id("jobs"), attempt: v.number(), error: v.string(), retry: v.boolean() },
+  handler: async (ctx, { token, jobId, attempt, error, retry }) =>
     serialise(
-      await (await heldBy(ctx, token, jobId)).asyncMap(async (job) => {
+      await (await heldBy(ctx, token, jobId, attempt)).asyncMap(async (job) => {
         const now = Date.now();
         const retrying = retry && job.attempts < jobKinds[job.job.kind].maxAttempts;
         await ctx.db.patch("jobs", jobId, {

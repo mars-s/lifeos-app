@@ -22,7 +22,7 @@ export const drainJobs = async (t: Backend, token: string) => {
   const claimed = [];
   for (let job = await t.mutation(api.platform.jobs.claim, { token }); job; job = await t.mutation(api.platform.jobs.claim, { token })) {
     claimed.push(job);
-    await t.mutation(api.platform.jobs.complete, { token, jobId: job.jobId, receipt: null });
+    await t.mutation(api.platform.jobs.complete, { token, jobId: job.jobId, attempt: job.attempts, receipt: null });
   }
   return claimed;
 };
