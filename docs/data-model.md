@@ -302,6 +302,49 @@ The Mac app sends `calendar/sync:applyWindow` (a `workerMutation`, needing the `
 
 Changes: `calendar/calendars:setIncluded` (`calendar.include`) and `calendar/workingHours:set` (`calendar.workingHours`, refuses a span that is empty, negative or past midnight with `invalid_hours`). Both record Activity and can be undone.
 
+## Health module (`convex/health`)
+
+Avi's Oura ring, read through Oura's API v2 with OAuth. Oura owns these rows, so the sync records no Activity and cannot be undone. Nothing is written to Oura. The Planner draws the **Sleep Window** from them on the Timebox.
+
+### `healthDays`
+
+One row per Oura day (the date Avi woke up), keyed by `source` (`oura`) and `day`.
+
+| Field | Type |
+| --- | --- |
+| `day` | `YYYY-MM-DD`. Oura files a night under the morning it ends |
+| optional `sleep` | The longest `long_sleep` period that day: `start`, `end` (moments), `offsetMinutes` (Oura's local offset at wake), optional `asleepMinutes`. Naps, rests and deleted periods are ignored |
+| optional `sleepScore` | From `daily_sleep` |
+| optional `readinessScore` | From the sleep period's own `readiness` block, so it costs no extra call |
+| optional `sleepTime` | From `sleep_time`: Oura's `status` (`not_enough_nights`, `not_enough_recent_nights`, `bad_sleep_quality`, `only_recommended_found`, `optimal_found`), its `recommendation`, and the bedtime `window` (`startOffset`, `endOffset` in seconds from that day's local midnight, negative before midnight, and `dayTz`) |
+| `syncedAt` | When the row was last written |
+
+Index: `by_source_and_day` (the sync upserts by day, the Sleep Window reads a range of days and the latest 30).
+
+### `ouraConnection`
+
+One row, absent until Avi connects Oura. `accessToken`, `refreshToken`, `expiresAt`, the granted `scope`, `connectedAt`, and `sync` (`never`, `ok` with `at`, or `failed` with `at`, the error and the last good sync). Only internal functions read the tokens. `health/sleep:status` returns `sync` and nothing else from this row. Oura's refresh tokens are single use, so a refresh only writes when the stored refresh token is still the one it used.
+
+### `ouraAuthStates`
+
+One row per Connect in flight: `state`, the PKCE `verifier`, `expiresAt` (10 minutes). The callback deletes the row whatever happens, so a state works once. Index: `by_state`.
+
+### How Oura lands
+
+- **Connect.** `health/oura:connect` (an `ownerMutation`) writes a state row and returns Oura's authorise URL with the `daily` scope, the state and an S256 PKCE challenge. Oura sends Avi back to `https://<deployment>.convex.site/oura/callback`, which takes the state, trades the code (with the verifier) for tokens, stores them and queues a sync. Connect and Sync now are `ownerMutation`s, not `changeMutation`s: they touch credentials, not Avi's data, and Activity must never hold a token.
+- **Sync.** `health/oura:sync` (an internal action) runs from the cron at quarter past every fourth hour, after a connect, and from **Sync now** (`health/oura:syncNow`). It refreshes the token when it has under five minutes left, then reads `sleep`, `daily_sleep` and `sleep_time` from 16 days back to tomorrow and upserts one `healthDays` row per day. An expected failure (not set up, not connected, token refused, Oura refused access, rate limit, Oura down, a body it cannot read) is a `neverthrow` error stored on `ouraConnection.sync`. Rows already there stay.
+
+### The Sleep Window
+
+`health/sleep:nights({ from, days, today, timeZone })` returns one night per wake date from `from` to `from + days`, because a column's morning belongs to that date's night and its evening to the next. Each night is a moment range the client clips to its columns.
+
+- A night Oura recorded is `slept`: its real `start` and `end`, with `asleepMinutes`, `sleepScore` and `readinessScore`.
+- A night from `today` on with no record is `planned`. Bedtime is the start of Oura's latest bedtime window (`bedtime: "oura"`, with the window's end as `latestBedtime`). Oura gives no wake time, so wake is Avi's usual wake: the median wake time of his last 14 recorded nights, rounded to 5 minutes. With no Oura window (`not_enough_nights`), bedtime falls back to his usual bedtime the same way (`bedtime: "usual"`).
+- With fewer than 3 recorded nights there is no plan, and nothing is drawn for the future.
+- An earlier night with no record shows nothing.
+
+`health/sleep:status({ today })` says whether Oura is set up (`OURA_CLIENT_ID` and `OURA_CLIENT_SECRET` are on the deployment) and connected, the last sync, Oura's latest status and recommendation, the plan, and how many nights it counted.
+
 ## Tables later slices add
 
 Each slice adds these as new tables, or as variants of `vEntityRef` and `vJob`. None reshapes a table above.

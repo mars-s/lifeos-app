@@ -33,6 +33,8 @@ type Env = {
   readonly AUTH_GITHUB_CLIENT_ID: string;
   readonly AUTH_GITHUB_CLIENT_SECRET: string;
   readonly LIFEOS_OWNER_GITHUB_ID: string;
+  readonly OURA_CLIENT_ID: string | undefined;
+  readonly OURA_CLIENT_SECRET: string | undefined;
   readonly SITE_URL: string;
 };
 

@@ -50,6 +50,17 @@ _Avoid_: event (in code), meeting.
 
 **Actual Time**: the sum of a Task's Focus Sessions, without Breaks, pauses or time past a planned length. Compared with its Estimate.
 
+## Health
+
+**Sleep Window**: the stretch of a night Avi sleeps or plans to, drawn on the Timebox from bedtime to wake. A past night is what Oura recorded. Tonight and later use Oura's bedtime and his usual wake.
+_Avoid_: sleep block, sleep event.
+
+**Oura's Bedtime**: the bedtime window Oura recommends (its `optimal_bedtime`). Oura needs several nights before it gives one.
+
+**Usual Wake**: the median time Avi woke over his last 14 recorded nights. Oura does not recommend a wake time, so LifeOS works it out. **Usual Bedtime** is worked out the same way and stands in when Oura has no bedtime yet.
+
+**Health Day**: one day of Oura data (sleep, sleep score, readiness), filed under the morning the night ended.
+
 ## Rituals
 
 **Brain Dump**: fast, unsorted capture. In the data it is the Inbox.
@@ -113,5 +124,6 @@ LifeOS is the home of Avi's Tasks (Avi, 18 November 2026). They live in Convex. 
 - **LifeOS wins.** A Things Import never overwrites a field LifeOS has changed since the last import. A change made in Things flows in only when LifeOS has not touched that field.
 - A record that leaves Things is never deleted from LifeOS.
 - LifeOS alone holds the planning layer: Estimates, Work Blocks, Focus Sessions, Day Plans, Recurrence Rules, Templates, Area and Label colours, and Order Keys.
+- Oura owns Health Days and Oura's Bedtime. LifeOS only reads them and never writes to Oura.
 - Apple Calendar owns External Commitments and Calendars. LifeOS only reads them. Which Calendars count and Working Hours belong to LifeOS.
 - Apple Calendar will own the timing of Work Blocks once they are written back (not built yet).

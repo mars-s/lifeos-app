@@ -26,6 +26,7 @@ These public functions do not go through the builders, on purpose:
 - Convex Auth's own functions in `convex/auth.ts` (`startSignInWithGithub`, `completeSignInWithGithub`, `refreshSession`, `signOut`, `isAuthenticated`). They must work before sign-in.
 - The MCP component's functions in `convex/mcp.ts`. The component checks each call with `getUserId`, which returns the owner id only for the owner's Convex Auth session (it runs the internal query `platform/access:isOwner`).
 - The `/auth/iphone` and `/auth/mac` HTTP routes in `convex/http.ts`. They read no data. Each redirects to `lifeos://auth` with the same query string, for the iPhone and packaged Mac sign-ins below.
+- The `/oura/callback` HTTP route. Oura sends the browser there after consent, without a Convex session, so it trusts only a one-use `state` that the owner-only `health/oura:connect` wrote less than 10 minutes earlier, and the PKCE verifier stored beside it. It returns no data.
 
 ## What Avi sets up once
 
@@ -70,7 +71,10 @@ The deployment already has `LIFEOS_OWNER_GITHUB_ID` (71009876, the id of `mars-s
 | `AUTH_GITHUB_CLIENT_ID` | The GitHub OAuth app's Client ID | No |
 | `AUTH_GITHUB_CLIENT_SECRET` | The GitHub OAuth app's client secret | Yes |
 
-`convex.config.ts` declares all four, so a deploy fails if one is missing. Convex Auth 2 signs its tokens with the deployment's own key, so there is no `JWT_PRIVATE_KEY` or `JWKS` to manage.
+| `OURA_CLIENT_ID` | The Oura API application's client id. Optional: without it and the secret, Connect Oura says Oura is not set up | No |
+| `OURA_CLIENT_SECRET` | The Oura API application's client secret | Yes |
+
+`convex.config.ts` declares the first four as required, so a deploy fails if one is missing. Convex Auth 2 signs its tokens with the deployment's own key, so there is no `JWT_PRIVATE_KEY` or `JWKS` to manage.
 
 A production deployment needs its own GitHub OAuth app (GitHub allows one callback URL per app), the production `SITE_URL`, and the same owner id.
 
