@@ -1,0 +1,38 @@
+{
+  "$schema": "https://expokit.in/schema.json",
+  "aliases": {
+    "components": "@/components",
+    "lib": "@/lib",
+    "hooks": "@/hooks"
+  },
+  "paths": {
+    "components": "src/components",
+    "lib": "src/lib",
+    "hooks": "src/hooks",
+    "app": "src/app"
+  },
+  "installed": {
+    "kit": {
+      "version": "0.5.7",
+      "kitVersion": 6
+    },
+    "list-item": {
+      "version": "0.5.7",
+      "kitVersion": 6
+    },
+    "skeleton": {
+      "version": "0.5.7",
+      "kitVersion": 6
+    },
+    "card": {
+      "version": "0.5.7",
+      "kitVersion": 6
+    }
+  },
+  "files": {
+    "src/lib/kit.tsx": "39c42ff0b7039fe9aba81f9bf230df81f26a9ec2eb2287337625adc71561a334",
+    "src/components/ui/list-item.tsx": "0425ddc03ae15ae2e54dc6f790daa873480765be7f972cf22a7c41341c110f70",
+    "src/components/ui/skeleton.tsx": "312f1cbd155a3f852013c73992a62a0dd59e9cfb9b346f48f7302cc573ee644b",
+    "src/components/ui/card.tsx": "fc6aff7a23126045370d0690410ce81b44580115369d521fa8ce4221e76b7a5c"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "expokit": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@expokit/cli@latest",
+        "mcp"
+      ],
+      "env": {}
+    }
+  }
+}

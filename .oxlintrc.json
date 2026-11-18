@@ -23,7 +23,9 @@
     "**/src-tauri/gen/**",
     "apps/web/src/components/ui/**",
     "apps/web/src/lib/utils.ts",
-    "**/*.gen.ts"
+    "**/*.gen.ts",
+    "apps/mobile/src/components/ui/**",
+    "apps/mobile/src/lib/kit.tsx"
   ],
   "rules": {
     "react/react-in-jsx-scope": "off",

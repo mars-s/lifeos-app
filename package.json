@@ -16,7 +16,8 @@
     "build": "pnpm --filter @lifeos/web build",
     "build:mobile": "pnpm --filter @lifeos/mobile export:ios",
     "build:desktop": "pnpm --filter @lifeos/desktop build",
-    "check": "pnpm lint && pnpm typecheck && pnpm build"
+    "check": "pnpm lint && pnpm lint:rust && pnpm typecheck && pnpm build",
+    "lint:rust": "pnpm --filter @lifeos/desktop lint"
   },
   "devDependencies": {
     "@interfere/landmines": "0.1.0",

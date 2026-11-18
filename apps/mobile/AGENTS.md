@@ -22,6 +22,8 @@ npx expo-doctor              # dependency and config checks
 
 ## Rules
 
-- There is no router yet. Add Expo Router when the app needs a second screen, with routes in `src/app/`.
+- Routes live in `src/app/` (Expo Router). Each route file stays thin and re-exports a screen from `src/components/`.
+- UI comes from ExpoKit first (https://expokit.in). Add items with `npx @expokit/cli@latest add <name>`. Do not hand-edit `src/lib/kit.tsx` or `src/components/ui/*` unless you mean to fork them; `npx @expokit/cli@latest diff` shows local changes.
+- Colours, radius and font come from `useKit()`. The calm palette is set once in `src/lib/kit-theme.tsx`. Never hard-code a colour in a screen.
 - `ios/` and `android/` are generated (Continuous Native Generation). Configure native behaviour in `app.json` and config plugins, never by hand.
 - Expo Go only bundles its own native modules. A library with other native code needs a development build: `npx expo run:ios` or `eas build --profile development`.
