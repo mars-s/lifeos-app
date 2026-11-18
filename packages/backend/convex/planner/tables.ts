@@ -46,13 +46,6 @@ export type Status = Infer<typeof vStatus>;
 export type Parent = Infer<typeof vParent>;
 export type Colour = Infer<typeof vColour>;
 
-export const thingsOwnedFields = {
-  areas: ["title", "trashedAt"],
-  projects: ["title", "notes", "areaId", "when", "deadline", "labelIds", "status", "trashedAt"],
-  headings: ["title", "projectId"],
-  tasks: ["title", "notes", "when", "deadline", "parent", "labelIds", "status", "trashedAt"],
-} as const;
-
 export const plannerTables = {
   areas: defineTable({
     title: v.string(),

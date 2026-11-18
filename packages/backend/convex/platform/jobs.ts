@@ -3,11 +3,10 @@ import { err, ok } from "neverthrow";
 import { internalMutation, type MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { serialise } from "../../shared/result";
-import { vJob, type Job, type JobKind } from "./tables";
+import { vJob, type Capability, type Job, type JobKind } from "./tables";
 import { workerMutation } from "./access";
 
 export const jobKinds = {
-  things: { maxAttempts: 5, leaseMs: 60_000 },
   agent: { maxAttempts: 1, leaseMs: 15 * 60_000 },
 } as const satisfies Record<JobKind, { maxAttempts: number; leaseMs: number }>;
 
@@ -60,11 +59,13 @@ const claimableOf = async (ctx: MutationCtx, kind: JobKind, now: number) => {
   return null;
 };
 
+const isJobKind = (capability: Capability): capability is JobKind => capability in jobKinds;
+
 export const claim = workerMutation({
   args: {},
   handler: async (ctx, _args, worker) => {
     const now = Date.now();
-    for (const kind of worker.capabilities) {
+    for (const kind of worker.capabilities.filter(isJobKind)) {
       const job = await claimableOf(ctx, kind, now);
       if (!job) continue;
       const leaseUntil = now + jobKinds[kind].leaseMs;

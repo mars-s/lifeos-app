@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { internalMutation, type QueryCtx } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
-import { vJobKind, type JobKind } from "./tables";
+import { vCapability, type Capability } from "./tables";
 
 export const sha256Hex = async (text: string) => {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
@@ -18,7 +18,7 @@ export const workerForToken = async (ctx: QueryCtx, token: string) => {
   return worker;
 };
 
-export const requireCapability = (worker: Doc<"workers">, capability: JobKind) => {
+export const requireCapability = (worker: Doc<"workers">, capability: Capability) => {
   if (!worker.capabilities.includes(capability)) {
     throw new ConvexError(`This Worker cannot do ${capability} work.`);
   }
@@ -26,7 +26,7 @@ export const requireCapability = (worker: Doc<"workers">, capability: JobKind) =
 };
 
 export const register = internalMutation({
-  args: { name: v.string(), capabilities: v.array(vJobKind), tokenHash: v.string() },
+  args: { name: v.string(), capabilities: v.array(vCapability), tokenHash: v.string() },
   handler: async (ctx, worker) => {
     if (!/^[0-9a-f]{64}$/.test(worker.tokenHash)) throw new ConvexError("tokenHash must be a SHA-256 hex digest.");
     const existing = await ctx.db

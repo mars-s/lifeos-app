@@ -35,20 +35,11 @@ export const vUndoTarget = v.union(
   v.object({ kind: v.literal("run"), jobId: v.id("jobs") }),
 );
 
-export const vJobKind = v.union(v.literal("things"), v.literal("agent"));
+export const vJobKind = v.literal("agent");
 
-export const vJob = v.union(
-  v.object({
-    kind: v.literal("things"),
-    payload: v.object({
-      op: v.union(v.literal("create"), v.literal("update"), v.literal("delete")),
-      entity: vRecordRef,
-      thingsId: v.optional(v.string()),
-      set: vStoredFields,
-    }),
-  }),
-  v.object({ kind: v.literal("agent"), payload: v.object({ request: v.string() }) }),
-);
+export const vCapability = v.union(v.literal("things"), vJobKind);
+
+export const vJob = v.object({ kind: vJobKind, payload: v.object({ request: v.string() }) });
 
 export const vJobStatus = v.union(
   v.object({ kind: v.literal("queued"), availableAt: v.number() }),
@@ -68,6 +59,7 @@ export type Actor = Infer<typeof vActor>;
 export type Change = Infer<typeof vChange>;
 export type UndoTarget = Infer<typeof vUndoTarget>;
 export type JobKind = Infer<typeof vJobKind>;
+export type Capability = Infer<typeof vCapability>;
 export type Job = Infer<typeof vJob>;
 
 export const platformTables = {
@@ -103,7 +95,7 @@ export const platformTables = {
     .index("by_kind_status_lease", ["job.kind", "status.kind", "status.leaseUntil"]),
   workers: defineTable({
     name: v.string(),
-    capabilities: v.array(vJobKind),
+    capabilities: v.array(vCapability),
     tokenHash: v.string(),
   })
     .index("by_name", ["name"])

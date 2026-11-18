@@ -1,19 +1,17 @@
 import { generateKeyBetween } from "fractional-indexing";
 import { expect, test } from "vitest";
 import { api } from "../_generated/api";
-import { drainJobs, newBackend, registerWorker, unwrap } from "../backend.test-utils";
+import { newBackend, unwrap } from "../backend.test-utils";
 
 const setup = async () => {
   const t = await newBackend();
-  const things = await registerWorker(t, "things", ["things"]);
   const { taskId } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Pack for Hobart" }));
-  await drainJobs(t, things);
   const checklist = async () => (await t.query(api.planner.tasks.card, { taskId }))!.checklist;
-  return { t, things, taskId, checklist };
+  return { t, taskId, checklist };
 };
 
-test("Checklist Items are added in order, edited, ticked and reordered, each undoable, and never reach Things", async () => {
-  const { t, things, taskId, checklist } = await setup();
+test("Checklist Items are added in order, edited, ticked and reordered, each undoable", async () => {
+  const { t, taskId, checklist } = await setup();
   const added = unwrap(await t.mutation(api.planner.checklist.add, { taskId, title: "Charger" }));
   const second = unwrap(await t.mutation(api.planner.checklist.add, { taskId, title: "Raincoat" }));
   expect((await checklist()).map(({ title, done }) => [title, done])).toEqual([
@@ -41,7 +39,6 @@ test("Checklist Items are added in order, edited, ticked and reordered, each und
   ]);
   unwrap(await t.mutation(api.platform.undo.undo, { activityId: second.activityId! }));
   expect((await checklist()).map(({ title }) => title)).toEqual(["Charger"]);
-  expect(await drainJobs(t, things)).toEqual([]);
 });
 
 test("a Checklist Item needs a Task, a title and a valid order key", async () => {
@@ -58,7 +55,7 @@ test("a Checklist Item needs a Task, a title and a valid order key", async () =>
 });
 
 test("a Checklist Item is removed, and undo brings it back in its place", async () => {
-  const { t, things, taskId, checklist } = await setup();
+  const { t, taskId, checklist } = await setup();
   unwrap(await t.mutation(api.planner.checklist.add, { taskId, title: "Charger" }));
   const middle = unwrap(await t.mutation(api.planner.checklist.add, { taskId, title: "Raincoat" }));
   unwrap(await t.mutation(api.planner.checklist.add, { taskId, title: "Passport" }));
@@ -77,5 +74,4 @@ test("a Checklist Item is removed, and undo brings it back in its place", async 
     ["Raincoat", true],
     ["Passport", false],
   ]);
-  expect(await drainJobs(t, things)).toEqual([]);
 });

@@ -5,11 +5,11 @@ import { register as registerMcp } from "@convex-dev/mcp/test";
 import { createFunctionHandle } from "convex/server";
 import { convexTest } from "convex-test";
 import { vi } from "vitest";
-import { api, components, internal } from "./_generated/api";
+import { components, internal } from "./_generated/api";
 import type { SerialisedResult } from "../shared/result";
 import { sha256Hex } from "./platform/workers";
 import schema from "./schema";
-import type { JobKind } from "./platform/tables";
+import type { Capability } from "./platform/tables";
 
 const modules = import.meta.glob(["./**/*.*s", "!./**/*.*.*s"]);
 
@@ -48,19 +48,10 @@ export const newBackend = async () => signInWithGithub(newSignedOutBackend(), ow
 
 export type Backend = Awaited<ReturnType<typeof newBackend>>;
 
-export const registerWorker = async (t: Backend, name: string, capabilities: JobKind[]) => {
+export const registerWorker = async (t: Backend, name: string, capabilities: Capability[]) => {
   const token = `${name}-token`;
   await t.mutation(internal.platform.workers.register, { name, capabilities, tokenHash: await sha256Hex(token) });
   return token;
-};
-
-export const drainJobs = async (t: Backend, token: string) => {
-  const claimed = [];
-  for (let job = await t.mutation(api.platform.jobs.claim, { token }); job; job = await t.mutation(api.platform.jobs.claim, { token })) {
-    claimed.push(job);
-    await t.mutation(api.platform.jobs.complete, { token, jobId: job.jobId, attempt: job.attempts, receipt: null });
-  }
-  return claimed;
 };
 
 export const unwrap = <T, E>(result: SerialisedResult<T, E>) => {

@@ -1,19 +1,17 @@
 import { expect, test } from "vitest";
 import { api } from "../_generated/api";
-import { drainJobs, newBackend, newSignedOutBackend, registerWorker, unwrap } from "../backend.test-utils";
+import { newBackend, newSignedOutBackend, unwrap } from "../backend.test-utils";
 
 const setup = async () => {
   const t = await newBackend();
-  const things = await registerWorker(t, "things", ["things"]);
   const { taskId } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Write chapter two" }));
-  await drainJobs(t, things);
   const names = async () => (await t.query(api.planner.labels.list, {})).map(({ name, colour }) => [name, colour]);
   const onTask = async () => (await t.query(api.planner.tasks.card, { taskId }))!.labelIds;
-  return { t, things, taskId, names, onTask };
+  return { t, taskId, names, onTask };
 };
 
-test("Labels are created in order with one of the eight colours, and recoloured, each undoable, without telling Things", async () => {
-  const { t, things, names } = await setup();
+test("Labels are created in order with one of the eight colours, and recoloured, each undoable", async () => {
+  const { t, names } = await setup();
   const deep = unwrap(await t.mutation(api.planner.labels.create, { name: "  Deep Work ", colour: "violet" }));
   unwrap(await t.mutation(api.planner.labels.create, { name: "Admin", colour: "slate" }));
   expect(await names()).toEqual([
@@ -29,16 +27,12 @@ test("Labels are created in order with one of the eight colours, and recoloured,
   unwrap(await t.mutation(api.platform.undo.undo, { activityId: recoloured.activityId! }));
   unwrap(await t.mutation(api.platform.undo.undo, { activityId: deep.activityId! }));
   expect(await names()).toEqual([["Admin", "slate"]]);
-  expect(await drainJobs(t, things)).toEqual([]);
 });
 
 test("creating a Label for a Task adds it to that Task in the same action, so one undo removes both", async () => {
-  const { t, things, taskId, names, onTask } = await setup();
+  const { t, taskId, names, onTask } = await setup();
   const created = unwrap(await t.mutation(api.planner.labels.create, { name: "Errand", colour: "olive", taskId }));
   expect(await onTask()).toEqual([created.labelId]);
-  expect((await drainJobs(t, things)).map(({ job }) => job.payload)).toMatchObject([
-    { op: "update", set: { labelIds: [created.labelId] } },
-  ]);
 
   unwrap(await t.mutation(api.platform.undo.undo, { activityId: created.activityId! }));
   expect(await onTask()).toEqual([]);

@@ -303,7 +303,6 @@ const applySnapshot = async (ctx: MutationCtx, snapshot: ThingsSnapshot) => {
   const areas = await syncAreas(ctx, record, snapshot, now);
   const projects = await syncProjects(ctx, record, snapshot, ids, labelsFor, now);
   const tasks = await syncTasks(ctx, record, snapshot, ids, labelsFor, now);
-  await record.finish();
   const state = {
     syncedAt: now,
     counts: { areas: snapshot.areas.length, projects: snapshot.projects.length, tasks: snapshot.tasks.length },

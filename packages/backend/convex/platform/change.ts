@@ -15,7 +15,7 @@ export const changeMutation = <Args extends PropertyValidators, T extends object
     handler: async (ctx, args, actor) => {
       const record = startRecording(ctx, actor, spec.action);
       const result = await spec.handler(ctx, args, record);
-      const activityId = await record.finish();
+      const activityId = record.finish();
       return serialise(result.map((value) => ({ ...value, activityId })));
     },
   });

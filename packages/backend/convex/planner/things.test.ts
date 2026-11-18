@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { api } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { drainJobs, newBackend, registerWorker, unwrap } from "../backend.test-utils";
+import { newBackend, registerWorker, unwrap } from "../backend.test-utils";
 import { snapshotOf, thingsTask } from "./things.test-utils";
 
 const scheduled = (date: string, evening = false) => ({ kind: "scheduled" as const, date, evening });
@@ -87,17 +87,6 @@ test("inbound patches only Things-owned fields: planning data and This Evening s
 
   await sync(snapshotOf({ tasks: [{ ...walk, when: scheduled("2026-11-19") }] }));
   expect((await card(taskId)).when).toEqual(scheduled("2026-11-19"));
-});
-
-test("Things wins over a pending LifeOS edit to a Things-owned field, and inbound queues nothing back", async () => {
-  const { t, token, sync, taskByThingsId, card } = await setup();
-  await sync(snapshotOf({ tasks: [walk] }));
-  const taskId = (await taskByThingsId("T1"))!;
-  unwrap(await t.mutation(api.planner.tasks.rename, { taskId, title: "Renamed in LifeOS" }));
-  await drainJobs(t, token);
-  await sync(snapshotOf({ tasks: [walk] }));
-  expect((await card(taskId)).title).toBe("Walk");
-  expect(await drainJobs(t, token)).toEqual([]);
 });
 
 test("a Task that leaves Things is completed, or trashed if it sits in Things' Trash, never deleted", async () => {

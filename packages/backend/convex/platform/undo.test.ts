@@ -1,7 +1,7 @@
 import { expect, test, vi } from "vitest";
 import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { drainJobs, newBackend, registerWorker, unwrap, type Backend } from "../backend.test-utils";
+import { newBackend, registerWorker, unwrap, type Backend } from "../backend.test-utils";
 
 const startAgentRun = async (t: Backend) => {
   const token = await registerWorker(t, "home-server", ["agent"]);
@@ -18,22 +18,19 @@ const finishRun = async (t: Backend, { token, jobId, attempt }: { token: string;
 
 const setup = async () => {
   const t = await newBackend();
-  const things = await registerWorker(t, "things", ["things"]);
   const { taskId } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Draft intro" }));
-  await drainJobs(t, things);
   const card = async (id: Id<"tasks"> = taskId) => t.query(api.planner.tasks.card, { taskId: id });
-  return { t, things, taskId, card };
+  return { t, taskId, card };
 };
 
 test("a whole Agent Run, across several actions and changes, undoes in one step", async () => {
-  const { t, things, taskId, card } = await setup();
+  const { t, taskId, card } = await setup();
   const before = await card();
   const { agentRun, attempt } = await startAgentRun(t);
   unwrap(await t.mutation(api.planner.tasks.rename, { taskId, title: "Draft the introduction", agentRun }));
   unwrap(await t.mutation(api.planner.tasks.setEstimate, { taskId, minutes: 50, agentRun }));
   const { taskId: added } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Email supervisor", agentRun }));
   unwrap(await t.mutation(api.planner.checklist.add, { taskId, title: "Find three sources", agentRun }));
-  await drainJobs(t, things);
   expect(await t.mutation(api.platform.undo.undoRun, { jobId: agentRun.jobId })).toEqual({
     ok: false,
     error: { kind: "run_active" },
@@ -44,12 +41,6 @@ test("a whole Agent Run, across several actions and changes, undoes in one step"
   expect(undoActivityId).not.toBeNull();
   expect(await card()).toEqual(before);
   expect(await card(added)).toBeNull();
-  expect(
-    (await drainJobs(t, things)).map(({ job }) => job.kind === "things" && [job.payload.op, job.payload.entity.id]),
-  ).toEqual([
-    ["delete", added],
-    ["update", taskId],
-  ]);
   expect(await t.mutation(api.platform.undo.undoRun, { jobId: agentRun.jobId })).toEqual({
     ok: false,
     error: { kind: "already_undone" },

@@ -124,7 +124,7 @@ const revert = async (ctx: MutationCtx, actor: Actor, undoes: UndoTarget, change
     else if (change.kind === "patch") await record.patch(entity.table, entity.id, fromStored(change.before));
     else await record.insert(entity.table, fromStored(change.before) as never);
   }
-  return ok<{ undoActivityId: Id<"activity"> | null }, UndoError>({ undoActivityId: await record.finish() });
+  return ok<{ undoActivityId: Id<"activity"> | null }, UndoError>({ undoActivityId: record.finish() });
 };
 
 const undoActivity = async (ctx: MutationCtx, actor: Actor, activityId: Id<"activity">) => {

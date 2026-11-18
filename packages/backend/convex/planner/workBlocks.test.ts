@@ -1,23 +1,21 @@
 import { expect, test } from "vitest";
 import { api } from "../_generated/api";
-import { drainJobs, newBackend, registerWorker, unwrap } from "../backend.test-utils";
+import { newBackend, unwrap } from "../backend.test-utils";
 
 const nineAm = Date.UTC(2026, 10, 18, 22, 0);
 const hour = 60 * 60 * 1000;
 
 const setup = async () => {
   const t = await newBackend();
-  const things = await registerWorker(t, "things", ["things"]);
   const { taskId } = unwrap(
     await t.mutation(api.planner.tasks.create, { title: "Write chapter two", deadline: "2026-11-27" }),
   );
-  await drainJobs(t, things);
   const card = async () => (await t.query(api.planner.tasks.card, { taskId }))!;
-  return { t, things, taskId, card };
+  return { t, taskId, card };
 };
 
 test("Work Blocks are created, moved, resized, completed and removed, each undoable, without touching the Deadline", async () => {
-  const { t, things, taskId, card } = await setup();
+  const { t, taskId, card } = await setup();
   const created = unwrap(
     await t.mutation(api.planner.workBlocks.create, { taskId, start: nineAm, minutes: 90, timeZone: "Australia/Sydney" }),
   );
@@ -39,7 +37,6 @@ test("Work Blocks are created, moved, resized, completed and removed, each undoa
   ]);
   unwrap(await t.mutation(api.platform.undo.undo, { activityId: created.activityId! }));
   expect((await card()).workBlocks).toEqual([]);
-  expect(await drainJobs(t, things)).toEqual([]);
 });
 
 test("a Work Block needs a real start, a positive length and a real time zone", async () => {

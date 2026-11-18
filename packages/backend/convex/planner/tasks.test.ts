@@ -1,13 +1,12 @@
 import type { FunctionReturnType } from "convex/server";
 import { describe, expect, test } from "vitest";
 import { api } from "../_generated/api";
-import { drainJobs, newBackend, registerWorker, unwrap } from "../backend.test-utils";
+import { newBackend, unwrap } from "../backend.test-utils";
 
 type Card = NonNullable<FunctionReturnType<typeof api.planner.tasks.card>>;
 
 const setup = async () => {
   const t = await newBackend();
-  const things = await registerWorker(t, "things", ["things"]);
   const { label, area, project } = await t.run(async (ctx) => {
     const areaId = await ctx.db.insert("areas", { title: "University", colour: "teal", order: "a0" });
     return {
@@ -25,9 +24,8 @@ const setup = async () => {
     };
   });
   const { taskId } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Draft intro" }));
-  await drainJobs(t, things);
   const card = async () => (await t.query(api.planner.tasks.card, { taskId }))!;
-  return { t, things, label, area, project, taskId, card };
+  return { t, label, area, project, taskId, card };
 };
 
 type Setup = Awaited<ReturnType<typeof setup>>;
@@ -38,7 +36,6 @@ type EditCase = {
   run: (s: Setup) => Promise<FunctionReturnType<typeof api.planner.tasks.rename>>;
   view: (card: Card) => unknown;
   expected: (s: Setup) => unknown;
-  bridged: boolean;
 };
 
 const at = expect.any(Number);
@@ -49,14 +46,12 @@ const edits: EditCase[] = [
     run: ({ t, taskId }) => t.mutation(api.planner.tasks.rename, { taskId, title: "  Draft the intro " }),
     view: (card) => card.title,
     expected: () => "Draft the intro",
-    bridged: true,
   },
   {
     name: "setNotes",
     run: ({ t, taskId }) => t.mutation(api.planner.tasks.setNotes, { taskId, notes: "Start with the gap." }),
     view: (card) => card.notes,
     expected: () => "Start with the gap.",
-    bridged: true,
   },
   {
     name: "setWhen",
@@ -64,28 +59,24 @@ const edits: EditCase[] = [
       t.mutation(api.planner.tasks.setWhen, { taskId, when: { kind: "scheduled", date: "2026-11-20", evening: true } }),
     view: (card) => card.when,
     expected: () => ({ kind: "scheduled", date: "2026-11-20", evening: true }),
-    bridged: true,
   },
   {
     name: "setDeadline",
     run: ({ t, taskId }) => t.mutation(api.planner.tasks.setDeadline, { taskId, deadline: "2026-11-27" }),
     view: (card) => card.deadline,
     expected: () => "2026-11-27",
-    bridged: true,
   },
   {
     name: "setEstimate",
     run: ({ t, taskId }) => t.mutation(api.planner.tasks.setEstimate, { taskId, minutes: 45 }),
     view: (card) => card.estimateMinutes,
     expected: () => 45,
-    bridged: false,
   },
   {
     name: "setLabels",
     run: ({ t, taskId, label }) => t.mutation(api.planner.tasks.setLabels, { taskId, labelIds: [label, label] }),
     view: (card) => card.labelIds,
     expected: ({ label }) => [label],
-    bridged: true,
   },
   {
     name: "move",
@@ -93,14 +84,12 @@ const edits: EditCase[] = [
       t.mutation(api.planner.tasks.move, { taskId, parent: { kind: "project", projectId: project } }),
     view: (card) => card.parent,
     expected: ({ project }) => ({ kind: "project", projectId: project }),
-    bridged: true,
   },
   {
     name: "complete",
     run: ({ t, taskId }) => t.mutation(api.planner.tasks.complete, { taskId }),
     view: (card) => card.status,
     expected: () => ({ kind: "completed", at }),
-    bridged: true,
   },
   {
     name: "uncomplete",
@@ -108,14 +97,12 @@ const edits: EditCase[] = [
     run: ({ t, taskId }) => t.mutation(api.planner.tasks.uncomplete, { taskId }),
     view: (card) => card.status,
     expected: () => ({ kind: "open" }),
-    bridged: true,
   },
   {
     name: "trash",
     run: ({ t, taskId }) => t.mutation(api.planner.tasks.trash, { taskId }),
     view: (card) => card.trashedAt,
     expected: () => at,
-    bridged: true,
   },
   {
     name: "restore",
@@ -123,14 +110,12 @@ const edits: EditCase[] = [
     run: ({ t, taskId }) => t.mutation(api.planner.tasks.restore, { taskId }),
     view: (card) => card.trashedAt,
     expected: () => undefined,
-    bridged: true,
   },
 ];
 
 describe("Task mutations", () => {
-  test("create adds an open Inbox Task, queues a Things create, and undo removes it", async () => {
+  test("create adds an open Inbox Task, and undo removes it", async () => {
     const t = await newBackend();
-    const things = await registerWorker(t, "things", ["things"]);
     const { taskId, activityId } = unwrap(
       await t.mutation(api.planner.tasks.create, { title: "Call Mum", estimateMinutes: 15 }),
     );
@@ -144,18 +129,9 @@ describe("Task mutations", () => {
       checklist: [],
       workBlocks: [],
     });
-    const [created] = await drainJobs(t, things);
-    expect(created?.job).toEqual({
-      kind: "things",
-      payload: {
-        op: "create",
-        entity: { table: "tasks", id: taskId },
-        set: expect.objectContaining({ title: "Call Mum", when: { kind: "inbox" }, deadline: null }),
-      },
-    });
     unwrap(await t.mutation(api.platform.undo.undo, { activityId: activityId! }));
     expect(await t.query(api.planner.tasks.card, { taskId })).toBeNull();
-    expect((await drainJobs(t, things)).map(({ job }) => job.kind === "things" && job.payload.op)).toEqual(["delete"]);
+    expect(await t.run((ctx) => ctx.db.query("jobs").collect())).toEqual([]);
   });
 
   test("new Tasks are ordered after the last one in their container", async () => {
@@ -171,36 +147,19 @@ describe("Task mutations", () => {
   test.each(edits)("$name changes the Task, records Activity and undoes in one step", async (edit) => {
     const s = await setup();
     if (edit.prepare) await edit.prepare(s);
-    await drainJobs(s.t, s.things);
     const before = edit.view(await s.card());
     const { activityId } = unwrap(await edit.run(s));
     expect(activityId).not.toBeNull();
     expect(edit.view(await s.card())).toEqual(edit.expected(s));
-    const queued = await drainJobs(s.t, s.things);
-    expect(queued.map(({ job }) => job.kind === "things" && job.payload.op)).toEqual(edit.bridged ? ["update"] : []);
     unwrap(await s.t.mutation(api.platform.undo.undo, { activityId: activityId! }));
     expect(edit.view(await s.card())).toEqual(before);
-    expect((await drainJobs(s.t, s.things)).length).toBe(edit.bridged ? 1 : 0);
   });
 
-  test("the Things Operation carries only the changed Things-owned fields", async () => {
-    const s = await setup();
-    unwrap(await s.t.mutation(api.planner.tasks.rename, { taskId: s.taskId, title: "Draft the intro" }));
-    const [renamed] = await drainJobs(s.t, s.things);
-    expect(renamed?.job.payload).toEqual({
-      op: "update",
-      entity: { table: "tasks", id: s.taskId },
-      set: { title: "Draft the intro" },
-    });
-  });
-
-  test("a change that changes nothing records no Activity and queues nothing", async () => {
+  test("a change that changes nothing records no Activity", async () => {
     const s = await setup();
     unwrap(await s.t.mutation(api.planner.tasks.complete, { taskId: s.taskId }));
-    await drainJobs(s.t, s.things);
     expect(unwrap(await s.t.mutation(api.planner.tasks.complete, { taskId: s.taskId })).activityId).toBeNull();
     expect(unwrap(await s.t.mutation(api.planner.tasks.setNotes, { taskId: s.taskId, notes: "" })).activityId).toBeNull();
-    expect(await drainJobs(s.t, s.things)).toEqual([]);
   });
 
   test("invalid input is refused with a precise error and leaves the Task alone", async () => {
@@ -244,7 +203,6 @@ describe("Task mutations", () => {
       }),
     ).toEqual({ ok: false, error: { kind: "heading_outside_project", headingId: heading } });
     expect(await s.card()).toEqual(before);
-    expect(await drainJobs(t, s.things)).toEqual([]);
   });
 
   test("an edit to a missing Task reports not_found", async () => {
