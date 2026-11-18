@@ -1,9 +1,11 @@
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, useFonts } from "@expo-google-fonts/inter";
-import { ConvexProvider } from "convex/react";
+import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { SplashScreen, Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
-import { convex } from "@/lib/convex";
+import { api } from "@lifeos/backend/api";
+import { OwnerGate } from "@/components/owner-gate";
+import { convex, secureStorage } from "@/lib/convex";
 import { useKit } from "@/lib/kit";
 import { AppTheme } from "@/lib/kit-theme";
 
@@ -25,10 +27,28 @@ export default function RootLayout() {
     if (fontsLoaded) void SplashScreen.hideAsync();
   }, [fontsLoaded]);
   if (!fontsLoaded) return null;
-  const app = (
-    <AppTheme>
-      <ThemedStack />
-    </AppTheme>
+  if (!convex) {
+    return (
+      <AppTheme>
+        <ThemedStack />
+      </AppTheme>
+    );
+  }
+  return (
+    <ConvexAuthProvider
+      client={convex}
+      storage={secureStorage}
+      api={{
+        refreshSession: api.auth.refreshSession,
+        signOut: api.auth.signOut,
+        isAuthenticated: api.auth.isAuthenticated,
+      }}
+    >
+      <AppTheme>
+        <OwnerGate>
+          <ThemedStack />
+        </OwnerGate>
+      </AppTheme>
+    </ConvexAuthProvider>
   );
-  return convex ? <ConvexProvider client={convex}>{app}</ConvexProvider> : app;
 }

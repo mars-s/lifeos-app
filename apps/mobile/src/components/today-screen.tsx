@@ -10,6 +10,7 @@ import type { TodayTask } from "@lifeos/backend/types";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ListItem, ListSection } from "@/components/ui/list-item";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SignOutButton } from "@/components/owner-gate";
 import { convex } from "@/lib/convex";
 import { useKit } from "@/lib/kit";
 import { fonts } from "@/lib/kit-theme";
@@ -29,6 +30,11 @@ export const TodayScreen = () => {
       <View style={styles.titleRow}>
         <Star size={24} color={colors.warning} fill={colors.warning} strokeWidth={1.5} />
         <Text style={[text.xxl, styles.title, { color: colors.foreground }]}>Today</Text>
+        {convex ? (
+          <View style={styles.signOut}>
+            <SignOutButton />
+          </View>
+        ) : null}
       </View>
       <Text style={[text.sm, styles.subtitle, { color: colors.mutedForeground }]}>
         {greetingFor(now.getHours())}, Avi. {longDate(now)}.
@@ -122,6 +128,7 @@ const styles = StyleSheet.create({
   page: { paddingHorizontal: 20, paddingBottom: 48 },
   titleRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 4 },
   title: { fontFamily: fonts.semibold },
+  signOut: { marginLeft: "auto" },
   subtitle: { fontFamily: fonts.regular, marginTop: 6, marginBottom: 24, paddingHorizontal: 4 },
   body: { fontFamily: fonts.regular, paddingHorizontal: 4 },
   loading: { gap: 18, paddingHorizontal: 4, paddingTop: 8 },
