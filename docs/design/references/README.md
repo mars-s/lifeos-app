@@ -38,3 +38,4 @@ Avi's notes alongside these:
 - Areas work like Things areas. Projects live under an area, or stand alone.
 - Feedback first: every action answers back. Use visualisations to give the app personality.
 - The bar is Things 3, Claude and Grok apps. If the UX is not that good, Avi will not use it.
+- [AffectUI reference library](affectui/README.md) for generative UI and in-app agents.
