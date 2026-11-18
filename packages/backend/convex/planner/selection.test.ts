@@ -5,7 +5,7 @@ import { newBackend, unwrap } from "../backend.test-utils";
 
 const setup = async () => {
   const t = await newBackend();
-  const taskIds = [];
+  const taskIds: Id<"tasks">[] = [];
   for (const title of ["Draft intro", "Email supervisor", "Book the dentist"])
     taskIds.push(unwrap(await t.mutation(api.planner.tasks.create, { title })).taskId);
   const cards = async () => Promise.all(taskIds.map(async (taskId) => (await t.query(api.planner.tasks.card, { taskId }))!));
