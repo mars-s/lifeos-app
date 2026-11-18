@@ -89,6 +89,17 @@ One unit of background work.
 
 Indexes: `by_name` (register), `by_token_hash` (authenticate every Worker call).
 
+### `users`
+
+One row per GitHub account that signed in. Convex Auth's components keep the sessions and the GitHub account link. Only the owner's row exists in practice, because sign-in refuses every other account (`docs/auth.md`).
+
+| Field | Type |
+| --- | --- |
+| `githubId` | The numeric GitHub user id, as a string. The owner guard compares it with `LIFEOS_OWNER_GITHUB_ID`. |
+| `login` | The GitHub username, for display |
+
+No indexes: the guard reads the row by the id the session holds.
+
 ## Planner module (`convex/planner`)
 
 ### `tasks`
@@ -214,4 +225,4 @@ Undo (`platform/undo:undo` and `undoRun`) checks that every touched record still
 - **Queued Things Operations wait for the outbound Worker.** Nothing applies them yet. A Things snapshot can overwrite the field first, so the Worker must read the record's current values when it claims a Job, not trust `set`, and must fail Jobs queued before it shipped.
 - **Lease expiry happens at claim time.** `claim` takes expired Jobs as well as queued ones, so no cron is needed and an expired Job is reclaimed the moment a Worker asks.
 - **Planner tables are plain folders in the main app, not Convex components.** Components isolate tables, which would block cross-module links and shared Activity (`docs/architecture.md`).
-- **Mutations have no user authentication yet.** They are as open as the existing Today query. Locking the public API to Avi's identity is tracked in #17 and must land before the Things Worker applies queued Things Operations.
+- **Every public function checks the caller in one place.** `platform/access.ts` builds every public query and mutation, so a new function cannot forget the owner check (#17).

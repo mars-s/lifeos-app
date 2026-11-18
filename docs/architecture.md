@@ -20,6 +20,7 @@ Anything that must happen outside Convex is a **Job** in Core, claimed by a **Wo
 - A Worker registers what it can do (for example `things`, `agent:claude`, `agent:codex`, `index:link`), subscribes to queued Jobs it can handle, claims one with a lease, heartbeats while working, and reports a result. An expired lease returns the Job to the queue.
 - Things Operations, agent runs, link indexing and note archiving are all Job kinds. There is one queue, one claim rule and one retry rule, so a new module adds a Job kind, not a new queue.
 - Workers authenticate with a scoped machine token per Worker, stored in that machine's keychain or secret store. Convex keeps only its hash.
+- People authenticate with GitHub through Convex Auth, and only the owner's account gets in. Every public function goes through the owner guard (`docs/auth.md`).
 
 ## Agents
 

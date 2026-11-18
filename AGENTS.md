@@ -13,6 +13,7 @@ A calm personal planner for one person, Avi. Web, iPhone and Mac apps share one 
 - Keep it lean. Add a dependency, file or abstraction only when the current task needs it.
 - Declare each domain type once, in the Convex schema. `packages/backend/convex/schema.ts` composes one `tables.ts` per module. Apps import `Doc`, `Id` and function types from `@lifeos/backend/*`. Never redeclare a table shape in an app. `docs/data-model.md` lists every table, its indexes and the queries they serve.
 - Module code lives in `packages/backend/convex/<module>/`: `platform` (Activity, undo, Jobs, Workers, entity links) and `planner` (Tasks, Areas, Projects, Checklist Items, Work Blocks, Today, the Things Bridge). A new module adds a folder with its own `tables.ts`.
+- Every public Convex function goes through the owner guard in `convex/platform/access.ts`: `ownerQuery` for queries, `changeMutation` (built on `ownerMutation`) for changes, `workerMutation` for Worker endpoints. Only Avi, signed in with GitHub, or a Worker with its token can call them. oxlint rejects the raw `query`, `mutation` and `action` builders anywhere else. See `docs/auth.md`.
 - Build every public mutation with `changeMutation` from `convex/platform/change.ts` and write through its recorder, so each change records Activity, can be undone, and queues a Things Operation when it touches a Things-owned field.
 - Backend tests use convex-test and vitest (`pnpm --filter @lifeos/backend test`). Put each `*.test.ts` beside the module it tests and call public functions through `api`. Convex skips files with more than one dot, so test files and `*.test-utils.ts` helpers are never deployed.
 - Handle expected failures with `neverthrow`. A `Result` that crosses the server/client boundary goes through `serialise` and `deserialise` from `@lifeos/backend/result`, because a class instance does not survive Convex's JSON transport.
@@ -43,7 +44,7 @@ Follow these before your own habits, and read them before writing code in that a
 ## Convex
 
 - Backend code lives in `packages/backend/convex`. Commit `convex/_generated` after any schema or function change.
-- Do not run commands that need a browser sign-in on Avi's behalf. For codegen without an account, use `CONVEX_AGENT_MODE=anonymous npx convex dev --once`, then delete `packages/backend/.env.local`.
+- Do not run commands that need a browser sign-in on Avi's behalf. In a worktree, write `CONVEX_DEPLOYMENT=dev:curious-pigeon-412` to `packages/backend/.env.local`; the logged-in CLI then deploys with `npx convex dev --once`. For codegen without an account, use `CONVEX_AGENT_MODE=anonymous npx convex dev --once`, then delete `packages/backend/.env.local`.
 
 ## Tracking
 

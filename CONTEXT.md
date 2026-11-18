@@ -79,6 +79,9 @@ _Avoid_: timebox in code (fine in UI copy), event.
 
 **Job**: a unit of background work queued in Core, with a lease, retries and a receipt. A Things Operation is one kind of Job.
 
+**Owner**: the one person a LifeOS belongs to, Avi. He signs in with his GitHub account. Every other account is refused.
+_Avoid_: admin, user (in code, `users` is only Convex Auth's table).
+
 **Worker**: a process outside Convex that claims Jobs it can handle (the Things Worker on the Mac, agent and indexing Workers on the Home Server). It authenticates with its own token. Core keeps only the token's SHA-256 hash and the Job kinds the Worker may claim.
 
 **Lease**: the time a claimed Job belongs to one Worker. The Worker extends it with a heartbeat. When it runs out, the next Worker to claim takes the Job.
