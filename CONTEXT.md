@@ -35,9 +35,14 @@ _Avoid_: duration (that belongs to Work Blocks).
 **Work Block**: a slot on the calendar reserved for one Task, with a start and an end. A Task can have several. Creating one never changes the Task's Deadline.
 _Avoid_: timebox in code (fine in UI copy), event.
 
-**External Commitment**: a calendar event LifeOS did not create, read from Apple Calendar. It uses up time but is not a Task.
+**External Commitment**: a calendar event LifeOS did not create, read from Apple Calendar by the Mac app. One occurrence of a repeating event is one External Commitment. It uses up time but is not a Task. A free event, one Avi declined, or an all-day event not marked busy shows but takes no time.
+_Avoid_: event (in code), meeting.
 
-**Capacity**: free time in a day once External Commitments are taken out. Compared with the sum of Estimates planned for that day.
+**Calendar**: one Apple Calendar (Work, Home, a holiday subscription). Avi chooses which Calendars count. A Calendar that does not count is hidden and takes no time.
+
+**Working Hours**: the part of each day Capacity counts, 9:00 to 17:30 unless Avi changes it.
+
+**Capacity**: free time inside Working Hours once External Commitments are taken out. Overlapping commitments count once. Compared with the sum of Estimates planned for that day.
 
 **Focus Session**: a stretch of timed work on one Task. Its length is the Task's Actual Time.
 
@@ -83,7 +88,7 @@ _Avoid_: Things Bridge, Things sync (except for the `pnpm sync:things` command),
 **Owner**: the one person a LifeOS belongs to, Avi. He signs in with his GitHub account. Every other account is refused.
 _Avoid_: admin, user (in code, `users` is only Convex Auth's table).
 
-**Worker**: a process outside Convex that works for Core with its own token (the Things Worker on the Mac, which sends Things Imports until Switch Day; agent and indexing Workers on the Home Server, which claim Jobs). Core keeps only the token's SHA-256 hash and the capabilities the Worker has.
+**Worker**: a process outside Convex that works for Core with its own token (the Mac Worker, registered as `things`, which sends Things Imports until Switch Day and Apple Calendar windows while the Mac app is open; agent and indexing Workers on the Home Server, which claim Jobs). Core keeps only the token's SHA-256 hash and the capabilities the Worker has.
 
 **Lease**: the time a claimed Job belongs to one Worker. The Worker extends it with a heartbeat. When it runs out, the next Worker to claim takes the Job.
 
@@ -106,4 +111,5 @@ LifeOS is the home of Avi's Tasks (Avi, 18 November 2026). They live in Convex. 
 - **LifeOS wins.** A Things Import never overwrites a field LifeOS has changed since the last import. A change made in Things flows in only when LifeOS has not touched that field.
 - A record that leaves Things is never deleted from LifeOS.
 - LifeOS alone holds the planning layer: Estimates, Work Blocks, Focus Sessions, Day Plans, Recurrence Rules, Templates, Area and Label colours, and Order Keys.
-- Apple Calendar owns the timing of External Commitments and, once written back, of Work Blocks.
+- Apple Calendar owns External Commitments and Calendars. LifeOS only reads them. Which Calendars count and Working Hours belong to LifeOS.
+- Apple Calendar will own the timing of Work Blocks once they are written back (not built yet).

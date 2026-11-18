@@ -8,7 +8,7 @@ Decided with Avi on 18 November 2026. LifeOS is a whole life OS, not only a plan
 | --- | --- | --- |
 | **Core** | Hosted Convex (free tier), reachable from anywhere | The live app data: Tasks, Areas, Projects, planning, Activity, the Job queue, and searchable indexes of notes and saved links. Every client and the MCP connector talk to it. |
 | **Home Server** | One thin LXC container on Avi's Proxmox box, on his Tailscale network, with the 2 TB SSD | Always-on Workers: in-app agents using Avi's Claude and ChatGPT subscriptions (Claude Code and Codex logged in inside the container), link indexing (a small embedding model, plus the OpenAI API for classification), the always-on Notes peer and archive, and large files. Keep it thin: Node, the two agent CLIs, Tailscale, nothing else. |
-| **Mac app** | Tauri on Avi's MacBook | The Things Worker until Switch Day (it imports from a copy of the Things database every few minutes, one way), trackpad haptics, a Notes peer, and a fallback agent runner when the Home Server is down. |
+| **Mac app** | Tauri on Avi's MacBook | The Things Worker until Switch Day (it imports from a copy of the Things database every few minutes, one way), the Apple Calendar reader (EventKit, read only), trackpad haptics, a Notes peer, and a fallback agent runner when the Home Server is down. |
 
 Clients (web, Mac, iPhone) read and write Core. They never depend on the Home Server being up, except for notes edited on another device, which merge when the peers meet.
 
@@ -19,7 +19,16 @@ Anything that must happen outside Convex is a **Job** in Core, claimed by a **Wo
 - A Job has a kind, a payload, an idempotency key, a status (queued, claimed, done, failed), a lease with a heartbeat, an attempt count, and a result or receipt.
 - A Worker registers what it can do (for example `things`, `agent:claude`, `agent:codex`, `index:link`), subscribes to queued Jobs it can handle, claims one with a lease, heartbeats while working, and reports a result. An expired lease returns the Job to the queue.
 - Agent runs, link indexing and note archiving are all Job kinds. There is one queue, one claim rule and one retry rule, so a new module adds a Job kind, not a new queue.
-- The Things Worker is the one Worker that claims no Jobs. Its `things` capability lets it send Things Imports until Switch Day (`docs/leaving-things.md`). Nothing in LifeOS writes to Things.
+- The Mac Worker claims no Jobs. Its `things` capability lets it send Things Imports until Switch Day (`docs/leaving-things.md`). Nothing in LifeOS writes to Things. Its `calendar` capability lets it send Apple Calendar windows (below).
+
+## Apple Calendar: read on the Mac, mirrored in Core
+
+EventKit only runs on Apple devices, so the Mac app reads Apple Calendar and Core keeps a mirror. Every client reads the mirror, so the web and iPhone apps see the same External Commitments without asking for calendar access.
+
+- The reader lives in `apps/desktop/src-tauri/src/calendar/`. `eventkit.rs` asks macOS for full calendar access once (the prompt text is in `Info.plist`), reads every event calendar, and reads each event occurrence in a window from 7 days back to 61 days ahead. `snapshot.rs` maps them into the shape Core accepts. `sync.rs` sends the window about five seconds after launch, two seconds after any calendar change (`EKEventStoreChangedNotification`), and every five minutes. An unchanged window is sent at most once an hour.
+- It reads title, times, all-day, location, availability, whether it repeats, and Avi's own reply to an invitation. It never reads notes, URLs or other attendees.
+- It signs in with the same Keychain token as the Things Import (`lifeos-app-things-sync`). Core accepts the window from a Worker with the `calendar` capability (`calendar/sync:applyWindow`), which upserts by occurrence and deletes what vanished inside the window (`docs/data-model.md`).
+- Nothing is written to Apple Calendar. Writing Work Blocks back is the next step of #5.
 - Workers authenticate with a scoped machine token per Worker, stored in that machine's keychain or secret store. Convex keeps only its hash.
 - People authenticate with GitHub through Convex Auth, and only the owner's account gets in. Every public function goes through the owner guard (`docs/auth.md`).
 

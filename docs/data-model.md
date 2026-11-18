@@ -43,7 +43,7 @@ The changes inside one Activity row, in order. Each holds enough to invert itsel
 | --- | --- |
 | `activityId` | `Id<"activity">` |
 | `seq` | Position inside the action |
-| `entity` | Record reference (any Entity Reference, or an `entityLinks` row) |
+| `entity` | Record reference (any Entity Reference, an `entityLinks` row, or a setting row: `calendars`, `workingHours`) |
 | `change` | `insert { after }`, `patch { before, after }` or `delete { before }`. `before` and `after` hold only the changed fields. |
 
 | Index | Serves |
@@ -84,10 +84,10 @@ One unit of background work.
 | Field | Type |
 | --- | --- |
 | `name` | Unique, such as `things` |
-| `capabilities` | What this Worker may do: `agent` (a Job kind it may claim) or `things` (send Things Imports) |
+| `capabilities` | What this Worker may do: `agent` (a Job kind it may claim), `things` (send Things Imports) or `calendar` (send Apple Calendar windows) |
 | `tokenHash` | SHA-256 hex of the Worker's token. The token itself lives only in that machine's keychain. |
 
-Indexes: `by_name` (register), `by_token_hash` (authenticate every Worker call).
+Indexes: `by_name` (register, and `platform/workers:grant`, which adds one capability to a named Worker without touching its token), `by_token_hash` (authenticate every Worker call).
 
 ### `users`
 
@@ -156,7 +156,7 @@ No indexes: the guard reads the row by the id the session holds.
 | `by_task_start` (`taskId`, `start`) | The Task card |
 | `by_removed_start` (`removedAt`, `start`) | The Timebox calendar for a range |
 
-Apple Calendar write-back adds an optional `calendarEvent { calendarId, eventId }` field.
+Apple Calendar write-back adds an optional `calendarEvent { calendarId, eventKey }` field.
 
 ### `thingsSync`
 
@@ -197,13 +197,86 @@ Trash changes through `planner/trash` (`restore`, `deleteForever`, `empty`). `re
 
 `planner/seed.test-utils.ts` builds a realistic planner (five Areas, six Projects, Headings, Deadlines, a Logbook). The list tests use it, and a scratch local backend can run it for visual checks.
 
+## Calendar module (`convex/calendar`)
+
+Apple Calendar, read by the Mac app and mirrored here as **External Commitments**. Read only: nothing in LifeOS writes to Apple Calendar yet. Apple Calendar owns these rows, so the mirror records no Activity and cannot be undone. Only Avi's settings (which calendars count, working hours) go through `changeMutation`.
+
+### `calendars`
+
+One row per Apple Calendar on the Mac.
+
+| Field | Type |
+| --- | --- |
+| `calendarId` | EventKit's `calendarIdentifier` |
+| `title`, `source` | The calendar's name and its account (iCloud, On My Mac, Exchange) |
+| `colour` | The calendar's own colour as `#rrggbb` (sRGB). Not one of the eight tokens: it is Apple's colour, shown as the Things reference shows it |
+| `kind` | `local`, `calDAV`, `exchange`, `subscription` or `birthday` |
+| `included` | Whether it counts. A new calendar counts unless it is a subscription (holidays) or Birthdays. Avi changes it in the Calendars panel |
+
+Index: `by_calendar_id` (the sync). A calendar that leaves the Mac's list is deleted. Its commitments inside the window go with the next window.
+
+### `externalCommitments`
+
+One row per event occurrence.
+
+| Field | Type |
+| --- | --- |
+| `calendarId` | The calendar it belongs to |
+| `eventKey` | Its identity. A one-off event is EventKit's `eventIdentifier` (or `calendarItemIdentifier` when that is missing). A recurring occurrence is `<eventIdentifier>@<occurrence date in ms>`, using the original date, so moving one occurrence keeps its row |
+| `title`, optional `location` | As in Calendar. An untitled event reads "Busy". Notes, URLs and attendees are never read |
+| `start`, `end` | Moments. An all-day event starts at local midnight and covers whole days |
+| `allDay` | Boolean |
+| `availability` | `busy`, `free`, `tentative`, `unavailable` or `unknown` (the calendar does not say) |
+| optional `response` | Avi's own reply to an invitation: `accepted`, `declined`, `tentative` or `pending`. Nothing else about attendees is read |
+| `recurring` | Whether it is one occurrence of a series |
+
+| Index | Serves |
+| --- | --- |
+| `by_event_key` | The sync finds the row for an occurrence |
+| `by_start` | A range of days. The range query reads from 14 days before its start, so an event already under way still shows. An event longer than 14 days is the one case it misses |
+
+### `calendarSync`
+
+One row: `syncedAt`, `windowStart`, `windowEnd` of the last window the Mac sent. The Calendars panel shows how long ago that was.
+
+### `workingHours`
+
+One row, absent until Avi changes it: `startMinute`, `endMinute` (minutes after local midnight). The default is 9:00 to 17:30, every day.
+
+### How a window lands
+
+The Mac app sends `calendar/sync:applyWindow` (a `workerMutation`, needing the `calendar` capability) with `{ window, calendars, commitments }`. The window runs from 7 days back to 61 days ahead, on whole UTC days, so it stays the same all day.
+
+- Calendars are upserted by `calendarId`. Missing ones are deleted.
+- Each commitment is upserted by `eventKey`. An unchanged row is not written. A commitment for a calendar the Mac did not list is skipped and counted.
+- A row whose `start` is inside the window and whose key the Mac did not send is deleted. Rows outside the window are never touched.
+- The reply counts what happened: `inserted`, `updated`, `unchanged`, `removed`, `skipped`. Sending the same window twice changes nothing.
+
+### Capacity
+
+**Capacity** is free time in a day inside working hours, after the commitments that take time.
+
+- A commitment takes time when its availability is `busy`, `tentative` or `unavailable`, or `unknown` on a timed event.
+- `free` events, events Avi declined, and all-day events (unless marked busy) leave the time free.
+- Overlapping commitments count once. Time before or after working hours does not count.
+- Days are local dates in the time zone the client names. Working hours keep their wall-clock times across a daylight saving change.
+
+| Query | Screen | Reads |
+| --- | --- | --- |
+| `calendar/commitments:range` (`from`, `to`, moments, up to 100 days) | Upcoming, Today, later the Timebox calendar | `externalCommitments.by_start`, `calendars` |
+| `calendar/capacity:days` (`from`, `days` up to 62, `timeZone`) | Today's free time, later the Planner's day columns | as above, and `workingHours` |
+| `calendar/calendars:list` | The Calendars panel | `calendars`, `calendarSync` |
+| `calendar/workingHours:get` | The Calendars panel | `workingHours` |
+
+Changes: `calendar/calendars:setIncluded` (`calendar.include`) and `calendar/workingHours:set` (`calendar.workingHours`, refuses a span that is empty, negative or past midnight with `invalid_hours`). Both record Activity and can be undone.
+
 ## Tables later slices add
 
 Each slice adds these as new tables, or as variants of `vEntityRef` and `vJob`. None reshapes a table above.
 
-### Calendar module
+### Calendar write-back
 
-- **`externalCommitments`**: `calendarId`, `eventId`, `title`, `start`, `end`, `allDay`, `source` (calendar name). Indexes: `by_event` (`calendarId`, `eventId`) for the mirror, `by_start` for a range. Written by a Worker reading Apple Calendar through a `calendar` Job kind.
+- Writing Work Blocks to Apple Calendar adds an optional `calendarEvent { calendarId, eventKey }` to `workBlocks`, and a Mac-side writer that only changes events LifeOS created.
 
 ### Focus and rituals
 

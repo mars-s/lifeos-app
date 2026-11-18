@@ -176,6 +176,7 @@ LifeOS (`components/lifeos`). All take plain props and make no backend calls.
 | `CommandPalette` | `command-palette.tsx` | The palette shell: filter, arrows, Enter |
 | `EmptyState`, `ThingsStatus` | `states.tsx` | The calm empty view, and "Waiting for Things" |
 | `AreaDot` | `area.tsx` | The Area colour as a dot |
+| `CommitmentList`, `CommitmentStrip` | `commitments.tsx` | External Commitments: a time in Geist Mono tinted with the calendar's own colour (mixed 78% with ink so yellow stays readable), or a coloured bar for all day. The list sits at the top of an Upcoming day, like Things. The strip is Today's one line with the day's free time. Free and declined events are faint |
 
 ## The app shell
 
@@ -186,6 +187,7 @@ The real screens live in `apps/web/src/components/app`. They read Convex and com
 | `AppShell` | `app-shell.tsx` | The sidebar on `surface`, the main column as one `surface-inset` panel, the phone drawer, the keyboard map, and a warm subscription to the five main lists so switching never waits |
 | `Route` | `route.ts` | The one model of where you are: a list, an Area or a Project. `/area?id=` and `/project?id=` use a query string because the Mac app ships static files |
 | `Sidebar` | `sidebar.tsx` | Lists with rolling counts, Areas with their Projects, the "Synced from Things" note, Sign out |
+| `CalendarsButton` | `calendars-setting.tsx` | The calendar button beside New List. Its panel says when the Mac last read Apple Calendar, lists each Calendar by account with a switch for whether it counts (undoable, applied in the same frame), and shows Working Hours |
 | `TaskItem` | `task-item.tsx` | A row that opens in place into its card. Focus stays inside. Escape, Cmd+Enter or a click away closes it and saves what was typed |
 | `TaskCardBody` | `task-card-body.tsx` | The open card: title, notes with clickable links, Checklist, Work Blocks, Estimate, When, Labels and Deadline |
 | `useChange`, `useTaskActions` | `changes.ts`, `task-actions.ts` | Every edit: it shows at once (an optimistic update over every list that holds the Task), records Activity, and raises one undo toast per card |

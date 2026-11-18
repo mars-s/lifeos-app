@@ -10,7 +10,7 @@ Every public Convex function is built with one of three builders in `packages/ba
 | --- | --- | --- |
 | `ownerQuery` | The owner, signed in | Every public query |
 | `ownerMutation` | The owner, signed in, or an active Agent Run (its `agentRun` credential) | `undo`, `undoRun`, and `changeMutation`, which every change is built with |
-| `workerMutation` | A registered Worker, by its token | `jobs.claim`, `heartbeat`, `complete`, `fail` and `things.sync` |
+| `workerMutation` | A registered Worker, by its token | `jobs.claim`, `heartbeat`, `complete`, `fail`, `things.retire` and `calendar/sync:applyWindow` (needs the `calendar` capability) |
 
 The owner check reads the caller's Convex Auth session, loads the `users` row it points at, and compares that row's GitHub id with `LIFEOS_OWNER_GITHUB_ID`. A failure is a `ConvexError` whose data is `{ kind, message }`:
 
