@@ -9,7 +9,7 @@ import { vColour } from "./tables";
 
 const LABEL_LIMIT = 500;
 
-const labelNamed = async (ctx: MutationCtx, name: string) => {
+export const labelNamed = async (ctx: MutationCtx, name: string) => {
   const exact = await ctx.db
     .query("labels")
     .withIndex("by_name", (q) => q.eq("name", name))

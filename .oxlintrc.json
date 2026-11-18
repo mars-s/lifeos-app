@@ -25,8 +25,7 @@
     "apps/web/src/lib/utils.ts",
     "**/*.gen.ts",
     "apps/mobile/src/components/ui/**",
-    "apps/mobile/src/lib/kit.tsx",
-    "apps/things-sync/src/*.jxa.js"
+    "apps/mobile/src/lib/kit.tsx"
   ],
   "rules": {
     "react/react-in-jsx-scope": "off",

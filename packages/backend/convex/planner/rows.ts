@@ -51,7 +51,7 @@ export const enrich = async (ctx: QueryCtx, tasks: Doc<"tasks">[]) => {
   ]);
   const areas = byId(found(areaDocs));
   const labels = byId(found(labelDocs));
-  return tasks.map((task, index) => {
+  return tasks.map(({ things: _link, ...task }, index) => {
     const project = task.parent.kind === "project" ? projects.get(task.parent.projectId) : undefined;
     const areaId = task.parent.kind === "area" ? task.parent.areaId : project?.areaId;
     const area = areaId ? areas.get(areaId) : undefined;

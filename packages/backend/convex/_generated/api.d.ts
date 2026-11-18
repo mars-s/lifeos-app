@@ -20,6 +20,7 @@ import type * as planner_sidebar from "../planner/sidebar.js";
 import type * as planner_tables from "../planner/tables.js";
 import type * as planner_tasks from "../planner/tasks.js";
 import type * as planner_things from "../planner/things.js";
+import type * as planner_thingsImport from "../planner/thingsImport.js";
 import type * as planner_thingsRows from "../planner/thingsRows.js";
 import type * as planner_today from "../planner/today.js";
 import type * as planner_workBlocks from "../planner/workBlocks.js";
@@ -51,6 +52,7 @@ declare const fullApi: ApiFromModules<{
   "planner/tables": typeof planner_tables;
   "planner/tasks": typeof planner_tasks;
   "planner/things": typeof planner_things;
+  "planner/thingsImport": typeof planner_thingsImport;
   "planner/thingsRows": typeof planner_thingsRows;
   "planner/today": typeof planner_today;
   "planner/workBlocks": typeof planner_workBlocks;

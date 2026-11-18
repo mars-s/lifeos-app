@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values";
-import { internalMutation, type QueryCtx } from "../_generated/server";
+import { internalMutation, internalQuery, type QueryCtx } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
 import { vCapability, type Capability } from "./tables";
 
@@ -17,6 +17,11 @@ export const workerForToken = async (ctx: QueryCtx, token: string) => {
   if (!worker) throw new ConvexError("This Worker token is not valid.");
   return worker;
 };
+
+export const forToken = internalQuery({
+  args: { token: v.string() },
+  handler: (ctx, { token }) => workerForToken(ctx, token),
+});
 
 export const requireCapability = (worker: Doc<"workers">, capability: Capability) => {
   if (!worker.capabilities.includes(capability)) {

@@ -9,7 +9,7 @@ import {
   unwrap,
   type SignedOutBackend,
 } from "../backend.test-utils";
-import { snapshotOf, thingsTask } from "../planner/things.test-utils";
+import { rowsOf, thingsItem } from "../planner/things.test-utils";
 
 const signedOut = { kind: "signed_out", message: "Sign in to use LifeOS." };
 const notOwner = { kind: "not_owner", message: "This is not your LifeOS. Only its owner can use it." };
@@ -85,11 +85,10 @@ test("Workers keep their own token auth with no signed-in identity", async () =>
   const { anonymous: worker, owner } = await ownerWork();
   const thingsToken = await registerWorker(owner, "things", ["things"]);
   const agentToken = await registerWorker(owner, "home-server", ["agent"]);
-  const synced = await worker.mutation(api.planner.things.sync, {
-    token: thingsToken,
-    snapshot: snapshotOf({ tasks: [thingsTask("T1", "Walk")] }),
-  });
-  expect(synced.tasks).toEqual({ inserted: 1, updated: 0, departed: 0 });
+  const imported = unwrap(
+    await worker.action(api.planner.things.importRows, { token: thingsToken, rows: rowsOf({ items: [thingsItem("T1", "Walk")] }) }),
+  );
+  expect(imported.tasks).toEqual({ inserted: 1, updated: 0, unchanged: 0 });
   await owner.mutation(internal.platform.jobs.enqueue, {
     job: { kind: "agent", payload: { request: "Plan my week" } },
     idempotencyKey: "agent:plan-week",
@@ -98,7 +97,7 @@ test("Workers keep their own token auth with no signed-in identity", async () =>
   const agentRun = { token: agentToken, jobId: claimed!.jobId };
   const { taskId } = unwrap(await worker.mutation(api.planner.tasks.create, { title: "Agent task", agentRun }));
   expect((await owner.query(api.planner.tasks.card, { taskId }))?.title).toBe("Agent task");
-  expect(await refusal(worker.mutation(api.planner.things.sync, { token: agentToken, snapshot: snapshotOf({}) }))).toBe(
+  expect(await refusal(worker.action(api.planner.things.importRows, { token: agentToken, rows: rowsOf({}) }))).toBe(
     "This Worker cannot do things work.",
   );
   expect(await refusal(worker.mutation(api.platform.jobs.claim, { token: "forged" }))).toBe(

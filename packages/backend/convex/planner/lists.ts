@@ -40,9 +40,7 @@ const openTasksWhen = (ctx: QueryCtx, kind: Exclude<When["kind"], "scheduled">) 
     .withIndex("by_trashed_status_when", (q) => q.eq("trashedAt", undefined).eq("status.kind", "open").eq("when.kind", kind))
     .take(LIST_LIMIT);
 
-const thingsRank = (task: Doc<"tasks">) => task.things?.index ?? Number.POSITIVE_INFINITY;
-
-const byListOrder = (a: Doc<"tasks">, b: Doc<"tasks">) => compare(thingsRank(a), thingsRank(b)) || compare(a.order, b.order);
+const byListOrder = (a: Doc<"tasks">, b: Doc<"tasks">) => compare(a.order, b.order);
 
 const groupByContainer = async (ctx: QueryCtx, tasks: Doc<"tasks">[], keepProject: (project: Doc<"projects">) => boolean) => {
   const { standalone, areas } = await loadContainers(ctx);

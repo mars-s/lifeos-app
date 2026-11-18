@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { api, internal } from "../_generated/api";
 import { newBackend, registerWorker, unwrap } from "../backend.test-utils";
-import { snapshotOf, thingsTask } from "./things.test-utils";
+import { packDate, rowsOf, thingsItem, thingsProject } from "./things.test-utils";
 
 const today = "2026-11-18";
 const scheduled = (date: string, evening = false) => ({ kind: "scheduled" as const, date, evening });
@@ -32,30 +32,21 @@ test("Today holds open Tasks scheduled on or before the date and Tasks due by th
 test("Things' own Today order leads, and each Task carries its Project or Area as context", async () => {
   const t = await newBackend();
   const token = await registerWorker(t, "things", ["things"]);
-  await t.mutation(api.planner.things.sync, {
-    token,
-    snapshot: snapshotOf({
-      areas: [{ thingsId: "A1", title: "University", index: 0 }],
-      projects: [
-        {
-          thingsId: "P1",
-          title: "Thesis",
-          notes: "",
-          status: "open",
-          when: { kind: "anytime" },
-          tags: [],
-          areaThingsId: "A1",
-          index: 0,
-          modifiedAt: 1,
-        },
-      ],
-      tasks: [
-        thingsTask("T2", "Read chapter", { list: "today", index: 1, when: scheduled(today), areaThingsId: "A1" }),
-        thingsTask("T1", "Draft intro", { list: "today", index: 0, when: scheduled(today), projectThingsId: "P1" }),
-        thingsTask("T3", "Loose errand", { list: "today", index: 2, when: scheduled(today) }),
-      ],
+  const onToday = { start: 1, startDate: packDate(today) };
+  unwrap(
+    await t.action(api.planner.things.importRows, {
+      token,
+      rows: rowsOf({
+        areas: [{ uuid: "A1", title: "University", index: 0 }],
+        items: [
+          thingsProject("P1", "Thesis", { area: "A1" }),
+          thingsItem("T2", "Read chapter", { ...onToday, todayIndex: -10, area: "A1" }),
+          thingsItem("T1", "Draft intro", { ...onToday, todayIndex: -50, project: "P1" }),
+          thingsItem("T3", "Loose errand", { ...onToday, todayIndex: 461 }),
+        ],
+      }),
     }),
-  });
+  );
   unwrap(await t.mutation(api.planner.tasks.create, { title: "LifeOS only", when: scheduled("2026-11-17") }));
 
   const view = unwrap(await t.query(api.planner.today.get, { date: today }));

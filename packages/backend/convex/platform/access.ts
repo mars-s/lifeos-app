@@ -1,7 +1,18 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { vGithubProfile } from "@convex-dev/auth/methods/github/server";
 import { ConvexError, v, type ObjectType, type PropertyValidators } from "convex/values";
-import { env, internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from "../_generated/server";
+import { makeFunctionReference } from "convex/server";
+import {
+  action,
+  env,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+  type ActionCtx,
+  type MutationCtx,
+  type QueryCtx,
+} from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { Actor } from "./tables";
 import { workerForToken } from "./workers";
@@ -79,6 +90,18 @@ export const workerMutation = <Args extends PropertyValidators, Output>(spec: {
     args: { ...spec.args, token: v.string() },
     handler: async (ctx, { token, ...args }) =>
       spec.handler(ctx, args as ObjectType<Args>, await workerForToken(ctx, token)),
+  });
+
+const workerForTokenQuery = makeFunctionReference<"query", { token: string }, Doc<"workers">>("platform/workers:forToken");
+
+export const workerAction = <Args extends PropertyValidators, Output>(spec: {
+  args: Args;
+  handler: (ctx: ActionCtx, args: ObjectType<Args>, worker: Doc<"workers">) => Promise<Output>;
+}) =>
+  action({
+    args: { ...spec.args, token: v.string() },
+    handler: async (ctx, { token, ...args }) =>
+      spec.handler(ctx, args as ObjectType<Args>, await ctx.runQuery(workerForTokenQuery, { token })),
   });
 
 export const isOwner = internalQuery({

@@ -1,5 +1,5 @@
 import { defineTable } from "convex/server";
-import { v, type Infer } from "convex/values";
+import { v, type GenericValidator, type Infer } from "convex/values";
 
 export const vWhen = v.union(
   v.object({ kind: v.literal("inbox") }),
@@ -23,23 +23,6 @@ export const vParent = v.union(
 export const colours = ["violet", "green", "orange", "teal", "rose", "olive", "plum", "slate"] as const;
 
 export const vColour = v.union(...colours.map((colour) => v.literal(colour)));
-
-export const vThingsList = v.union(
-  v.literal("inbox"),
-  v.literal("today"),
-  v.literal("anytime"),
-  v.literal("upcoming"),
-  v.literal("someday"),
-);
-
-const vThingsLink = v.object({ id: v.string(), index: v.number() });
-
-const vTaskThingsLink = v.object({
-  id: v.string(),
-  list: vThingsList,
-  index: v.number(),
-  modifiedAt: v.number(),
-});
 
 export type When = Infer<typeof vWhen>;
 export type Status = Infer<typeof vStatus>;
@@ -109,19 +92,26 @@ export const vTaskBase = v
   .pick("title", "notes", "when", "deadline", "parent", "labelIds", "status", "trashedAt");
 export const vChecklistItemBase = v.object(checklistItemFields).pick("title", "done");
 
+const thingsLink = <Base extends GenericValidator>(base: Base) => v.object({ id: v.string(), base: v.optional(base) });
+
 export const plannerTables = {
-  areas: defineTable({ ...areaFields, things: v.optional(vThingsLink) })
+  areas: defineTable({ ...areaFields, things: v.optional(thingsLink(vAreaBase)) })
     .index("by_things_id", ["things.id"])
     .index("by_order", ["order"]),
-  projects: defineTable({ ...projectFields, things: v.optional(vThingsLink) })
+  projects: defineTable({ ...projectFields, things: v.optional(thingsLink(vProjectBase)) })
     .index("by_things_id", ["things.id"])
     .index("by_area_order", ["areaId", "order"]),
-  headings: defineTable({ ...headingFields, things: v.optional(v.object({ id: v.string() })) }).index("by_project_order", [
-    "projectId",
-    "order",
-  ]),
-  labels: defineTable(labelFields).index("by_name", ["name"]).index("by_order", ["order"]),
-  tasks: defineTable({ ...taskFields, things: v.optional(vTaskThingsLink) })
+  headings: defineTable({ ...headingFields, things: v.optional(thingsLink(vHeadingBase)) })
+    .index("by_things_id", ["things.id"])
+    .index("by_project_order", ["projectId", "order"]),
+  labels: defineTable({ ...labelFields, things: v.optional(thingsLink(vLabelBase)) })
+    .index("by_things_id", ["things.id"])
+    .index("by_name", ["name"])
+    .index("by_order", ["order"]),
+  tasks: defineTable({
+    ...taskFields,
+    things: v.optional(thingsLink(vTaskBase).extend({ todayIndex: v.number() })),
+  })
     .index("by_things_id", ["things.id"])
     .index("by_trashed_status_when", ["trashedAt", "status.kind", "when.kind", "when.date"])
     .index("by_trashed_status_deadline", ["trashedAt", "status.kind", "deadline"])
@@ -129,7 +119,9 @@ export const plannerTables = {
     .index("by_project_order", ["parent.projectId", "order"])
     .index("by_area_order", ["parent.areaId", "order"])
     .index("by_parent_kind_order", ["parent.kind", "order"]),
-  checklistItems: defineTable(checklistItemFields).index("by_task_order", ["taskId", "order"]),
+  checklistItems: defineTable({ ...checklistItemFields, things: v.optional(thingsLink(vChecklistItemBase)) })
+    .index("by_things_id", ["things.id"])
+    .index("by_task_order", ["taskId", "order"]),
   workBlocks: defineTable({
     taskId: v.id("tasks"),
     start: v.number(),
@@ -142,6 +134,14 @@ export const plannerTables = {
     .index("by_removed_start", ["removedAt", "start"]),
   thingsSync: defineTable({
     syncedAt: v.number(),
-    counts: v.object({ areas: v.number(), projects: v.number(), tasks: v.number() }),
+    counts: v.object({
+      areas: v.number(),
+      projects: v.number(),
+      headings: v.number(),
+      tasks: v.number(),
+      checklistItems: v.number(),
+      labels: v.number(),
+    }),
+    retiredAt: v.optional(v.number()),
   }),
 };

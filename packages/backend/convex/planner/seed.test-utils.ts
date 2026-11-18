@@ -61,7 +61,7 @@ export const seedPlanner = async (ctx: MutationCtx, today: IsoDate, now: number)
   const areaKeys = keys(areaSpecs.length);
   const [university, paperless, korvant, personal, chemwatch] = await Promise.all(
     areaSpecs.map(([title, colour], index) =>
-      ctx.db.insert("areas", { title, colour, order: areaKeys[index] ?? "a0", things: { id: `seed-area-${index}`, index } }),
+      ctx.db.insert("areas", { title, colour, order: areaKeys[index] ?? "a0", things: { id: `seed-area-${index}` } }),
     ),
   );
   if (!university || !paperless || !korvant || !personal || !chemwatch) throw new Error("seed areas");
@@ -95,7 +95,7 @@ export const seedPlanner = async (ctx: MutationCtx, today: IsoDate, now: number)
         labelIds: [],
         status: { kind: "open" },
         order: projectKeys[index] ?? "a0",
-        things: { id: `seed-project-${index}`, index },
+        things: { id: `seed-project-${index}` },
       }),
     ),
   );
@@ -236,7 +236,7 @@ export const seedPlanner = async (ctx: MutationCtx, today: IsoDate, now: number)
       ...(task.trashedAt ? { trashedAt: task.trashedAt } : {}),
       order: orderKeys[index] ?? "a0",
       ...(task.thingsList
-        ? { things: { id: `seed-task-${index}`, list: task.thingsList, index: position, modifiedAt: now } }
+        ? { things: { id: `seed-task-${index}`, todayIndex: task.thingsList === "today" ? position : 0 } }
         : {}),
     });
     const itemKeys = keys(task.checklist?.length ?? 0);
@@ -244,6 +244,6 @@ export const seedPlanner = async (ctx: MutationCtx, today: IsoDate, now: number)
       await ctx.db.insert("checklistItems", { taskId, title, done: ticked, order: itemKeys[itemIndex] ?? "a0" });
     }
   }
-  await ctx.db.insert("thingsSync", { syncedAt: now - 40_000, counts: { areas: 5, projects: 6, tasks: open.length } });
+  await ctx.db.insert("thingsSync", { syncedAt: now - 40_000, counts: { areas: 5, projects: 6, headings: 0, tasks: open.length, checklistItems: 0, labels: 0 } });
   return { areas: { university, paperless, korvant, personal, chemwatch }, projects: { thesis, comp3900, launch, onboarding, japan, tax } };
 };

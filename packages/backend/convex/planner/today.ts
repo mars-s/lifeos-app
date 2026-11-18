@@ -8,8 +8,7 @@ import { compare, enrich } from "./rows";
 
 const TODAY_LIMIT = 1000;
 
-const thingsTodayRank = (task: Doc<"tasks">) =>
-  task.things?.list === "today" ? task.things.index : Number.POSITIVE_INFINITY;
+const thingsTodayRank = (task: Doc<"tasks">) => task.things?.todayIndex ?? Number.POSITIVE_INFINITY;
 
 const scheduledDate = (task: Doc<"tasks">) => (task.when.kind === "scheduled" ? task.when.date : "9999-12-31");
 

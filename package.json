@@ -20,6 +20,7 @@
     "lint:rust": "pnpm --filter @lifeos/desktop lint",
     "sync:things": "pnpm --filter @lifeos/things-sync sync",
     "sync:things:watch": "pnpm --filter @lifeos/things-sync watch",
+    "things:switch": "pnpm --filter @lifeos/things-sync switch",
     "test": "pnpm -r --if-present test"
   },
   "devDependencies": {
