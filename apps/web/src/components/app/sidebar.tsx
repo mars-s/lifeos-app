@@ -166,7 +166,10 @@ const NavItem = ({
       {glyph}
       <span className="relative min-w-0 flex-1 truncate">{label}</span>
       {count !== undefined && count > 0 && (
-        <RollingNumber value={count} className="relative font-mono text-micro text-faint-foreground" />
+        <>
+          <span className="sr-only">, </span>
+          <RollingNumber value={count} className="relative font-mono text-micro text-faint-foreground" />
+        </>
       )}
     </RouteLink>
   );

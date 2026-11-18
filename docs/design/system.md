@@ -191,6 +191,10 @@ The real screens live in `apps/web/src/components/app`. They read Convex and com
 | `useChange`, `useTaskActions` | `changes.ts`, `task-actions.ts` | Every edit: it shows at once (an optimistic update over every list that holds the Task), records Activity, and raises one undo toast per card |
 | Screens | `screens/` | Inbox, Today, Upcoming, Anytime, Someday, Logbook, Area, Project |
 
+Selection: text never highlights in the chrome or the lists (fields and notes stay selectable). A click selects a Task, Cmd+click adds or removes one, Shift+click selects a range, a drag across rows or a lasso from empty space selects what it crosses, Shift+arrow extends, Cmd+A selects the list and Escape clears. A double-click or Enter opens the card. On a phone a tap opens, and a long-press opens the menu, where Select More starts a selection that taps then add to. Two or more selected Tasks show a count pill with Complete, Trash and More.
+
+Menus: one `AppMenu` (`components/app/menus.tsx`, built on the TuffUI action menu in `components/ui/action-menu.tsx`) replaces the browser menu everywhere except text fields. It reads `data-task-key`, `data-menu-area` and `data-menu-project` from what was clicked. Shift+F10 and the menu key open it for the focused row. `N` makes a Task, Cmd+K completes the selection and Backspace moves it to Trash.
+
 Keys: `1` to `6` (and Cmd+1 to Cmd+6 in the Mac app) switch lists. Arrow keys or `J` and `K` move through rows, or through the sidebar when it has focus. Enter or Space opens a row, Escape or Cmd+Enter closes it. Cmd+Z undoes the newest change, unless the caret is in a field with unsaved typing. A pointer switch slides the selection and fades the list in. A keyboard switch is instant.
 
 `apps/web/scripts/screens.sh <folder>` screenshots every list in light and dark at 1440 and 390 px with agent-browser. Set `SESSION` to a JSON file with `accessToken` and `refreshToken` to start signed in.

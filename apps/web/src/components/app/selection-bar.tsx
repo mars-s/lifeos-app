@@ -25,7 +25,7 @@ const BarButton = ({
     aria-label={label}
     title={label}
     onClick={onClick}
-    className="grid size-9 place-items-center rounded-full text-muted-foreground transition-[background-color,color,scale] duration-(--dur-press) ease-out hover:bg-foreground/[0.07] hover:text-foreground active:scale-[0.92]"
+    className="grid size-9 place-items-center rounded-full max-md:size-11 text-muted-foreground transition-[background-color,color,scale] duration-(--dur-press) ease-out hover:bg-foreground/[0.07] hover:text-foreground active:scale-[0.92]"
   >
     <IconComponent weight={weight} className="size-[18px]" aria-hidden="true" />
   </button>
@@ -51,7 +51,7 @@ export const SelectionBar = () => {
             initial={{ opacity: 0, y: reduce ? 0 : 16, scale: reduce ? 1 : 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1, transition: reduce ? instant : springLift }}
             exit={{ opacity: 0, y: reduce ? 0 : 10, transition: reduce ? instant : { duration: 0.14 } }}
-            className="pointer-events-auto flex h-12 items-center gap-0.5 rounded-full bg-popover pr-1.5 pl-4 shadow-float"
+            className="pointer-events-auto flex h-12 items-center max-md:h-14 gap-0.5 rounded-full bg-popover pr-1.5 pl-4 shadow-float"
           >
             <span className="mr-2 flex items-baseline gap-1.5 text-small font-medium">
               <RollingNumber value={size} className="font-mono" />

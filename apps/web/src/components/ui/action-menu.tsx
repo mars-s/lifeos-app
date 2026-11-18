@@ -104,6 +104,7 @@ function SubSurface({ parts: P, children }: { parts: Parts; children: React.Reac
     <P.Portal>
       <P.SubContent sideOffset={6} alignOffset={-4} collisionPadding={8} {...slot}>
         <motion.div
+          data-submenu
           initial={{ opacity: 0, scale: reduce ? 1 : 0.97 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={reduce ? instant : { duration: 0.15, ease: EASE_OUT }}

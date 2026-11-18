@@ -184,6 +184,10 @@ Every list row has the same shape (`enrich` in `planner/rows.ts`): the Task, plu
 
 The card writes through `planner/tasks` (`rename`, `setNotes`, `setWhen`, `setDeadline`, `setEstimate`, `setLabels`), `planner/checklist` (`add`, `edit`, `tick`, `reorder`, `remove`) and `planner/labels` (`create`, `setColour`). `labels:create` takes an optional `taskId` and adds the new Label to that Task in the same action, so one undo removes both. A Label name is used once, ignoring case: creating it again returns the Label that exists.
 
+A selection of Tasks changes through `planner/selection` (`setWhen`, `setDeadline`, `setEstimate`, `setLabel`, `move`, `complete`, `reopen`, `trash`, `restore`). Each takes `taskIds` (up to 500), validates the whole request first, and records one Activity row, so one undo reverts every Task. A missing Task or an invalid value changes nothing.
+
+Areas change through `planner/areas` (`create`, `rename`, `setColour`, `setIcon`, `reorder`, `trash`, `restore`) and Projects through `planner/projects` (`create`, `rename`, `setNotes`, `setWhen`, `setDeadline`, `move`, `complete`, `reopen`, `trash`, `restore`). A new Area takes the first colour no live Area uses. An icon is a kebab-case name from the web icon set. Trashing an Area or a Project also trashes its live Projects and Tasks with the same `trashedAt`, in the same Activity row. Restore (or undo) brings back only the records that share that moment, so a Task trashed earlier stays in Trash. Completing a Project completes its open Tasks with the Project's completion moment, and reopening it reopens only those.
+
 `planner/seed.test-utils.ts` builds a realistic planner (five Areas, six Projects, Headings, Deadlines, a Logbook). The list tests use it, and a scratch local backend can run it for visual checks.
 
 ## Tables later slices add

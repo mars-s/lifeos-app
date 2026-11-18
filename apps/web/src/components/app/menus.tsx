@@ -55,6 +55,7 @@ type Target =
 type DatePick = { x: number; y: number; tone: "brand" | "deadline"; label: string; value?: string; pick: (date: string) => void };
 
 const ESTIMATES = [15, 30, 45, 60, 90, 120, 180];
+const MENU_CLOSE_MS = 140;
 
 const isTyping = (target: EventTarget | null) =>
   target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
@@ -112,7 +113,16 @@ const DatePopover = ({ pick, today, onClose }: { pick: DatePick | null; today: s
       <AnimatePresence>
         {pick && (
           <PopoverPrimitive.Portal forceMount>
-            <PopoverPrimitive.Content forceMount asChild side="bottom" align="start" sideOffset={4} collisionPadding={12} aria-label={pick.label}>
+            <PopoverPrimitive.Content
+              forceMount
+              asChild
+              side="bottom"
+              align="start"
+              sideOffset={4}
+              collisionPadding={12}
+              aria-label={pick.label}
+              onFocusOutside={(event) => event.preventDefault()}
+            >
               <motion.div
                 initial={{ opacity: 0, scale: reduce ? 1 : 0.97 }}
                 animate={{ opacity: 1, scale: 1, transition: reduce ? instant : { duration: 0.16, ease: EASE_OUT } }}
@@ -203,11 +213,24 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [newTask, tasksDo]);
 
+  const touched = useRef<{ element: Element; x: number; y: number } | null>(null);
+
+  const prepare = (element: Element, at: { x: number; y: number }, keyboard: boolean) => {
+    const onBar = element.closest("[data-selection-bar]") !== null;
+    const next = targetOf(element);
+    if (next.kind === "tasks" && !selection.has(next.key)) selection.only(next.key);
+    if (next.kind !== "tasks" && !onBar) selection.clear();
+    setTarget(onBar ? { kind: "tasks", key: selection.keys()[0] ?? "" } : next);
+    setPoint({ x: at.x, y: at.y });
+    setViaKeyboard(keyboard);
+    haptic("snap");
+  };
+
   const areas = sidebar?.areas ?? [];
   const looseProjects = sidebar?.projects ?? [];
 
   const pickDate = (label: string, tone: DatePick["tone"], value: string | undefined, pick: (date: string) => void) =>
-    setTimeout(() => setDatePick({ ...point, label, tone, value, pick }), 0);
+    setTimeout(() => setDatePick({ ...point, label, tone, value, pick }), MENU_CLOSE_MS);
 
   const whenItems: (
     current: PlannerTask["when"] | undefined,
@@ -543,10 +566,22 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
 
   return (
     <>
-      <ContextMenu groups={groupsFor()} viaKeyboard={viaKeyboard}>
+      <ContextMenu
+        groups={groupsFor()}
+        viaKeyboard={viaKeyboard}
+        onOpenChange={(open) => {
+          if (open && touched.current) prepare(touched.current.element, touched.current, false);
+          touched.current = null;
+        }}
+      >
         <div
           ref={root}
           className="contents"
+          onPointerDownCapture={(event) => {
+            const element = event.target;
+            const pressed = event.pointerType !== "mouse" && element instanceof Element && root.current?.contains(element) && !isTyping(element);
+            touched.current = pressed ? { element, x: event.clientX, y: event.clientY } : null;
+          }}
           onContextMenuCapture={(event) => {
             if (!(event.target instanceof Element)) return;
             if (isTyping(event.target)) {
@@ -558,13 +593,8 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
               event.stopPropagation();
               return;
             }
-            const next = targetOf(event.target);
-            if (next.kind === "tasks" && !selection.has(next.key)) selection.only(next.key);
-            if (next.kind !== "tasks" && !event.target.closest("[data-selection-bar]")) selection.clear();
-            setTarget(next.kind === "empty" && event.target.closest("[data-selection-bar]") ? { kind: "tasks", key: selection.keys()[0] ?? "" } : next);
-            setPoint({ x: event.clientX, y: event.clientY });
-            setViaKeyboard(event.detail === 0);
-            haptic("snap");
+            touched.current = null;
+            prepare(event.target, { x: event.clientX, y: event.clientY }, event.detail === 0);
           }}
         >
           {children}

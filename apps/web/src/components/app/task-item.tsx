@@ -183,6 +183,7 @@ export const TaskItem = ({ task, itemKey = task._id, show = {} }: { task: Planne
   const lingering = useLingering(task._id);
 
   useEffect(() => selection.register(itemKey, task), [itemKey, task]);
+  useEffect(() => () => selection.forget(itemKey), [itemKey]);
   const transition = reduce || openCard?.instant || (!open && closedByKey) ? instant : springLayout;
   const closed = task.status.kind !== "open";
   const editable = open && !closed;
@@ -228,7 +229,7 @@ export const TaskItem = ({ task, itemKey = task._id, show = {} }: { task: Planne
             ? "bg-popover shadow-lift"
             : selected
               ? "task-selected bg-brand/[0.12] dark:bg-brand/[0.17]"
-              : "hover:bg-foreground/[0.04]",
+              : "hover:bg-foreground/[0.04] has-[[data-arrow-item]:focus-visible]:bg-foreground/[0.07]",
         )}
       >
         <div className="flex items-start gap-3 px-3 py-2">

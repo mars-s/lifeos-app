@@ -111,6 +111,13 @@ li[data-selected]:has(+ li[data-selected]) .task-selected {
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
 }
+@media (max-width: 40rem) {
+  [data-radix-popper-content-wrapper]:has(> [data-submenu]) {
+    inset: auto 0.75rem max(0.75rem, env(safe-area-inset-bottom)) 0.75rem !important;
+    min-width: 0 !important;
+    transform: none !important;
+  }
+}
 .light {
   color-scheme: light;
 }

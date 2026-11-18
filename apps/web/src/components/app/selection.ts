@@ -68,13 +68,13 @@ export const selection = {
     tasks.set(key, task);
     registered += 1;
     listeners.forEach((listener) => listener());
-    return () => {
-      tasks.delete(key);
-      if (!current.keys.has(key)) return;
-      const keys = new Set(current.keys);
-      keys.delete(key);
-      publish(keys.size === 0 ? EMPTY : { ...current, keys });
-    };
+  },
+  forget: (key: string) => {
+    tasks.delete(key);
+    if (!current.keys.has(key)) return;
+    const keys = new Set(current.keys);
+    keys.delete(key);
+    publish(keys.size === 0 ? EMPTY : { ...current, keys });
   },
   linger: (ids: readonly string[], on: boolean) => {
     const next = new Set(lingering);
