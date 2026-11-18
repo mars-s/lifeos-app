@@ -26,7 +26,7 @@ export const mcp: McpServer = new McpServer(components.mcp, {
       scope: "lifeos:read",
       handler: async (ctx, { date }, user) => {
         if (user.userId !== ownerUserId) throw new ConvexError("This LifeOS belongs to someone else.");
-        const result = await ctx.runQuery(internal.today.getForAgent, { date });
+        const result = await ctx.runQuery(internal.planner.today.getForAgent, { date });
         if (!result.ok) throw new ConvexError(`Use a real date in YYYY-MM-DD form, not "${result.error.input}".`);
         return result.value;
       },

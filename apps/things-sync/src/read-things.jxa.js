@@ -29,5 +29,6 @@ function run() {
     },
     projects: column(app.projects),
     areas: { ids: app.areas.id(), titles: app.areas.name() },
+    trash: app.lists.byId("TMTrashListSource").toDos.id(),
   });
 }

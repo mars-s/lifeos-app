@@ -2,6 +2,7 @@ import { parseArgs } from "node:util";
 import { ConvexHttpClient } from "convex/browser";
 import { ResultAsync } from "neverthrow";
 import { api } from "@lifeos/backend/api";
+import { localIsoDate } from "@lifeos/backend/date";
 import { toSnapshot } from "./snapshot.ts";
 import { readSyncToken, readThings } from "./things.ts";
 
@@ -20,10 +21,10 @@ const client = new ConvexHttpClient(convexUrl);
 
 const syncOnce = () =>
   readSyncToken()
-    .andThen((token) => readThings().andThen(toSnapshot).map((snapshot) => ({ token, snapshot })))
+    .andThen((token) => readThings().andThen((raw) => toSnapshot(raw, localIsoDate(new Date()))).map((snapshot) => ({ token, snapshot })))
     .andThen(({ token, snapshot }) =>
       ResultAsync.fromPromise(
-        client.mutation(api.things.sync, { token, snapshot }),
+        client.mutation(api.planner.things.sync, { token, snapshot }),
         (error) =>
           ({ kind: "convex_rejected", detail: error instanceof Error ? error.message : String(error) }) satisfies SyncError,
       ).map((changes) => ({ changes, total: snapshot.tasks.length })),
@@ -34,8 +35,8 @@ const report = async () => {
   const time = new Date().toLocaleTimeString("en-AU");
   result.match(
     ({ changes, total }) => {
-      const { inserted, updated, deleted } = changes.tasks;
-      console.log(`${time} Synced ${total} tasks from Things (${inserted} new, ${updated} changed, ${deleted} removed).`);
+      const { inserted, updated, departed } = changes.tasks;
+      console.log(`${time} Synced ${total} tasks from Things (${inserted} new, ${updated} changed, ${departed} left Things).`);
     },
     (error) => {
       console.error(`${time} Sync failed: ${JSON.stringify(error)}`);

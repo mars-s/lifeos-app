@@ -2,7 +2,7 @@ import { Result, err, ok } from "neverthrow";
 import type { FunctionArgs } from "convex/server";
 import type { api } from "@lifeos/backend/api";
 
-export type ThingsSnapshot = FunctionArgs<typeof api.things.sync>["snapshot"];
+export type ThingsSnapshot = FunctionArgs<typeof api.planner.things.sync>["snapshot"];
 type SnapshotTask = ThingsSnapshot["tasks"][number];
 type ListName = SnapshotTask["list"];
 type Status = SnapshotTask["status"];
@@ -25,7 +25,10 @@ export type RawThings = {
   lists: Record<ListName, ListColumn>;
   projects: Column;
   areas: { ids: string[]; titles: string[] };
+  trash: string[];
 };
+
+type When = SnapshotTask["when"];
 
 export type SnapshotError =
   | { readonly kind: "misaligned_columns"; readonly where: string }
@@ -55,8 +58,8 @@ const rowsOf = (column: Column, projects: (string | null)[] | undefined, where: 
         status,
         tags: (column.tags[i] ?? "").split(", ").filter(Boolean),
         modifiedAt: column.modified[i] ?? 0,
-        position: i,
-        ...(start ? { scheduledFor: start } : {}),
+        index: i,
+        start: start || undefined,
         ...(deadline ? { deadline } : {}),
         ...(area ? { areaThingsId: area } : {}),
         ...(project ? { projectThingsId: project } : {}),
@@ -65,13 +68,26 @@ const rowsOf = (column: Column, projects: (string | null)[] | undefined, where: 
   );
 };
 
-export const toSnapshot = (raw: RawThings) =>
+const scheduled = (date: string) => ({ kind: "scheduled", date, evening: false }) satisfies When;
+
+const whenFor = (list: ListName, start: string | undefined, today: string) => {
+  const whens = {
+    inbox: { kind: "inbox" },
+    today: scheduled(start ?? today),
+    upcoming: start ? scheduled(start) : { kind: "anytime" },
+    anytime: { kind: "anytime" },
+    someday: { kind: "someday" },
+  } satisfies Record<ListName, When>;
+  return whens[list];
+};
+
+export const toSnapshot = (raw: RawThings, today: string) =>
   rowsOf(raw.projects, undefined, "projects").andThen((projectRows) => {
     const projectIds = new Set(projectRows.map((project) => project.thingsId));
     return Result.combine(
       LIST_PRECEDENCE.map((list) =>
         rowsOf(raw.lists[list], raw.lists[list].projects, list).map((rows) =>
-          rows.map((row) => ({ ...row, list }) satisfies SnapshotTask),
+          rows.map(({ start, ...row }) => ({ ...row, list, when: whenFor(list, start, today) }) satisfies SnapshotTask),
         ),
       ),
     ).map((listRows) => {
@@ -80,11 +96,12 @@ export const toSnapshot = (raw: RawThings) =>
         if (!projectIds.has(row.thingsId) && !tasks.has(row.thingsId)) tasks.set(row.thingsId, row);
       }
       return {
-        areas: raw.areas.ids.map((id, position) => ({ thingsId: id, title: raw.areas.titles[position] ?? "", position })),
+        areas: raw.areas.ids.map((id, index) => ({ thingsId: id, title: raw.areas.titles[index] ?? "", index })),
         projects: projectRows
           .filter((project) => project.status === "open")
-          .map(({ modifiedAt: _modifiedAt, ...project }) => project),
+          .map(({ start, ...project }) => ({ ...project, when: start ? scheduled(start) : { kind: "anytime" } })),
         tasks: [...tasks.values()],
+        trash: raw.trash,
       } satisfies ThingsSnapshot;
     });
   });

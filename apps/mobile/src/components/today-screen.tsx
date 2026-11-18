@@ -40,18 +40,27 @@ export const TodayScreen = () => {
 
 const TodayTasks = ({ date }: { date: string }) => {
   const { colors, text } = useKit();
-  const response = useQuery(api.today.get, { date });
+  const response = useQuery(api.planner.today.get, { date });
   if (response === undefined) return <LoadingRows />;
   const content = deserialise(response).match(
-    ({ tasks }) =>
-      tasks.length === 0 ? (
+    ({ tasks, evening }) =>
+      tasks.length + evening.length === 0 ? (
         <Text style={[text.sm, styles.body, { color: colors.mutedForeground }]}>Nothing in Today. Enjoy the space.</Text>
       ) : (
-        <ListSection>
-          {tasks.map((task) => (
-            <TaskRow key={task._id} task={task} />
-          ))}
-        </ListSection>
+        <>
+          <ListSection>
+            {tasks.map((task) => (
+              <TaskRow key={task._id} task={task} />
+            ))}
+          </ListSection>
+          {evening.length > 0 ? (
+            <ListSection header="This Evening">
+              {evening.map((task) => (
+                <TaskRow key={task._id} task={task} />
+              ))}
+            </ListSection>
+          ) : null}
+        </>
       ),
     (error) => (
       <Text style={[text.sm, styles.body, { color: colors.danger }]}>Could not read the date {error.input}.</Text>
@@ -70,7 +79,7 @@ const clockTime = (ms: number) =>
 
 const SyncNote = () => {
   const { colors, text } = useKit();
-  const status = useQuery(api.things.syncStatus);
+  const status = useQuery(api.planner.things.status);
   if (status === undefined) return null;
   return (
     <Text style={[text.xs, styles.note, { color: colors.mutedForeground }]}>

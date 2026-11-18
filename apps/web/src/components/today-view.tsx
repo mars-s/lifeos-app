@@ -43,12 +43,25 @@ export const TodayView = () => {
 };
 
 const TodayTasks = ({ date }: { date: string }) => {
-  const response = useQuery(api.today.get, { date });
+  const response = useQuery(api.planner.today.get, { date });
   if (response === undefined) return <p className="text-sm text-muted-foreground">Loading…</p>;
   return (
     <>
       {deserialise(response).match(
-        ({ tasks }) => (tasks.length === 0 ? <EmptyDay /> : <TaskList tasks={tasks} />),
+        ({ tasks, evening }) =>
+          tasks.length + evening.length === 0 ? (
+            <EmptyDay />
+          ) : (
+            <>
+              <TaskList tasks={tasks} />
+              {evening.length > 0 ? (
+                <>
+                  <h2 className="mt-8 mb-1 text-sm font-medium text-muted-foreground">This Evening</h2>
+                  <TaskList tasks={evening} />
+                </>
+              ) : null}
+            </>
+          ),
         (error) => <p className="text-sm text-destructive">Could not read the date {error.input}.</p>,
       )}
       <SyncNote />
@@ -60,7 +73,7 @@ const clockTime = (ms: number) =>
   new Intl.DateTimeFormat("en-AU", { hour: "numeric", minute: "2-digit" }).format(new Date(ms));
 
 const SyncNote = () => {
-  const status = useQuery(api.things.syncStatus);
+  const status = useQuery(api.planner.things.status);
   if (status === undefined) return null;
   return (
     <p className="mt-10 text-xs text-muted-foreground/80">

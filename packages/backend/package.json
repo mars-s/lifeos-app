@@ -17,15 +17,21 @@
     "dev": "convex dev",
     "codegen": "convex codegen",
     "deploy": "convex deploy",
-    "typecheck": "tsc -p convex"
+    "typecheck": "tsc -p convex",
+    "test": "vitest run"
   },
   "dependencies": {
     "@convex-dev/mcp": "0.1.0-alpha.7",
     "convex": "^1.51.0",
+    "fractional-indexing": "^3.2.0",
     "neverthrow": "^8.2.0"
   },
   "devDependencies": {
+    "@edge-runtime/vm": "^5.0.0",
     "@types/node": "^24.19.2",
-    "typescript": "~6.0.3"
+    "convex-test": "^0.0.72",
+    "typescript": "~6.0.3",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
   }
 }

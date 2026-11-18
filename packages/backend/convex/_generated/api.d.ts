@@ -10,8 +10,20 @@
 
 import type * as http from "../http.js";
 import type * as mcp from "../mcp.js";
-import type * as things from "../things.js";
-import type * as today from "../today.js";
+import type * as planner_checklist from "../planner/checklist.js";
+import type * as planner_model from "../planner/model.js";
+import type * as planner_tables from "../planner/tables.js";
+import type * as planner_tasks from "../planner/tasks.js";
+import type * as planner_things from "../planner/things.js";
+import type * as planner_today from "../planner/today.js";
+import type * as planner_workBlocks from "../planner/workBlocks.js";
+import type * as platform_activity from "../platform/activity.js";
+import type * as platform_change from "../platform/change.js";
+import type * as platform_jobs from "../platform/jobs.js";
+import type * as platform_links from "../platform/links.js";
+import type * as platform_tables from "../platform/tables.js";
+import type * as platform_undo from "../platform/undo.js";
+import type * as platform_workers from "../platform/workers.js";
 
 import type {
   ApiFromModules,
@@ -22,8 +34,20 @@ import type {
 declare const fullApi: ApiFromModules<{
   http: typeof http;
   mcp: typeof mcp;
-  things: typeof things;
-  today: typeof today;
+  "planner/checklist": typeof planner_checklist;
+  "planner/model": typeof planner_model;
+  "planner/tables": typeof planner_tables;
+  "planner/tasks": typeof planner_tasks;
+  "planner/things": typeof planner_things;
+  "planner/today": typeof planner_today;
+  "planner/workBlocks": typeof planner_workBlocks;
+  "platform/activity": typeof platform_activity;
+  "platform/change": typeof platform_change;
+  "platform/jobs": typeof platform_jobs;
+  "platform/links": typeof platform_links;
+  "platform/tables": typeof platform_tables;
+  "platform/undo": typeof platform_undo;
+  "platform/workers": typeof platform_workers;
 }>;
 
 /**
