@@ -4,7 +4,9 @@ export default async function DesignPage() {
   return (
     <>
       <title>Design system · LifeOS</title>
-      <DesignBoard />
+      <main className="min-h-dvh">
+        <DesignBoard />
+      </main>
     </>
   );
 }

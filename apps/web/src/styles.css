@@ -172,6 +172,21 @@
   --ease-drawer: var(--ease-drawer);
 
   --animate-pending: pending 1.2s var(--ease-in-out) infinite;
+  --animate-screen-in: screen-in 200ms var(--ease-out) both;
+  --animate-delayed-in: delayed-in 200ms var(--ease-out) 160ms both;
+
+  @keyframes screen-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+
+  @keyframes delayed-in {
+    from {
+      opacity: 0;
+    }
+  }
 
   @keyframes pending {
     0%,
@@ -191,6 +206,7 @@
     scrollbar-width: thin;
   }
   html {
+    touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
     text-size-adjust: 100%;
   }

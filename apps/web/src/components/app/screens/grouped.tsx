@@ -1,0 +1,165 @@
+"use client";
+
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useState } from "react";
+import { api } from "@lifeos/backend/api";
+import type { SomedayView, TaskGroup } from "@lifeos/backend/types";
+import { AreaDot, areaVar } from "@/components/lifeos/area";
+import { ProgressPie } from "@/components/lifeos/progress-ring";
+import { EmptyState } from "@/components/lifeos/states";
+import { instant, springLayout } from "@/lib/motion-tokens";
+import { cn } from "@/lib/utils";
+import { useView, valueOf } from "../hooks";
+import { ListPage, ListSkeleton, RouteLink, SectionHeading } from "../list-page";
+import { useShell } from "../shell-context";
+import { LIST_META } from "../sidebar";
+import { TaskItem, type TaskItemShow } from "../task-item";
+
+const VISIBLE = 3;
+
+const fraction = ({ done, total }: { done: number; total: number }) => (total === 0 ? 0 : done / total);
+
+const GroupHeading = ({ container }: { container: TaskGroup["container"] }) => {
+  if (container.kind === "loose") return null;
+  const colour = container.kind === "area" ? container.area.colour : container.area?.colour;
+  return (
+    <SectionHeading
+      leading={
+        container.kind === "area" ? (
+          <AreaDot colour={container.area.colour} className="size-2.5" />
+        ) : (
+          <ProgressPie value={fraction(container.progress)} colour={colour ? areaVar(colour) : "var(--muted-foreground)"} />
+        )
+      }
+      aside={
+        container.kind === "project" && container.area ? (
+          <span className="max-w-[40%] shrink-0 truncate text-small font-normal text-faint-foreground">{container.area.title}</span>
+        ) : undefined
+      }
+    >
+      <RouteLink
+        to={container.kind === "area" ? { kind: "area", id: container.area._id } : { kind: "project", id: container.project._id }}
+        className="rounded-sm underline-offset-4 hover:underline"
+      >
+        {container.kind === "area" ? container.area.title : container.project.title}
+      </RouteLink>
+    </SectionHeading>
+  );
+};
+
+const Group = ({ group, show }: { group: TaskGroup; show: TaskItemShow }) => {
+  const reduce = useReducedMotion();
+  const { openCard, setOpenCard } = useShell();
+  const [expanded, setExpanded] = useState(false);
+  const [settled, setSettled] = useState(false);
+  const collapsible = group.container.kind !== "loose" && group.tasks.length > VISIBLE + 1;
+  const head = collapsible ? group.tasks.slice(0, VISIBLE) : group.tasks;
+  const rest = collapsible ? group.tasks.slice(VISIBLE) : [];
+  const showAll = expanded || rest.some((task) => task._id === openCard?.key);
+  return (
+    <section>
+      <GroupHeading container={group.container} />
+      <ul className="-mx-3">
+        {head.map((task) => (
+          <TaskItem key={task._id} task={task} show={show} />
+        ))}
+      </ul>
+      <AnimatePresence initial={false} onExitComplete={() => setSettled(false)}>
+        {showAll && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={reduce ? instant : springLayout}
+            onAnimationStart={() => setSettled(false)}
+            onAnimationComplete={() => setSettled(true)}
+            className={cn("-mx-3 px-3", !settled && "overflow-hidden")}
+          >
+            <ul className="-mx-3">
+              {rest.map((task) => (
+                <TaskItem key={task._id} task={task} show={show} />
+              ))}
+            </ul>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {rest.length > 0 && (
+        <button
+          type="button"
+          aria-expanded={showAll}
+          onClick={() => {
+            if (showAll) setOpenCard(null);
+            setExpanded(!showAll);
+          }}
+          className="mt-1 -ml-1 h-7 rounded-full px-2.5 text-small font-medium text-muted-foreground transition-[background-color,color,scale] duration-(--dur-press) ease-out hover:bg-foreground/[0.05] hover:text-foreground active:scale-[0.97]"
+        >
+          {showAll ? "Show fewer" : `Show ${rest.length} more`}
+        </button>
+      )}
+    </section>
+  );
+};
+
+export const AnytimeScreen = () => {
+  const { today } = useShell();
+  const view = valueOf(useView(api.planner.lists.anytime, { date: today }));
+  return (
+    <ListPage title="Anytime" icon={LIST_META.anytime.icon}>
+      {!view ? (
+        <ListSkeleton />
+      ) : view.groups.length === 0 ? (
+        <EmptyState spot="anytime" title="Nothing waiting" hint="Tasks you can do whenever you have time show here, grouped by Area." className="py-16" />
+      ) : (
+        view.groups.map((group) => <Group key={group.key} group={group} show={{ star: true }} />)
+      )}
+    </ListPage>
+  );
+};
+
+const ParkedProjects = ({ projects }: { projects: SomedayView["projects"] }) => (
+  <section>
+    <SectionHeading>Projects</SectionHeading>
+    <ul className="-mx-3">
+      {projects.map((project) => (
+        <li key={project._id}>
+          <RouteLink
+            to={{ kind: "project", id: project._id }}
+            data-arrow-item
+            className="flex items-center gap-3 rounded-xl px-3 py-2 text-muted-foreground outline-offset-[-2px] transition-[background-color,scale] duration-(--dur-press) ease-out hover:bg-foreground/[0.04] active:scale-[0.995]"
+          >
+            <ProgressPie
+              value={fraction(project.progress)}
+              colour={project.area ? areaVar(project.area.colour) : "var(--muted-foreground)"}
+              className="size-[18px] opacity-70"
+            />
+            <span className="min-w-0 flex-1 truncate">{project.title}</span>
+            {project.area && <span className="shrink-0 text-small text-faint-foreground">{project.area.title}</span>}
+            <span className="shrink-0 font-mono text-small text-faint-foreground">
+              {project.progress.done}/{project.progress.total}
+            </span>
+          </RouteLink>
+        </li>
+      ))}
+    </ul>
+  </section>
+);
+
+export const SomedayScreen = () => {
+  const view = useView(api.planner.lists.someday, {});
+  return (
+    <ListPage title="Someday" icon={LIST_META.someday.icon}>
+      {!view ? (
+        <ListSkeleton />
+      ) : view.groups.length + view.projects.length === 0 ? (
+        <EmptyState spot="someday" title="No someday ideas yet" hint="Park a Task here in Things when it is worth keeping but not worth planning." className="py-16" />
+      ) : (
+        <>
+          {view.groups.map((group) => (
+            <Group key={group.key} group={group} show={{}} />
+          ))}
+          {view.projects.length > 0 && <ParkedProjects projects={view.projects} />}
+        </>
+      )}
+    </ListPage>
+  );
+};

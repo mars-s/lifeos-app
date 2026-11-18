@@ -7,7 +7,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     <ConvexClientProvider>
       <meta name="description" content="A calm place to plan the day." />
       <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-      <main className="min-h-dvh">{children}</main>
+      {children}
     </ConvexClientProvider>
   );
 }
