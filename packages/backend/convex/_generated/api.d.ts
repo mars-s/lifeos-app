@@ -12,6 +12,7 @@ import type * as auth from "../auth.js";
 import type * as http from "../http.js";
 import type * as mcp from "../mcp.js";
 import type * as planner_checklist from "../planner/checklist.js";
+import type * as planner_labels from "../planner/labels.js";
 import type * as planner_lists from "../planner/lists.js";
 import type * as planner_model from "../planner/model.js";
 import type * as planner_rows from "../planner/rows.js";
@@ -41,6 +42,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   mcp: typeof mcp;
   "planner/checklist": typeof planner_checklist;
+  "planner/labels": typeof planner_labels;
   "planner/lists": typeof planner_lists;
   "planner/model": typeof planner_model;
   "planner/rows": typeof planner_rows;

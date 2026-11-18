@@ -64,3 +64,13 @@ export const reorder = changeMutation({
     });
   },
 });
+
+export const remove = changeMutation({
+  action: "checklist.remove",
+  args: { itemId: v.id("checklistItems") },
+  handler: async (ctx, { itemId }, record) => {
+    const item = await load(ctx, "checklistItems", itemId);
+    if (item.isErr()) return err<{ changed: boolean }, PlannerError>(item.error);
+    return ok<{ changed: boolean }, PlannerError>({ changed: await record.remove("checklistItems", itemId) });
+  },
+});

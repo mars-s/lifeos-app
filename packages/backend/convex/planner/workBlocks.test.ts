@@ -71,3 +71,20 @@ test("a removed Work Block cannot be moved, resized, completed or removed again"
   expect(await t.mutation(api.planner.workBlocks.complete, { blockId, done: true })).toEqual(missing);
   expect(await t.mutation(api.planner.workBlocks.remove, { blockId })).toEqual(missing);
 });
+
+test("a list row carries its Task's Work Blocks in start order, without the removed ones", async () => {
+  const { t, taskId } = await setup();
+  const block = { taskId, minutes: 30, timeZone: "Australia/Sydney" };
+  unwrap(await t.mutation(api.planner.workBlocks.create, { ...block, start: nineAm + hour }));
+  unwrap(await t.mutation(api.planner.workBlocks.create, { ...block, start: nineAm, minutes: 90 }));
+  const gone = unwrap(await t.mutation(api.planner.workBlocks.create, { ...block, start: nineAm + 2 * hour }));
+  unwrap(await t.mutation(api.planner.workBlocks.remove, { blockId: gone.blockId }));
+
+  const { tasks } = await t.query(api.planner.lists.inbox, {});
+  expect(tasks.map((task) => task.workBlocks.map(({ start, minutes, done }) => [start, minutes, done]))).toEqual([
+    [
+      [nineAm, 90, false],
+      [nineAm + hour, 30, false],
+    ],
+  ]);
+});

@@ -56,3 +56,26 @@ test("a Checklist Item needs a Task, a title and a valid order key", async () =>
     error: { kind: "invalid_order", order: "" },
   });
 });
+
+test("a Checklist Item is removed, and undo brings it back in its place", async () => {
+  const { t, things, taskId, checklist } = await setup();
+  unwrap(await t.mutation(api.planner.checklist.add, { taskId, title: "Charger" }));
+  const middle = unwrap(await t.mutation(api.planner.checklist.add, { taskId, title: "Raincoat" }));
+  unwrap(await t.mutation(api.planner.checklist.add, { taskId, title: "Passport" }));
+  unwrap(await t.mutation(api.planner.checklist.tick, { itemId: middle.itemId, done: true }));
+
+  const removed = unwrap(await t.mutation(api.planner.checklist.remove, { itemId: middle.itemId }));
+  expect((await checklist()).map(({ title }) => title)).toEqual(["Charger", "Passport"]);
+  expect(await t.mutation(api.planner.checklist.remove, { itemId: middle.itemId })).toEqual({
+    ok: false,
+    error: { kind: "not_found", table: "checklistItems", id: middle.itemId },
+  });
+
+  unwrap(await t.mutation(api.platform.undo.undo, { activityId: removed.activityId! }));
+  expect((await checklist()).map(({ title, done }) => [title, done])).toEqual([
+    ["Charger", false],
+    ["Raincoat", true],
+    ["Passport", false],
+  ]);
+  expect(await drainJobs(t, things)).toEqual([]);
+});

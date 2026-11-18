@@ -3,6 +3,7 @@ import { Result, err, ok } from "neverthrow";
 import type { QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { parseIsoDate } from "../../shared/date";
+import { MAX_ESTIMATE_MINUTES } from "../../shared/estimate";
 import type { Parent, When } from "./tables";
 
 type PlannerTable = "areas" | "projects" | "headings" | "labels" | "tasks" | "checklistItems" | "workBlocks";
@@ -15,8 +16,6 @@ export type PlannerError =
   | { readonly kind: "empty_title" }
   | { readonly kind: "heading_outside_project"; readonly headingId: string }
   | { readonly kind: "invalid_block"; readonly reason: "start" | "minutes" | "time_zone" };
-
-const MAX_ESTIMATE_MINUTES = 24 * 60;
 
 export const load = async <T extends PlannerTable>(ctx: QueryCtx, table: T, id: Id<T>) => {
   const doc = await ctx.db.get(id);

@@ -9,6 +9,7 @@
     },
     "./result": "./shared/result.ts",
     "./date": "./shared/date.ts",
+    "./estimate": "./shared/estimate.ts",
     "./types": {
       "types": "./shared/types.ts"
     }

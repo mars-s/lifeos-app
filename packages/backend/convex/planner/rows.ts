@@ -2,6 +2,7 @@ import type { QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 
 const CHECKLIST_LIMIT = 100;
+const WORK_BLOCK_LIMIT = 100;
 const CONTAINER_LIMIT = 200;
 const PROJECT_TASK_LIMIT = 1000;
 
@@ -28,7 +29,7 @@ export const enrich = async (ctx: QueryCtx, tasks: Doc<"tasks">[]) => {
   }
   const projects = byId(found(await Promise.all([...projectIds].map((id) => ctx.db.get("projects", id)))));
   for (const project of projects.values()) if (project.areaId) areaIds.add(project.areaId);
-  const [areaDocs, labelDocs, checklists] = await Promise.all([
+  const [areaDocs, labelDocs, checklists, blocks] = await Promise.all([
     Promise.all([...areaIds].map((id) => ctx.db.get("areas", id))),
     Promise.all([...labelIds].map((id) => ctx.db.get("labels", id))),
     Promise.all(
@@ -37,6 +38,14 @@ export const enrich = async (ctx: QueryCtx, tasks: Doc<"tasks">[]) => {
           .query("checklistItems")
           .withIndex("by_task_order", (q) => q.eq("taskId", task._id))
           .take(CHECKLIST_LIMIT),
+      ),
+    ),
+    Promise.all(
+      tasks.map((task) =>
+        ctx.db
+          .query("workBlocks")
+          .withIndex("by_task_start", (q) => q.eq("taskId", task._id))
+          .take(WORK_BLOCK_LIMIT),
       ),
     ),
   ]);
@@ -55,7 +64,10 @@ export const enrich = async (ctx: QueryCtx, tasks: Doc<"tasks">[]) => {
         const label = labels.get(id);
         return label ? [{ _id: label._id, name: label.name, colour: label.colour }] : [];
       }),
-      checklist: (checklists[index] ?? []).map(({ _id, title, done }) => ({ _id, title, done })),
+      checklist: (checklists[index] ?? []).map(({ _id, title, done, order }) => ({ _id, title, done, order })),
+      workBlocks: (blocks[index] ?? [])
+        .filter((block) => block.removedAt === undefined)
+        .map(({ _id, start, minutes, done }) => ({ _id, start, minutes, done })),
     };
   });
 };
