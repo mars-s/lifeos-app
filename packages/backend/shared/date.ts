@@ -20,3 +20,8 @@ const pad = (n: number) => String(n).padStart(2, "0");
 
 export const localIsoDate = (now: Date) =>
   `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` as IsoDate;
+
+const DAY_MS = 86_400_000;
+
+export const addDays = (date: IsoDate, days: number) =>
+  new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10) as IsoDate;

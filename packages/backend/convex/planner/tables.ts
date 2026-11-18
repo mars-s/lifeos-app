@@ -107,6 +107,7 @@ export const plannerTables = {
     .index("by_things_id", ["things.id"])
     .index("by_trashed_status_when", ["trashedAt", "status.kind", "when.kind", "when.date"])
     .index("by_trashed_status_deadline", ["trashedAt", "status.kind", "deadline"])
+    .index("by_trashed_closed_at", ["trashedAt", "status.at"])
     .index("by_project_order", ["parent.projectId", "order"])
     .index("by_area_order", ["parent.areaId", "order"])
     .index("by_parent_kind_order", ["parent.kind", "order"]),
