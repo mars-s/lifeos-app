@@ -51,17 +51,6 @@
       "recurring": true
     },
     {
-      "calendarId": "CAL-WORK",
-      "eventKey": "EV-STANDUP@1795386600000",
-      "title": "Standup",
-      "start": 1795386600000,
-      "end": 1795387500000,
-      "allDay": false,
-      "availability": "busy",
-      "response": "accepted",
-      "recurring": true
-    },
-    {
       "calendarId": "CAL-HOME",
       "eventKey": "EV-DENTIST",
       "title": "Dentist",
@@ -102,6 +91,17 @@
       "allDay": false,
       "availability": "busy",
       "recurring": false
+    },
+    {
+      "calendarId": "CAL-WORK",
+      "eventKey": "EV-STANDUP@1795386600000",
+      "title": "Standup",
+      "start": 1795386600000,
+      "end": 1795387500000,
+      "allDay": false,
+      "availability": "busy",
+      "response": "accepted",
+      "recurring": true
     },
     {
       "calendarId": "CAL-WORK",

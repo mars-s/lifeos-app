@@ -1,3 +1,6 @@
+#[cfg(target_os = "macos")]
+mod calendar;
+mod convex;
 mod haptics;
 mod things_import;
 
@@ -26,6 +29,8 @@ fn set_up(app: &App) -> tauri::Result<()> {
     let handle = app.handle().clone();
     app.deep_link().on_open_url(move |_| bring_forward(&handle));
     things_import::start();
+    #[cfg(target_os = "macos")]
+    calendar::start();
     Ok(())
 }
 

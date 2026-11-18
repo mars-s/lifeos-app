@@ -38,7 +38,10 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "category": "Productivity"
+    "category": "Productivity",
+    "macOS": {
+      "minimumSystemVersion": "14.0"
+    }
   },
   "plugins": {
     "deep-link": {
