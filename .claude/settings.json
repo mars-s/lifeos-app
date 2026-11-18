@@ -1,20 +1,13 @@
 {
   "enabledPlugins": {
     "pstack@cursor-plugins": true,
-    "mattpocock-skills@claude-plugins-official": true,
-    "beautiful-rust@beautiful-rust": true
+    "mattpocock-skills@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "cursor-plugins": {
       "source": {
         "source": "github",
         "repo": "cursor/plugins"
-      }
-    },
-    "beautiful-rust": {
-      "source": {
-        "source": "github",
-        "repo": "morganlinton/BeautifulRust"
       }
     }
   }
