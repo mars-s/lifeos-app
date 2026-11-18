@@ -4,7 +4,7 @@ set -eu
 BASE="${BASE:-http://localhost:3960}"
 OUT="${1:?usage: screens.sh <output folder> [list ...]}"
 shift
-LISTS="${*:-today inbox upcoming anytime someday logbook area project}"
+LISTS="${*:-today inbox upcoming anytime someday logbook trash area project}"
 AB="agent-browser --session lifeos-screens"
 
 mkdir -p "$OUT"

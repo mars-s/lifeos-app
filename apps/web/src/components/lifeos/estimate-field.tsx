@@ -42,8 +42,8 @@ export const EstimateField = ({
   };
 
   return (
-    <div role="group" aria-label="Estimate" className={cn("flex flex-wrap items-center gap-1.5", className)}>
-      <span className="w-[3.75rem] text-small text-muted-foreground">Estimate</span>
+    <div role="group" aria-label="Estimate" className={cn("flex flex-wrap items-center gap-1 @md:gap-1.5", className)}>
+      <span className="hidden w-[3.75rem] text-small text-muted-foreground @md:inline">Estimate</span>
       {ESTIMATE_CHIPS.map((chip) => {
         const selected = minutes === chip;
         return (
@@ -97,7 +97,7 @@ export const EstimateField = ({
           }
         }}
         className={cn(
-          "h-7 w-[4.25rem] rounded-md px-2 text-center font-mono text-small outline-offset-2 transition-[background-color,color] duration-(--dur-press) ease-out placeholder:font-sans placeholder:text-faint-foreground",
+          "h-7 w-14 rounded-md px-2 text-center @md:w-[4.25rem] font-mono text-small outline-offset-2 transition-[background-color,color] duration-(--dur-press) ease-out placeholder:font-sans placeholder:text-faint-foreground",
           custom && draft === null
             ? "bg-brand text-brand-foreground focus:bg-foreground/[0.06] focus:text-foreground"
             : "bg-foreground/[0.06] text-foreground hover:bg-foreground/[0.1] focus:bg-foreground/[0.06]",

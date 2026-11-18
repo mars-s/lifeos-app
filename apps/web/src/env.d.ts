@@ -1,5 +1,6 @@
 interface ImportMetaEnv {
   readonly WAKU_PUBLIC_CONVEX_URL?: string;
+  readonly DEV?: boolean;
 }
 
 interface ImportMeta {

@@ -145,6 +145,7 @@ export const useSelectionGestures = (
 
     const onPointerDown = (event: PointerEvent) => {
       if (event.pointerType !== "mouse" || event.button !== 0 || !isRowPart(event.target) || handlers.cardIsOpen()) return;
+      if (rowOf(event.target)?.closest("[data-sortable]")) return;
       const start = toContent(event.clientX, event.clientY);
       drag = {
         startX: start.x,

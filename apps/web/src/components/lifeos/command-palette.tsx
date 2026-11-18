@@ -44,6 +44,9 @@ export const CommandPalette = ({
           aria-controls={listId}
           aria-activedescendant={active ? `${listId}-${active.id}` : undefined}
           aria-label="Search commands"
+          name="command"
+          autoComplete="off"
+          spellCheck={false}
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);

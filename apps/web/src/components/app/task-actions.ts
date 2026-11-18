@@ -7,7 +7,8 @@ import type { Id } from "@lifeos/backend/dataModel";
 import type { PlannerTask } from "@lifeos/backend/types";
 import type { AreaColour } from "@/components/lifeos/area";
 import { formatMinutes } from "@/components/lifeos/format";
-import { both, patchLabelColour, patchLabelList, patchTask, useChange } from "./changes";
+import { both, dropLabel, nothing, patchLabelColour, patchLabelList, patchLabelName, patchTask, useChange } from "./changes";
+import { askToConfirm } from "./confirm";
 import { shortDay, whenLabel } from "./dates";
 
 type Item = PlannerTask["checklist"][number];
@@ -166,6 +167,36 @@ export const useTaskActions = (task: PlannerTask, today: string) => {
           apply: patchLabelColour(label._id, colour),
           revert: patchLabelColour(label._id, label.colour),
           slot,
+        });
+      },
+
+      renameLabel: (label: Label, name: string) => {
+        if (isOptimistic(label._id)) return;
+        void change({
+          title: `${quoted(label.name)} is now ${quoted(name)}`,
+          mutation: api.planner.labels.rename,
+          args: { labelId: label._id, name },
+          apply: patchLabelName(label._id, name),
+          revert: patchLabelName(label._id, label.name),
+          slot,
+        });
+      },
+
+      removeLabel: (label: Label) => {
+        if (isOptimistic(label._id)) return;
+        askToConfirm({
+          title: `Delete the Label “${quoted(label.name)}”?`,
+          body: "It comes off every Task that has it. This cannot be undone.",
+          action: "Delete Label",
+          onConfirm: () =>
+            void change({
+              title: `Label ${quoted(label.name)} deleted`,
+              mutation: api.planner.labels.remove,
+              args: { labelId: label._id },
+              apply: dropLabel(label._id),
+              revert: nothing,
+              permanent: true,
+            }),
         });
       },
 

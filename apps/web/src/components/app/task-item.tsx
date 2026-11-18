@@ -1,7 +1,13 @@
 "use client";
 
 import { Archive, CalendarDots, ListChecks, Moon, Note, Stack, Star, Tray, X, type Icon } from "@phosphor-icons/react";
+import { DndContext, KeyboardSensor, MouseSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { generateKeyBetween } from "fractional-indexing";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { Result } from "neverthrow";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { PlannerTask } from "@lifeos/backend/types";
 import { AreaDot } from "@/components/lifeos/area";
@@ -10,6 +16,9 @@ import { haptic } from "@/lib/haptics";
 import { instant, springLayout } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
 import { clockTime, deadlineMark, isToday, localDate, shortDay, whenLabel } from "./dates";
+import { drafts, isDraftTask, useDraftCount, useRows } from "./drafts";
+import { PanelBoundary } from "./panel-boundary";
+import { routeHref } from "./route";
 import { selection, useLingering, useSelected } from "./selection";
 import { useSelectionActions } from "./selection-actions";
 import { useShell } from "./shell-context";
@@ -173,7 +182,20 @@ const OUTSIDE_THE_CARD = "[data-radix-popper-content-wrapper], [data-toaster], [
 
 export type TaskItemShow = { context?: boolean; star?: boolean; when?: boolean; closedAt?: boolean };
 
-export const TaskItem = ({ task, itemKey = task._id, show = {} }: { task: PlannerTask; itemKey?: string; show?: TaskItemShow }) => {
+const ROW_HIDDEN = { height: 0, opacity: 0, overflow: "hidden" };
+const ROW_SHOWN = { height: "auto", opacity: 1, transitionEnd: { overflow: "visible" } };
+
+const TaskItem = ({
+  task,
+  itemKey,
+  show = {},
+  sortable,
+}: {
+  task: PlannerTask;
+  itemKey: string;
+  show?: TaskItemShow;
+  sortable: boolean;
+}) => {
   const { today, openCard, setOpenCard } = useShell();
   const reduce = useReducedMotion();
   const container = useRef<HTMLLIElement>(null);
@@ -188,6 +210,11 @@ export const TaskItem = ({ task, itemKey = task._id, show = {} }: { task: Planne
   const closed = task.status.kind !== "open";
   const editable = open && !closed;
   const plannedToday = task.workBlocks.find((block) => !block.done && localDate(block.start) === today);
+  const unsaved = isDraftTask(task._id);
+  const { setNodeRef, listeners, transform: dragOffset, transition: dragTransition, isDragging } = useSortable({
+    id: itemKey,
+    disabled: !sortable || open || unsaved,
+  });
 
   const close = (byKey: boolean) => {
     const active = document.activeElement;
@@ -209,7 +236,23 @@ export const TaskItem = ({ task, itemKey = task._id, show = {} }: { task: Planne
   }, [open]);
 
   return (
-    <li ref={container} data-task-key={itemKey} data-open-card={open ? "" : undefined} data-selected={selected ? "" : undefined}>
+    <motion.li
+      ref={container}
+      data-task-key={itemKey}
+      data-task-id={task._id}
+      data-open-card={open ? "" : undefined}
+      data-selected={selected ? "" : undefined}
+      initial={ROW_HIDDEN}
+      animate={ROW_SHOWN}
+      exit={ROW_HIDDEN}
+      transition={reduce || (unsaved && openCard?.instant) ? instant : springLayout}
+      className={cn(isDragging && "relative z-10")}
+    >
+      <div
+        ref={setNodeRef}
+        {...listeners}
+        style={{ transform: CSS.Translate.toString(dragOffset), transition: dragTransition }}
+      >
       <motion.div
         initial={false}
         animate={{ marginTop: open ? 8 : 0, marginBottom: open ? 8 : 0 }}
@@ -225,7 +268,7 @@ export const TaskItem = ({ task, itemKey = task._id, show = {} }: { task: Planne
         }}
         className={cn(
           "group/row @container rounded-xl transition-[background-color,box-shadow] duration-(--dur-fast) ease-out",
-          open
+          open || isDragging
             ? "bg-popover shadow-lift"
             : selected
               ? "task-selected bg-brand/[0.12] dark:bg-brand/[0.17]"
@@ -332,20 +375,91 @@ export const TaskItem = ({ task, itemKey = task._id, show = {} }: { task: Planne
               {closed ? (
                 <ClosedBody task={task} today={today} />
               ) : (
-                <TaskCardBody task={task} today={today} />
+                <PanelBoundary panel="card" variant="inline">
+                  <TaskCardBody task={task} today={today} />
+                </PanelBoundary>
               )}
             </motion.div>
           )}
         </AnimatePresence>
       </motion.div>
-    </li>
+      </div>
+    </motion.li>
   );
 };
 
-export const TaskItems = ({ tasks, show, className }: { tasks: PlannerTask[]; show?: TaskItemShow; className?: string }) => (
-  <ul className={cn("-mx-3", className)}>
-    {tasks.map((task) => (
-      <TaskItem key={task._id} task={task} show={show} />
-    ))}
-  </ul>
-);
+const DRAG_START_PX = 6;
+const DRAG_MODIFIERS = [restrictToVerticalAxis];
+
+const keyBetween = Result.fromThrowable(generateKeyBetween, () => "unordered" as const);
+
+export const useHasDrafts = () => useDraftCount(routeHref(useShell().route)) > 0;
+
+export const TaskItems = ({
+  tasks,
+  show,
+  className,
+  hostsDrafts,
+  sortable = false,
+}: {
+  tasks: readonly PlannerTask[];
+  show?: TaskItemShow;
+  className?: string;
+  hostsDrafts?: "inline" | "above";
+  sortable?: boolean;
+}) => {
+  const { route, today, openCard, setOpenCard } = useShell();
+  const actions = useSelectionActions(today);
+  const rows = useRows(tasks, hostsDrafts ? routeHref(route) : undefined);
+  const sensors = useSensors(useSensor(MouseSensor, { activationConstraint: { distance: DRAG_START_PX } }), useSensor(KeyboardSensor));
+  const shown = hostsDrafts === "inline" ? rows.filter(({ task }) => isDraftTask(task._id) || tasks.includes(task)) : rows;
+  const vanished = rows.find((row) => !shown.includes(row))?.key;
+
+  useEffect(() => {
+    if (!vanished) return;
+    drafts.failed(vanished);
+    if (openCard?.key === vanished) setOpenCard(null);
+  }, [vanished, openCard, setOpenCard]);
+
+  const place = (key: string, to: number) => {
+    const moved = shown.find((row) => row.key === key);
+    const others = shown.filter((row) => row.key !== key);
+    if (!moved || to < 0 || to > others.length) return false;
+    const order = keyBetween(others[to - 1]?.task.order ?? null, others[to]?.task.order ?? null);
+    if (order.isErr()) return false;
+    actions.reorder(moved.task, order.value);
+    return true;
+  };
+
+  const onDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return;
+    if (place(String(active.id), shown.findIndex((row) => row.key === over.id))) haptic("drop");
+    else haptic("error");
+  };
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={DRAG_MODIFIERS} onDragEnd={onDragEnd}>
+      <SortableContext items={shown.map((row) => row.key)} strategy={verticalListSortingStrategy}>
+        <ul
+          data-sortable={sortable ? "" : undefined}
+          className={cn("-mx-3", className)}
+          onKeyDown={(event) => {
+            const step = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+            if (!sortable || step === 0 || !(event.metaKey || event.ctrlKey) || openCard) return;
+            const key = (event.target as HTMLElement).closest<HTMLElement>("[data-task-key]")?.dataset.taskKey;
+            const from = shown.findIndex((row) => row.key === key);
+            if (!key || from === -1) return;
+            event.preventDefault();
+            place(key, from + step);
+          }}
+        >
+          <AnimatePresence initial={false}>
+            {shown.map(({ key, task }) => (
+              <TaskItem key={key} itemKey={key} task={task} show={show} sortable={sortable} />
+            ))}
+          </AnimatePresence>
+        </ul>
+      </SortableContext>
+    </DndContext>
+  );
+};

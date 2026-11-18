@@ -3,6 +3,8 @@
 import { useReducedMotion } from "motion/react";
 import { cn } from "@/lib/utils";
 
+const count = new Intl.NumberFormat("en-AU");
+
 export type RollingNumberProps = {
   /** A number (formatted with `format` or en-US grouping) or a preformatted string like "87.2k". */
   value: number | string;
@@ -31,7 +33,7 @@ export function RollingNumber({
     typeof value === "number"
       ? format
         ? format(value)
-        : value.toLocaleString("en-US")
+        : count.format(value)
       : value;
   const chars = Array.from(text);
 

@@ -11,6 +11,7 @@ import type { PlannerTask, SidebarView } from "@lifeos/backend/types";
 import type { AreaColour } from "@/components/lifeos/area";
 import { showUndo } from "@/components/lifeos/undo";
 import { toast } from "@/components/ui/toast-stack";
+import { drafts, isDraftTask } from "./drafts";
 
 export type Updater = (store: OptimisticLocalStore) => void;
 
@@ -30,7 +31,10 @@ const TASK_VIEWS = [
   api.planner.lists.project,
   api.planner.labels.list,
   api.planner.sidebar.get,
+  api.planner.trash.list,
 ] as readonly FunctionReference<"query">[];
+
+const isTaskNode = (node: Node) => "checklist" in node && "labelIds" in node;
 
 const mapDeep: (value: unknown, visit: (node: Node) => Node) => unknown = (value, visit) => {
   if (Array.isArray(value)) {
@@ -57,12 +61,11 @@ const rewriteViews = (store: OptimisticLocalStore, visit: (node: Node) => Node) 
 
 export const patchTask =
   (taskId: Id<"tasks">, patch: (task: PlannerTask) => PlannerTask) =>
-  (store: OptimisticLocalStore) =>
-    rewriteViews(store, (node) =>
-      node._id === taskId && "checklist" in node ? (patch(node as unknown as PlannerTask) as unknown as Node) : node,
-    );
+  (store: OptimisticLocalStore) => {
+    const id = drafts.realId(taskId);
+    rewriteViews(store, (node) => (node._id === id && "checklist" in node ? (patch(node as unknown as PlannerTask) as unknown as Node) : node));
+  };
 
-const isTaskNode = (node: Node) => "checklist" in node && "labelIds" in node;
 
 export const patchTasks =
   (taskIds: readonly Id<"tasks">[], patch: (task: PlannerTask) => PlannerTask) =>
@@ -71,6 +74,35 @@ export const patchTasks =
     rewriteViews(store, (node) =>
       isTaskNode(node) && ids.has(node._id as string) ? (patch(node as unknown as PlannerTask) as unknown as Node) : node,
     );
+  };
+
+const ORDERED_VIEWS = [api.planner.lists.inbox, api.planner.lists.area, api.planner.lists.project] as readonly FunctionReference<"query">[];
+
+const byOrder = (a: Node, b: Node) => ((a.order as string) < (b.order as string) ? -1 : (a.order as string) > (b.order as string) ? 1 : 0);
+
+const reorderDeep: (value: unknown, taskId: string, order: string) => unknown = (value, taskId, order) => {
+  if (Array.isArray(value)) {
+    const holds = value.some((inner) => inner && typeof inner === "object" && (inner as Node)._id === taskId && isTaskNode(inner as Node));
+    if (holds) return value.map((inner) => ((inner as Node)._id === taskId ? { ...(inner as Node), order } : inner)).toSorted(byOrder);
+    const next = value.map((inner) => reorderDeep(inner, taskId, order));
+    return next.some((inner, index) => inner !== value[index]) ? next : value;
+  }
+  if (value === null || typeof value !== "object") return value;
+  const node = value as Node;
+  const entries = Object.entries(node).map(([key, inner]) => [key, reorderDeep(inner, taskId, order)] as const);
+  return entries.some(([key, inner]) => inner !== node[key]) ? Object.fromEntries(entries) : value;
+};
+
+export const reorderTask =
+  (taskId: Id<"tasks">, order: string) =>
+  (store: OptimisticLocalStore) => {
+    for (const view of ORDERED_VIEWS) {
+      for (const { args, value } of store.getAllQueries(view)) {
+        if (value === undefined) continue;
+        const next = reorderDeep(value, taskId, order);
+        if (next !== value) store.setQuery(view, args, next);
+      }
+    }
   };
 
 const dropDeep: (value: unknown, gone: (node: Node) => boolean) => unknown = (value, gone) => {
@@ -134,6 +166,18 @@ export const patchLabelColour =
   (store: OptimisticLocalStore) =>
     rewriteViews(store, (node) => (node._id === labelId && "colour" in node && "name" in node ? { ...node, colour } : node));
 
+const isLabelNode = (node: Node, labelId: string) => node._id === labelId && "colour" in node && "name" in node;
+
+export const patchLabelName =
+  (labelId: Id<"labels">, name: string) =>
+  (store: OptimisticLocalStore) =>
+    rewriteViews(store, (node) => (isLabelNode(node, labelId) ? { ...node, name } : node));
+
+export const dropLabel =
+  (labelId: Id<"labels">) =>
+  (store: OptimisticLocalStore) =>
+    dropFromViews(store, (node) => isLabelNode(node, labelId));
+
 export const patchLabelList =
   (patch: (labels: PlannerTask["labels"]) => PlannerTask["labels"]) =>
   (store: OptimisticLocalStore) => {
@@ -154,10 +198,13 @@ const REASONS: Record<string, string> = {
   changed_since: "It was changed again after that.",
   already_undone: "It was already undone.",
   invalid_icon: "That icon is not one LifeOS knows.",
+  name_taken: "Another Label already has that name.",
+  not_trashed: "It is no longer in Trash.",
+  not_undoable: "That change is permanent.",
   selection_too_large: "That is too many Tasks at once. Try 500 or fewer.",
 };
 
-const reasonFor = (kind: string | undefined) => (kind && REASONS[kind]) || "LifeOS could not save it. Try again.";
+export const reasonFor = (kind: string | undefined) => (kind && REASONS[kind]) || "LifeOS could not save it. Try again.";
 
 export type Change<Mutation extends ChangeMutation> = {
   title: string;
@@ -166,14 +213,20 @@ export type Change<Mutation extends ChangeMutation> = {
   apply: Updater;
   revert: Updater;
   slot?: string;
+  permanent?: boolean;
   onSaved?: (value: SavedValue<Mutation>) => void;
 };
 
 export const useChange = () => {
   const convex = useConvex();
   return useMemo(() => {
-    const send = (mutation: ChangeMutation, args: DefaultFunctionArgs, optimisticUpdate: Updater) =>
-      convex.mutation(mutation, args, { optimisticUpdate });
+    const send = async (mutation: ChangeMutation, args: DefaultFunctionArgs, optimisticUpdate: Updater) => {
+      const draftKey = typeof args.taskId === "string" && isDraftTask(args.taskId) ? args.taskId : null;
+      const taskId = draftKey ? await drafts.whenSaved(draftKey) : null;
+      if (draftKey && !taskId) return { ok: false, error: { kind: "not_found" } } satisfies ChangeResult;
+      const taskIds = Array.isArray(args.taskIds) ? { taskIds: args.taskIds.map((id) => drafts.realId(String(id))) } : {};
+      return convex.mutation(mutation, { ...args, ...taskIds, ...(taskId ? { taskId } : {}) }, { optimisticUpdate });
+    };
 
     const undo = async (sent: Promise<Id<"activity"> | null>, revert: Updater) => {
       const activityId = await sent;
@@ -184,7 +237,7 @@ export const useChange = () => {
       if (!result?.ok) toast.error("That could not be undone", { description: reasonFor(result?.error.kind) });
     };
 
-    return <Mutation extends ChangeMutation>({ title, mutation, args, apply, revert, slot, onSaved }: Change<Mutation>) => {
+    return <Mutation extends ChangeMutation>({ title, mutation, args, apply, revert, slot, permanent, onSaved }: Change<Mutation>) => {
       const refused = (kind: string | undefined) => {
         forget();
         toast.error("That did not save", { description: reasonFor(kind) });
@@ -194,15 +247,18 @@ export const useChange = () => {
         (result) => {
           if (!result.ok) return refused(result.error.kind);
           onSaved?.(result.value as SavedValue<Mutation>);
+          if (permanent) toast(title);
           return { saved: true, activityId: result.value.activityId };
         },
         () => refused(undefined),
       );
-      const forget = showUndo(
-        title,
-        () => void undo(sent.then(({ activityId }) => activityId), revert),
-        slot,
-      );
+      const forget = permanent
+        ? nothing
+        : showUndo(
+            title,
+            () => void undo(sent.then(({ activityId }) => activityId), revert),
+            slot,
+          );
       return sent.then(({ saved }) => saved);
     };
   }, [convex]);

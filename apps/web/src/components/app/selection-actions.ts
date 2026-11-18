@@ -6,7 +6,7 @@ import type { PlannerTask } from "@lifeos/backend/types";
 import { formatMinutes } from "@/components/lifeos/format";
 import { haptic } from "@/lib/haptics";
 import { LINGER_MS } from "@/lib/motion-tokens";
-import { dropTasks, nothing, patchTasks, useChange } from "./changes";
+import { dropTasks, nothing, patchTasks, reorderTask, useChange } from "./changes";
 import { shortDay, whenLabel } from "./dates";
 import { selection } from "./selection";
 
@@ -103,6 +103,15 @@ export const useSelectionActions = (today: string) => {
             context: target.parent.kind === "loose" ? undefined : target.title,
           })),
           revert: restoreFrom(tasks),
+        }),
+
+      reorder: (task: PlannerTask, order: string) =>
+        void change({
+          title: "Task moved",
+          mutation: api.planner.tasks.reorder,
+          args: { taskId: task._id, order },
+          apply: reorderTask(task._id, order),
+          revert: reorderTask(task._id, task.order),
         }),
 
       complete,

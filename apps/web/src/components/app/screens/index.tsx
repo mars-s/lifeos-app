@@ -7,6 +7,7 @@ import { AnytimeScreen, SomedayScreen } from "./grouped";
 import { AreaScreen, ProjectScreen } from "./containers";
 import { LogbookScreen } from "./logbook";
 import { InboxScreen, TodayScreen } from "./today";
+import { TrashScreen } from "./trash";
 import { UpcomingScreen } from "./upcoming";
 
 export { UPCOMING_DAYS } from "./upcoming";
@@ -16,7 +17,7 @@ const knows = (sidebar: SidebarView, route: Extract<Route, { kind: "area" | "pro
     ? sidebar.areas.some((area) => area._id === route.id)
     : [...sidebar.projects, ...sidebar.areas.flatMap((area) => area.projects)].some((project) => project._id === route.id);
 
-export const Screen = ({ route, sidebar }: { route: Route; sidebar: SidebarView | undefined }) => {
+export const Screen = ({ route, sidebar, sidebarFailed }: { route: Route; sidebar: SidebarView | undefined; sidebarFailed: boolean }) => {
   switch (route.kind) {
     case "inbox":
       return <InboxScreen />;
@@ -30,10 +31,14 @@ export const Screen = ({ route, sidebar }: { route: Route; sidebar: SidebarView 
       return <SomedayScreen />;
     case "logbook":
       return <LogbookScreen />;
+    case "trash":
+      return <TrashScreen />;
     case "missing":
       return <Missing />;
     case "area":
     case "project":
+      if (!sidebar && sidebarFailed)
+        return route.kind === "area" ? <AreaScreen areaId={route.id} /> : <ProjectScreen projectId={route.id} />;
       if (!sidebar)
         return (
           <ListPage>

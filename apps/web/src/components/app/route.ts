@@ -1,6 +1,6 @@
 import type { Id } from "@lifeos/backend/dataModel";
 
-export const LISTS = ["inbox", "today", "upcoming", "anytime", "someday", "logbook"] as const;
+export const LISTS = ["inbox", "today", "upcoming", "anytime", "someday", "logbook", "trash"] as const;
 export type ListKind = (typeof LISTS)[number];
 
 export type Route =

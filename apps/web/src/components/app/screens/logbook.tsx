@@ -12,7 +12,7 @@ import { useView } from "../hooks";
 import { ListPage, ListSkeleton, SectionHeading } from "../list-page";
 import { useShell } from "../shell-context";
 import { LIST_META } from "../sidebar";
-import { TaskItem } from "../task-item";
+import { TaskItems } from "../task-item";
 
 const TIMELINE_DAYS = 56;
 const PAGE_SIZE = 40;
@@ -65,11 +65,7 @@ export const LogbookScreen = () => {
                 <SectionHeading aside={<span className="font-mono text-small font-normal text-faint-foreground">{tasks.length}</span>}>
                   {relativeDay(date, today) ?? longDay(date)}
                 </SectionHeading>
-                <ul className="-mx-3">
-                  {tasks.map((task) => (
-                    <TaskItem key={task._id} task={task} show={{ context: true, closedAt: true }} />
-                  ))}
-                </ul>
+                <TaskItems tasks={tasks} show={{ context: true, closedAt: true }} />
               </section>
             ))
           )}

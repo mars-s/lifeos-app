@@ -109,6 +109,8 @@ export const TaskCard = ({
           <input
             ref={titleInput}
             aria-label="Title"
+            name="title"
+            autoComplete="off"
             value={task.title}
             onChange={(event) => setTask({ ...task, title: event.target.value })}
             className="min-w-0 flex-1 bg-transparent font-medium outline-none placeholder:text-faint-foreground"
@@ -138,6 +140,8 @@ export const TaskCard = ({
             <div className="space-y-3 pt-1 pr-3 pb-3 pl-[2.8125rem]">
               <textarea
                 aria-label="Notes"
+                name="notes"
+                autoComplete="off"
                 rows={1}
                 value={task.notes}
                 onChange={(event) => setTask({ ...task, notes: event.target.value })}

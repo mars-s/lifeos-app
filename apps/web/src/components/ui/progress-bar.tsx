@@ -1,5 +1,7 @@
 import { cn } from "@/lib/utils";
 
+const count = new Intl.NumberFormat("en-AU");
+
 export type BarTone = "brand" | "positive" | "negative" | "warning" | "neutral";
 
 const fills: Record<BarTone, string> = {
@@ -120,7 +122,7 @@ export function SegmentedBar({
       aria-valuenow={total}
       aria-valuetext={
         valueText ??
-        segments.map((s) => `${s.label} ${s.value.toLocaleString("en-US")}`).join(", ")
+        segments.map((s) => `${s.label} ${count.format(s.value)}`).join(", ")
       }
       className={cn("flex w-full gap-1", heights[size], className)}
       {...props}
@@ -128,7 +130,7 @@ export function SegmentedBar({
       {segments.map((s) => (
         <span
           key={s.id}
-          title={`${s.label} · ${s.value.toLocaleString("en-US")}`}
+          title={`${s.label} · ${count.format(s.value)}`}
           className="h-full min-w-1.5 shrink-0 rounded-full transition-[width] duration-500 motion-reduce:transition-none"
           style={{
             width: `${(s.value / max) * 100}%`,

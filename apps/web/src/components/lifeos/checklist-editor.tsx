@@ -85,6 +85,7 @@ const ItemRow = ({ item, onEdit, onTick, onRemove }: { item: ChecklistEntry } & 
             data-checklist-field
             data-undo={draft === null ? "app" : undefined}
             aria-label={`Checklist Item: ${item.title}`}
+            name="checklist-item-title"
             value={title}
             autoComplete="off"
             enterKeyHint="next"

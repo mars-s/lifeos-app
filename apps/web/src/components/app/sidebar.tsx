@@ -1,11 +1,11 @@
 "use client";
 
 import { useAuthActions } from "@convex-dev/auth/react";
-import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import { DndContext, MouseSensor, closestCenter, useSensor, useSensors, type CollisionDetection, type DragEndEvent } from "@dnd-kit/core";
+import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Archive, CalendarDots, CheckSquare, Plus, Shapes, SignOut, Stack, Star, Tray, type Icon } from "@phosphor-icons/react";
+import { Archive, CalendarDots, CheckSquare, Plus, Shapes, SignOut, Stack, Star, Trash, Tray, type Icon } from "@phosphor-icons/react";
 import { generateKeyBetween } from "fractional-indexing";
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -21,9 +21,17 @@ import { RollingNumber } from "@/components/ui/rolling-number";
 import { haptic } from "@/lib/haptics";
 import { instant, spring } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
-import { isDraftId, useContainerActions, type ContainerActions, type SidebarArea } from "./container-actions";
+import {
+  areaStepKey,
+  isDraftId,
+  projectHome,
+  projectStepKey,
+  useContainerActions,
+  type ContainerActions,
+  type SidebarArea,
+} from "./container-actions";
 import { timeAgo } from "./dates";
-import { useNow, useView } from "./hooks";
+import { useNow, useQuietView } from "./hooks";
 import { RouteLink } from "./list-page";
 import { sameRoute, type ListKind, type Route, type Via } from "./route";
 import { useShell, type Renaming } from "./shell-context";
@@ -35,9 +43,11 @@ export const LIST_META = {
   anytime: { label: "Anytime", icon: Stack },
   someday: { label: "Someday", icon: Archive },
   logbook: { label: "Logbook", icon: CheckSquare },
+  trash: { label: "Trash", icon: Trash },
 } as const satisfies Record<ListKind, { label: string; icon: Icon }>;
 
 const STALE_AFTER_MS = 10 * 60_000;
+const syncedAtFormat = new Intl.DateTimeFormat("en-AU", { dateStyle: "medium", timeStyle: "short" });
 
 const rowClass = (indent: boolean) =>
   cn(
@@ -78,6 +88,7 @@ const TitleInput = ({
     <input
       ref={field}
       aria-label={label}
+      name="title"
       defaultValue={initial}
       placeholder={placeholder}
       autoComplete="off"
@@ -209,7 +220,19 @@ const ProjectItem = ({
   indent: boolean;
   via: Via;
   actions: ContainerActions;
-}) => (
+}) => {
+  const { setNodeRef, listeners, transform, transition, isDragging } = useSortable({
+    id: project._id,
+    data: { kind: "project" },
+    disabled: isDraftId(project._id),
+  });
+  return (
+  <div
+    ref={setNodeRef}
+    {...listeners}
+    style={{ transform: CSS.Translate.toString(transform), transition }}
+    className={cn("relative rounded-lg", isDragging && "z-20 bg-surface shadow-lift")}
+  >
   <NavItem
     to={{ kind: "project", id: project._id }}
     label={project.title}
@@ -230,17 +253,28 @@ const ProjectItem = ({
       />
     }
   />
-);
+  </div>
+  );
+};
 
 const AreaGroup = ({ area, via, actions }: { area: SidebarArea; via: Via; actions: ContainerActions }) => {
   const { draft } = useShell();
-  const { setNodeRef, listeners, transform, transition, isDragging } = useSortable({ id: area._id, disabled: isDraftId(area._id) });
+  const { setNodeRef, listeners, transform, transition, isDragging, isOver, active } = useSortable({
+    id: area._id,
+    data: { kind: "area" },
+    disabled: isDraftId(area._id),
+  });
+  const receiving = isOver && active?.data.current?.kind === "project" && !area.projects.some((project) => project._id === active.id);
   return (
     <div
       ref={setNodeRef}
       data-menu-area={area._id}
       style={{ transform: CSS.Translate.toString(transform), transition }}
-      className={cn("relative rounded-lg", isDragging && "z-10 bg-surface shadow-lift")}
+      className={cn(
+        "relative rounded-lg transition-[background-color] duration-(--dur-fast) ease-out",
+        isDragging && "z-10 bg-surface shadow-lift",
+        receiving && "bg-foreground/[0.06]",
+      )}
     >
       <div {...listeners}>
         <NavItem
@@ -253,9 +287,11 @@ const AreaGroup = ({ area, via, actions }: { area: SidebarArea; via: Via; action
           }
         />
       </div>
-      {area.projects.map((project) => (
-        <ProjectItem key={project._id} project={project} colour={areaVar(area.colour)} indent via={via} actions={actions} />
-      ))}
+      <SortableContext items={area.projects.map((project) => project._id)} strategy={verticalListSortingStrategy}>
+        {area.projects.map((project) => (
+          <ProjectItem key={project._id} project={project} colour={areaVar(area.colour)} indent via={via} actions={actions} />
+        ))}
+      </SortableContext>
       {draft?.kind === "project" && draft.areaId === area._id && (
         <DraftRow kind="project" indent onCommit={(title) => actions.createProject(title, area._id)} />
       )}
@@ -320,14 +356,14 @@ const NewList = () => {
 };
 
 const SyncIndicator = () => {
-  const status = useView(api.planner.things.status, {});
+  const status = useQuietView(api.planner.things.status, {});
   const now = useNow();
   if (status === undefined || now === null || status?.retiredAt !== undefined) return <p className="h-8 flex-1" />;
   const fresh = status !== null && now - status.syncedAt < STALE_AFTER_MS;
   return (
     <p
       className="flex h-8 min-w-0 flex-1 items-center gap-2 pl-2.5 text-micro text-faint-foreground"
-      title={status ? new Date(status.syncedAt).toLocaleString("en-AU") : undefined}
+      title={status ? syncedAtFormat.format(status.syncedAt) : undefined}
     >
       <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", fresh ? "bg-positive" : "bg-foreground/25")} />
       <MorphText>{status ? `Synced from Things ${timeAgo(status.syncedAt, Math.max(now, status.syncedAt))}` : "Not synced from Things yet"}</MorphText>
@@ -351,43 +387,102 @@ const SignOutButton = () => {
 };
 
 const DRAG_START_PX = 6;
+const DRAG_MODIFIERS = [restrictToVerticalAxis];
 
-const Areas = ({ areas, via, actions }: { areas: SidebarArea[]; via: Via; actions: ContainerActions }) => {
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: DRAG_START_PX } }));
+const kindOf = (entry: { data: { current?: Record<string, unknown> } }) => entry.data.current?.kind;
+
+const sameKindFirst: CollisionDetection = (args) => {
+  const kind = kindOf(args.active);
+  const same = args.droppableContainers.filter((container) => kindOf(container) === kind);
+  const hits = closestCenter({ ...args, droppableContainers: kind === "area" ? same : args.droppableContainers });
+  return hits;
+};
+
+const between = <T extends { _id: string; order: string }>(siblings: readonly T[], movedId: string, overId: string) => {
+  const to = siblings.findIndex((entry) => entry._id === overId);
+  const others = siblings.filter((entry) => entry._id !== movedId);
+  return to === -1 ? null : generateKeyBetween(others[to - 1]?.order ?? null, others[to]?.order ?? null);
+};
+
+const Sortables = ({ view, actions, children }: { view: SidebarView; actions: ContainerActions; children: ReactNode }) => {
+  const sensors = useSensors(useSensor(MouseSensor, { activationConstraint: { distance: DRAG_START_PX } }));
   const dragged = useRef(false);
   const onDragEnd = ({ active, over }: DragEndEvent) => {
     dragged.current = true;
     setTimeout(() => (dragged.current = false), 0);
     if (!over || active.id === over.id) return;
-    const from = areas.findIndex((area) => area._id === active.id);
-    const to = areas.findIndex((area) => area._id === over.id);
-    const moved = areas[from];
-    if (!moved || to === -1) return;
-    const rest = areas.filter((area) => area._id !== moved._id);
+    const movedId = String(active.id);
+    const overId = String(over.id);
+    if (kindOf(active) === "area") {
+      const moved = view.areas.find((area) => area._id === movedId);
+      const order = between(view.areas, movedId, overId);
+      if (!moved || !order) return;
+      haptic("drop");
+      return actions.reorderArea(moved, order);
+    }
+    const from = projectHome(view, movedId);
+    if (!from) return;
+    const overArea = view.areas.find((area) => area._id === overId);
+    if (overArea) {
+      if (overArea._id === from.area?._id) return;
+      haptic("drop");
+      return actions.moveProject(from.project, overArea);
+    }
+    const to = projectHome(view, overId);
+    if (!to) return;
+    const order =
+      to.area?._id === from.area?._id
+        ? between(to.siblings, movedId, overId)
+        : generateKeyBetween(to.siblings[to.siblings.indexOf(to.project) - 1]?.order ?? null, to.project.order);
+    if (!order) return;
     haptic("drop");
-    actions.reorderArea(moved, generateKeyBetween(rest[to - 1]?.order ?? null, rest[to]?.order ?? null));
+    if (to.area?._id === from.area?._id) actions.reorderProject(from.project, from.area?._id ?? null, order);
+    else actions.moveProject(from.project, to.area ?? null, order);
   };
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis, restrictToParentElement]} onDragEnd={onDragEnd}>
-      <SortableContext items={areas.map((area) => area._id)} strategy={verticalListSortingStrategy}>
-        <div
-          className="flex flex-col gap-4"
-          onClickCapture={(event) => {
-            if (!dragged.current) return;
-            event.preventDefault();
-            event.stopPropagation();
-          }}
-        >
-          {areas.map((area) => (
-            <AreaGroup key={area._id} area={area} via={via} actions={actions} />
-          ))}
-        </div>
-      </SortableContext>
+    <DndContext sensors={sensors} collisionDetection={sameKindFirst} modifiers={DRAG_MODIFIERS} onDragEnd={onDragEnd}>
+      <div
+        className="contents"
+        onClickCapture={(event) => {
+          if (!dragged.current) return;
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+        onKeyDown={(event) => {
+          const step = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+          if (step === 0 || !(event.metaKey || event.ctrlKey) || !(event.target instanceof HTMLElement)) return;
+          const projectId = event.target.dataset.menuProject;
+          const areaId = event.target.closest<HTMLElement>("[data-menu-area]")?.dataset.menuArea;
+          if (projectId) {
+            const home = projectHome(view, projectId);
+            const order = projectStepKey(view, projectId, step);
+            if (home && order) actions.reorderProject(home.project, home.area?._id ?? null, order);
+          } else if (areaId) {
+            const area = view.areas.find((entry) => entry._id === areaId);
+            const order = areaStepKey(view, areaId, step);
+            if (area && order) actions.reorderArea(area, order);
+          } else return;
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+      >
+        {children}
+      </div>
     </DndContext>
   );
 };
 
-export const Sidebar = ({ view, via }: { view: SidebarView | undefined; via: Via }) => {
+const Areas = ({ areas, via, actions }: { areas: SidebarArea[]; via: Via; actions: ContainerActions }) => (
+  <SortableContext items={areas.map((area) => area._id)} strategy={verticalListSortingStrategy}>
+    <div className="flex flex-col gap-4">
+      {areas.map((area) => (
+        <AreaGroup key={area._id} area={area} via={via} actions={actions} />
+      ))}
+    </div>
+  </SortableContext>
+);
+
+export const Sidebar = ({ view, via, notice }: { view: SidebarView | undefined; via: Via; notice?: ReactNode }) => {
   const shell = useShell();
   const actions = useContainerActions(shell);
   const { draft } = shell;
@@ -397,7 +492,7 @@ export const Sidebar = ({ view, via }: { view: SidebarView | undefined; via: Via
       <div data-tauri-drag-region className="flex h-12 shrink-0 items-end px-2.5 pb-1">
         <span className="flex items-center gap-2 text-small font-semibold md:hidden">
           <LifeosMark fill="enter" />
-          LifeOS
+          <span translate="no">LifeOS</span>
         </span>
       </div>
       <div>
@@ -411,16 +506,24 @@ export const Sidebar = ({ view, via }: { view: SidebarView | undefined; via: Via
       </div>
       <div>
         <NavItem to={{ kind: "logbook" }} {...LIST_META.logbook} via={via} />
+        <NavItem to={{ kind: "trash" }} {...LIST_META.trash} via={via} />
       </div>
-      {view && (view.projects.length > 0 || looseDraft) && (
-        <div>
-          {view.projects.map((project) => (
-            <ProjectItem key={project._id} project={project} colour="var(--muted-foreground)" indent={false} via={via} actions={actions} />
-          ))}
-          {looseDraft && <DraftRow kind="project" indent={false} onCommit={(title) => actions.createProject(title, null)} />}
-        </div>
+      {notice}
+      {view && (
+        <Sortables view={view} actions={actions}>
+          {(view.projects.length > 0 || looseDraft) && (
+            <div>
+              <SortableContext items={view.projects.map((project) => project._id)} strategy={verticalListSortingStrategy}>
+                {view.projects.map((project) => (
+                  <ProjectItem key={project._id} project={project} colour="var(--muted-foreground)" indent={false} via={via} actions={actions} />
+                ))}
+              </SortableContext>
+              {looseDraft && <DraftRow kind="project" indent={false} onCommit={(title) => actions.createProject(title, null)} />}
+            </div>
+          )}
+          <Areas areas={view.areas} via={via} actions={actions} />
+        </Sortables>
       )}
-      {view && <Areas areas={view.areas} via={via} actions={actions} />}
       {draft?.kind === "area" && <DraftRow kind="area" indent={false} onCommit={(title) => actions.createArea(title, view)} />}
       <div className="mt-auto pt-2">
         <NewList />

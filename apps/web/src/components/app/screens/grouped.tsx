@@ -13,9 +13,10 @@ import { useView, valueOf } from "../hooks";
 import { ListPage, ListSkeleton, RouteLink, SectionHeading } from "../list-page";
 import { useShell } from "../shell-context";
 import { LIST_META } from "../sidebar";
-import { TaskItem, type TaskItemShow } from "../task-item";
+import { TaskItems, useHasDrafts, type TaskItemShow } from "../task-item";
 
 const VISIBLE = 3;
+const NO_TASKS = [] as const;
 
 const fraction = ({ done, total }: { done: number; total: number }) => (total === 0 ? 0 : done / total);
 
@@ -59,11 +60,7 @@ const Group = ({ group, show }: { group: TaskGroup; show: TaskItemShow }) => {
   return (
     <section>
       <GroupHeading container={group.container} />
-      <ul className="-mx-3">
-        {head.map((task) => (
-          <TaskItem key={task._id} task={task} show={show} />
-        ))}
-      </ul>
+      <TaskItems tasks={head} show={show} />
       <AnimatePresence initial={false} onExitComplete={() => setSettled(false)}>
         {showAll && (
           <motion.div
@@ -75,11 +72,7 @@ const Group = ({ group, show }: { group: TaskGroup; show: TaskItemShow }) => {
             onAnimationComplete={() => setSettled(true)}
             className={cn("-mx-3 px-3", !settled && "overflow-hidden")}
           >
-            <ul className="-mx-3">
-              {rest.map((task) => (
-                <TaskItem key={task._id} task={task} show={show} />
-              ))}
-            </ul>
+            <TaskItems tasks={rest} show={show} />
           </motion.div>
         )}
       </AnimatePresence>
@@ -103,14 +96,20 @@ const Group = ({ group, show }: { group: TaskGroup; show: TaskItemShow }) => {
 export const AnytimeScreen = () => {
   const { today } = useShell();
   const view = valueOf(useView(api.planner.lists.anytime, { date: today }));
+  const drafting = useHasDrafts();
   return (
     <ListPage title="Anytime" icon={LIST_META.anytime.icon}>
       {!view ? (
         <ListSkeleton />
-      ) : view.groups.length === 0 ? (
+      ) : view.groups.length === 0 && !drafting ? (
         <EmptyState spot="anytime" title="Nothing waiting" hint="Tasks you can do whenever you have time show here, grouped by Area." className="py-16" />
       ) : (
-        view.groups.map((group) => <Group key={group.key} group={group} show={{ star: true }} />)
+        <>
+          <TaskItems tasks={NO_TASKS} show={{ star: true }} hostsDrafts="above" />
+          {view.groups.map((group) => (
+            <Group key={group.key} group={group} show={{ star: true }} />
+          ))}
+        </>
       )}
     </ListPage>
   );
@@ -146,14 +145,16 @@ const ParkedProjects = ({ projects }: { projects: SomedayView["projects"] }) => 
 
 export const SomedayScreen = () => {
   const view = useView(api.planner.lists.someday, {});
+  const drafting = useHasDrafts();
   return (
     <ListPage title="Someday" icon={LIST_META.someday.icon}>
       {!view ? (
         <ListSkeleton />
-      ) : view.groups.length + view.projects.length === 0 ? (
+      ) : view.groups.length + view.projects.length === 0 && !drafting ? (
         <EmptyState spot="someday" title="No someday ideas yet" hint="Park a Task here when it is worth keeping but not worth planning." className="py-16" />
       ) : (
         <>
+          <TaskItems tasks={NO_TASKS} hostsDrafts="above" />
           {view.groups.map((group) => (
             <Group key={group.key} group={group} show={{}} />
           ))}

@@ -15,7 +15,7 @@ import { LifeosMark } from "@/components/lifeos/mark";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 
-const isAccessError = (error: unknown): error is ConvexError<AccessError> =>
+export const isAccessError = (error: unknown): error is ConvexError<AccessError> =>
   error instanceof ConvexError &&
   typeof error.data === "object" &&
   error.data !== null &&

@@ -1,7 +1,6 @@
 "use client";
 
 import { List as MenuIcon } from "@phosphor-icons/react";
-import { useQuery } from "convex/react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "waku";
 import { api } from "@lifeos/backend/api";
@@ -11,8 +10,11 @@ import { EmptyState } from "@/components/lifeos/states";
 import { undoLast } from "@/components/lifeos/undo";
 import { Toaster } from "@/components/ui/toast-stack";
 import { cn } from "@/lib/utils";
-import { useLocalDate, useView, valueOf } from "./hooks";
+import { ConfirmHost } from "./confirm";
+import { drafts } from "./drafts";
+import { useLocalDate, useQuietView, useViewState, valueOf } from "./hooks";
 import { AppMenu } from "./menus";
+import { PanelBoundary, PanelNotice } from "./panel-boundary";
 import { LISTS, parseRoute, routeHref, type Route, type Via } from "./route";
 import { Screen, UPCOMING_DAYS } from "./screens";
 import { SelectionBar } from "./selection-bar";
@@ -37,12 +39,12 @@ const moveFocus = (step: 1 | -1, main: HTMLElement | null) => {
 };
 
 const WarmLists = ({ today }: { today: IsoDate }) => {
-  useQuery(api.planner.lists.inbox, {});
-  useQuery(api.planner.today.get, { date: today });
-  useQuery(api.planner.lists.upcoming, { date: today, days: UPCOMING_DAYS });
-  useQuery(api.planner.lists.anytime, { date: today });
-  useQuery(api.planner.lists.someday, {});
-  useQuery(api.planner.labels.list, {});
+  useQuietView(api.planner.lists.inbox, {});
+  useQuietView(api.planner.today.get, { date: today });
+  useQuietView(api.planner.lists.upcoming, { date: today, days: UPCOMING_DAYS });
+  useQuietView(api.planner.lists.anytime, { date: today });
+  useQuietView(api.planner.lists.someday, {});
+  useQuietView(api.planner.labels.list, {});
   return null;
 };
 
@@ -62,7 +64,9 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
   const hadDrawer = useRef(false);
   const href = pending?.from === actual ? pending.to : actual;
   const route = useMemo(() => parseRoute(href), [href]);
-  const sidebar = valueOf(useView(api.planner.sidebar.get, { date: today }));
+  const [sidebarAttempt, setSidebarAttempt] = useState(0);
+  const sidebarState = useViewState(api.planner.sidebar.get, { date: today });
+  const sidebar = valueOf(sidebarState.value);
 
   const shell = useMemo(() => {
     const navigate = (to: Route, how: Via) => {
@@ -93,6 +97,8 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
   useEffect(() => {
     latest.current = shell;
   }, [shell]);
+  const openKey = card?.href === href ? card.key : undefined;
+  useEffect(() => drafts.keepOnly(openKey), [openKey]);
   const gestures = useMemo(
     () => ({
       open: (key: string) => latest.current?.setOpenCard({ key, instant: false }),
@@ -138,6 +144,7 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
   return (
     <ShellContext value={shell}>
       <WarmLists today={today} />
+      <PanelBoundary panel="list" fallback={() => children}>
       <AppMenu sidebar={sidebar}>
       <div className="flex h-dvh bg-surface select-none [-webkit-touch-callout:none]">
         <a
@@ -163,7 +170,17 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
             drawer ? "translate-x-0 shadow-float" : "max-md:invisible max-md:-translate-x-full",
           )}
         >
-          <Sidebar view={sidebar} via={via} />
+          <PanelBoundary key={sidebarAttempt} panel="sidebar">
+            <Sidebar
+              view={sidebar}
+              via={via}
+              notice={
+                sidebarState.error && !sidebar ? (
+                  <PanelNotice panel="sidebar" variant="panel" onRetry={() => setSidebarAttempt((attempt) => attempt + 1)} />
+                ) : undefined
+              }
+            />
+          </PanelBoundary>
         </aside>
         <div inert={drawer} className="flex min-w-0 flex-1 flex-col md:py-1.5 md:pr-1.5">
           <main
@@ -185,14 +202,19 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
               </button>
             </div>
             <div key={href} className={cn(via === "pointer" && "animate-screen-in")}>
-              <Screen route={route} sidebar={sidebar} />
+              <PanelBoundary panel="list" variant="screen">
+                <Screen route={route} sidebar={sidebar} sidebarFailed={sidebarState.error !== null} />
+              </PanelBoundary>
             </div>
             {children}
           </main>
-          <SelectionBar />
+          <PanelBoundary panel="bar" fallback={() => null}>
+            <SelectionBar />
+          </PanelBoundary>
         </div>
       </div>
       </AppMenu>
+      </PanelBoundary>
     </ShellContext>
   );
 };
@@ -211,6 +233,7 @@ export const AppShell = ({ children }: { children: ReactNode }) => {
   return (
     <>
       {!isConvexConfigured ? <SetupNotice /> : today ? <Connected today={today}>{children}</Connected> : <div className="h-dvh bg-surface" />}
+      <ConfirmHost />
       <Toaster />
     </>
   );

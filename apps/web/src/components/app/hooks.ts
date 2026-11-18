@@ -1,8 +1,14 @@
 "use client";
 
-import { useQuery } from "convex/react";
-import { getFunctionName, type FunctionArgs, type FunctionReference, type FunctionReturnType } from "convex/server";
-import { useSyncExternalStore } from "react";
+import { useQueries } from "convex/react";
+import {
+  getFunctionName,
+  makeFunctionReference,
+  type FunctionArgs,
+  type FunctionReference,
+  type FunctionReturnType,
+} from "convex/server";
+import { useMemo, useSyncExternalStore } from "react";
 import { localIsoDate } from "@lifeos/backend/date";
 
 const TICK_MS = 20_000;
@@ -26,12 +32,37 @@ export const useNow = () => useSyncExternalStore(subscribeTick, readTick, readNo
 
 const lastSeen = new Map<string, unknown>();
 
-export const useView = <Query extends FunctionReference<"query">>(query: Query, args: FunctionArgs<Query> | "skip") => {
-  const live = useQuery(query, ...([args] as never));
-  const key = args === "skip" ? null : `${getFunctionName(query)}:${JSON.stringify(args)}`;
-  if (key && live !== undefined) lastSeen.set(key, live);
-  return (live ?? (key ? lastSeen.get(key) : undefined)) as FunctionReturnType<Query> | undefined;
+const failing = () =>
+  import.meta.env.DEV && typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("__fail") ?? "") : "";
+
+const referenceFor = (name: string) => {
+  const fault = failing();
+  return makeFunctionReference<"query">(fault !== "" && name.includes(fault) ? "planner/missing:fn" : name);
 };
+
+export const useViewState = <Query extends FunctionReference<"query">>(query: Query, args: FunctionArgs<Query> | "skip") => {
+  const name = getFunctionName(query);
+  const argsKey = args === "skip" ? null : JSON.stringify(args);
+  const queries = useMemo(() => {
+    const request: Parameters<typeof useQueries>[0] = {};
+    if (argsKey !== null) request.view = { query: referenceFor(name), args: JSON.parse(argsKey) as Record<string, never> };
+    return request;
+  }, [name, argsKey]);
+  const live: unknown = useQueries(queries).view;
+  const key = argsKey === null ? null : `${name}:${argsKey}`;
+  if (live instanceof Error) return { value: undefined, error: live };
+  if (key && live !== undefined) lastSeen.set(key, live);
+  return { value: (live ?? (key ? lastSeen.get(key) : undefined)) as FunctionReturnType<Query> | undefined, error: null };
+};
+
+export const useView = <Query extends FunctionReference<"query">>(query: Query, args: FunctionArgs<Query> | "skip") => {
+  const { value, error } = useViewState(query, args);
+  if (error) throw error;
+  return value;
+};
+
+export const useQuietView = <Query extends FunctionReference<"query">>(query: Query, args: FunctionArgs<Query> | "skip") =>
+  useViewState(query, args).value;
 
 export const valueOf = <T>(response: { ok: true; value: T } | { ok: false; error: unknown } | undefined) =>
   response?.ok ? response.value : undefined;

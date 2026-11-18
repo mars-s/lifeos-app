@@ -12,7 +12,7 @@ import { useView, valueOf } from "../hooks";
 import { ListPage, ListSkeleton } from "../list-page";
 import { useShell } from "../shell-context";
 import { LIST_META } from "../sidebar";
-import { TaskItem } from "../task-item";
+import { TaskItems, useHasDrafts } from "../task-item";
 
 export const UPCOMING_DAYS = 28;
 const ALWAYS_SHOWN_DAYS = 7;
@@ -43,6 +43,8 @@ const DeadlineRow = ({ task, today }: { task: PlannerTask; today: string }) => (
   </li>
 );
 
+const NO_TASKS = [] as const;
+
 const DaySection = ({ date, day, today }: { date: IsoDate; day: Day | undefined; today: string }) => {
   const near = daysBetween(today, date) <= ALWAYS_SHOWN_DAYS;
   const scheduledHere = new Set(day?.tasks.map((task) => task._id));
@@ -57,14 +59,16 @@ const DaySection = ({ date, day, today }: { date: IsoDate; day: Day | undefined;
         </span>
       </h2>
       {day && (
-        <ul className="-mx-3 mt-1">
-          {dueOnly.map((task) => (
-            <DeadlineRow key={`due-${task._id}`} task={task} today={today} />
-          ))}
-          {day.tasks.map((task) => (
-            <TaskItem key={task._id} task={task} show={{ context: true }} />
-          ))}
-        </ul>
+        <>
+          {dueOnly.length > 0 && (
+            <ul className="-mx-3 mt-1">
+              {dueOnly.map((task) => (
+                <DeadlineRow key={task._id} task={task} today={today} />
+              ))}
+            </ul>
+          )}
+          <TaskItems tasks={day.tasks} show={{ context: true }} className={dueOnly.length > 0 ? undefined : "mt-1"} />
+        </>
       )}
     </section>
   );
@@ -73,6 +77,7 @@ const DaySection = ({ date, day, today }: { date: IsoDate; day: Day | undefined;
 export const UpcomingScreen = () => {
   const { today } = useShell();
   const view = valueOf(useView(api.planner.lists.upcoming, { date: today, days: UPCOMING_DAYS }));
+  const drafting = useHasDrafts();
   const byDate = new Map(view?.days.map((day) => [day.date, day]));
   const week = Array.from({ length: ALWAYS_SHOWN_DAYS }, (_, index) => addDays(today, index + 1));
   const later = (view?.days ?? []).flatMap((day) => (week.some((date) => date === day.date) ? [] : [day.date as IsoDate]));
@@ -80,7 +85,7 @@ export const UpcomingScreen = () => {
     <ListPage title="Upcoming" icon={LIST_META.upcoming.icon}>
       {!view ? (
         <ListSkeleton />
-      ) : view.days.length === 0 ? (
+      ) : view.days.length === 0 && !drafting ? (
         <EmptyState
           spot="upcoming"
           title="Nothing coming up"
@@ -88,7 +93,12 @@ export const UpcomingScreen = () => {
           className="py-16"
         />
       ) : (
-        [...week, ...later].map((date) => <DaySection key={date} date={date} day={byDate.get(date)} today={today} />)
+        <>
+          <TaskItems tasks={NO_TASKS} show={{ context: true, when: true }} hostsDrafts="above" className="mb-4" />
+          {[...week, ...later].map((date) => (
+            <DaySection key={date} date={date} day={byDate.get(date)} today={today} />
+          ))}
+        </>
       )}
     </ListPage>
   );

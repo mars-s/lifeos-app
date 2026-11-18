@@ -12,7 +12,7 @@ import { useView, valueOf } from "../hooks";
 import { ListPage, ListSkeleton, SectionHeading } from "../list-page";
 import { useShell } from "../shell-context";
 import { LIST_META } from "../sidebar";
-import { TaskItems } from "../task-item";
+import { TaskItems, useHasDrafts } from "../task-item";
 
 const DOT_MINUTES = 15;
 const MAX_DOTS = 48;
@@ -54,16 +54,17 @@ const PlannedStrip = ({ tasks }: { tasks: PlannerTask[] }) => {
 export const TodayScreen = () => {
   const { today } = useShell();
   const view = valueOf(useView(api.planner.today.get, { date: today }));
+  const drafting = useHasDrafts();
   return (
     <ListPage title="Today" icon={LIST_META.today.icon} subtitle={longDay(today)}>
       {!view ? (
         <ListSkeleton />
-      ) : view.tasks.length + view.evening.length === 0 ? (
+      ) : view.tasks.length + view.evening.length === 0 && !drafting ? (
         <EmptyState spot="today-clear" title="Today is clear" hint="Nothing scheduled and nothing due. Enjoy the space." className="py-16" />
       ) : (
         <>
           <PlannedStrip tasks={[...view.tasks, ...view.evening]} />
-          <TaskItems tasks={view.tasks} show={{ context: true }} />
+          <TaskItems tasks={view.tasks} show={{ context: true }} hostsDrafts="inline" />
           {view.evening.length > 0 && (
             <>
               <SectionHeading leading={<Moon weight="fill" className="size-4 text-muted-foreground" aria-hidden="true" />}>
@@ -80,14 +81,15 @@ export const TodayScreen = () => {
 
 export const InboxScreen = () => {
   const view = useView(api.planner.lists.inbox, {});
+  const drafting = useHasDrafts();
   return (
     <ListPage title="Inbox" icon={LIST_META.inbox.icon}>
       {!view ? (
         <ListSkeleton />
-      ) : view.tasks.length === 0 ? (
+      ) : view.tasks.length === 0 && !drafting ? (
         <EmptyState spot="inbox-empty" title="The Inbox is empty" hint="New thoughts land here, ready to sort." className="py-16" />
       ) : (
-        <TaskItems tasks={view.tasks} />
+        <TaskItems tasks={view.tasks} hostsDrafts="inline" sortable />
       )}
     </ListPage>
   );

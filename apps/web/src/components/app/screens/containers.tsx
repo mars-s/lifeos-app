@@ -20,7 +20,7 @@ import { ListPage, ListSkeleton, Missing, RouteLink, SectionHeading } from "../l
 import { useShell } from "../shell-context";
 import { openMenuFor } from "../menus";
 import { NotesField } from "../task-card-body";
-import { TaskItems } from "../task-item";
+import { TaskItems, useHasDrafts } from "../task-item";
 
 const fraction = ({ done, total }: { done: number; total: number }) => (total === 0 ? 0 : done / total);
 
@@ -34,6 +34,7 @@ const EditableTitle = ({ title, label, onSave }: { title: string; label: string;
       <h1 className="sr-only">{title}</h1>
       <input
         aria-label={label}
+        name="title"
         data-undo={draft === null ? "app" : undefined}
         value={draft ?? title}
         autoComplete="off"
@@ -95,6 +96,7 @@ const ProjectRows = ({ projects, colour }: { projects: AreaView["projects"]; col
 
 export const AreaScreen = ({ areaId }: { areaId: Id<"areas"> }) => {
   const view = useView(api.planner.lists.area, { areaId });
+  const drafting = useHasDrafts();
   const actions = useContainerActions(useShell());
   if (view === null) return <Missing />;
   if (!view)
@@ -121,11 +123,11 @@ export const AreaScreen = ({ areaId }: { areaId: Id<"areas"> }) => {
       }
       subtitle={`${plural(view.projects.length, "Project")}, ${plural(view.tasks.length + openInProjects, "Task")}`}
     >
-      {view.tasks.length + view.projects.length === 0 ? (
+      {view.tasks.length + view.projects.length === 0 && !drafting ? (
         <EmptyState title="Nothing open here" hint="Press N for a new Task, or right-click for a new Project." className="py-12" />
       ) : (
         <>
-          <TaskItems tasks={view.tasks} show={{ star: true, when: true }} />
+          <TaskItems tasks={view.tasks} show={{ star: true, when: true }} hostsDrafts="inline" sortable />
           {view.projects.length > 0 && (
             <>
               <SectionHeading className="mb-3 border-b-0">Projects</SectionHeading>
@@ -143,6 +145,7 @@ export const ProjectScreen = ({ projectId }: { projectId: Id<"projects"> }) => {
   const { today } = shell;
   const actions = useContainerActions(shell);
   const view = useView(api.planner.lists.project, { projectId });
+  const drafting = useHasDrafts();
   if (view === null) return <Missing />;
   if (!view)
     return (
@@ -202,7 +205,7 @@ export const ProjectScreen = ({ projectId }: { projectId: Id<"projects"> }) => {
       <div className="mb-5 select-text">
         <NotesField notes={view.project.notes} onSave={(notes) => actions.setProjectNotes(view.project, notes)} />
       </div>
-      {open === 0 && view.sections.length === 1 ? (
+      {open === 0 && view.sections.length === 1 && !drafting ? (
         <EmptyState
           spot="done"
           title={view.progress.total === 0 ? "No Tasks yet" : "Every Task is done"}
@@ -225,10 +228,10 @@ export const ProjectScreen = ({ projectId }: { projectId: Id<"projects"> }) => {
           section.heading ? (
             <section key={section.heading._id}>
               <SectionHeading>{section.heading.title}</SectionHeading>
-              <TaskItems tasks={section.tasks} show={{ star: true, when: true }} />
+              <TaskItems tasks={section.tasks} show={{ star: true, when: true }} sortable />
             </section>
           ) : (
-            section.tasks.length > 0 && <TaskItems key="loose" tasks={section.tasks} show={{ star: true, when: true }} />
+            <TaskItems key="loose" tasks={section.tasks} show={{ star: true, when: true }} hostsDrafts="inline" sortable />
           ),
         )
       )}

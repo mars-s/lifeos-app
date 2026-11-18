@@ -204,6 +204,10 @@ li[data-selected]:has(+ li[data-selected]) .task-selected {
   --animate-delayed-in: delayed-in 200ms var(--ease-out) 160ms both;
   --animate-refuse: refuse 260ms var(--ease-out);
   --animate-dot-in: dot-in 220ms var(--ease-out) both;
+  --animate-fade-in: fade-in 200ms var(--ease-out) both;
+  --animate-fade-out: fade-out 140ms var(--ease-out) both;
+  --animate-dialog-in: dialog-in 200ms var(--ease-out) both;
+  --animate-dialog-out: dialog-out 140ms var(--ease-out) both;
 
   --animate-mark-fill: mark-fill 420ms var(--ease-out) both;
   --animate-mark-loop: mark-loop 1800ms var(--ease-out) infinite both;
@@ -247,6 +251,32 @@ li[data-selected]:has(+ li[data-selected]) .task-selected {
     }
   }
 
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @keyframes fade-out {
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes dialog-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+  }
+
+  @keyframes dialog-out {
+    to {
+      opacity: 0;
+      transform: scale(0.98);
+    }
+  }
+
   @keyframes screen-in {
     from {
       opacity: 0;
@@ -276,6 +306,11 @@ li[data-selected]:has(+ li[data-selected]) .task-selected {
     @apply border-border outline-ring;
     scrollbar-color: color-mix(in oklch, var(--foreground) 22%, transparent) transparent;
     scrollbar-width: thin;
+  }
+  @media (pointer: fine) {
+    html {
+      overscroll-behavior: none;
+    }
   }
   html {
     touch-action: manipulation;

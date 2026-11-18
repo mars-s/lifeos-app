@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, MagnifyingGlass, Plus, Tag as TagIcon } from "@phosphor-icons/react";
+import { Check, MagnifyingGlass, Plus, Tag as TagIcon, Trash } from "@phosphor-icons/react";
 import { useState } from "react";
 import { Popover } from "@/components/ui/popover-panel";
 import { haptic } from "@/lib/haptics";
@@ -32,7 +32,7 @@ const Swatches = ({ value, name, onPick }: { value: AreaColour; name: string; on
           onPick(colour);
         }}
         className={cn(
-          "relative grid size-6 place-items-center rounded-full transition-[scale,box-shadow] duration-(--dur-press) ease-out before:absolute before:-inset-1 active:scale-[0.88]",
+          "relative grid size-5 place-items-center rounded-full transition-[scale,box-shadow] duration-(--dur-press) ease-out before:absolute before:-inset-1 active:scale-[0.88]",
           colour === value ? "shadow-[0_0_0_2px_var(--popover),0_0_0_3.5px_var(--foreground)]" : "hover:scale-110",
         )}
         style={{ backgroundColor: areaVar(colour) }}
@@ -41,19 +41,100 @@ const Swatches = ({ value, name, onPick }: { value: AreaColour; name: string; on
   </div>
 );
 
+type LabelPickerProps = {
+  labels: PickerLabel[];
+  selected: readonly string[];
+  onToggle: (label: PickerLabel) => void;
+  onCreate: (name: string, colour: AreaColour) => void;
+  onColour: (label: PickerLabel, colour: AreaColour) => void;
+  onRename?: (label: PickerLabel, name: string) => void;
+  onRemove?: (label: PickerLabel) => void;
+};
+
+const LabelEditor = ({
+  label,
+  taken,
+  onColour,
+  onRename,
+  onRemove,
+  onDone,
+}: {
+  label: PickerLabel;
+  taken: (name: string) => boolean;
+  onColour: (colour: AreaColour) => void;
+  onRename?: (name: string) => void;
+  onRemove?: () => void;
+  onDone: () => void;
+}) => {
+  const [name, setName] = useState(label.name);
+  const wanted = name.trim();
+  const clash = wanted !== "" && fold(wanted) !== fold(label.name) && taken(wanted);
+  const commit = () => {
+    if (wanted && wanted !== label.name && !clash) onRename?.(wanted);
+    else setName(label.name);
+  };
+  return (
+    <div className="mx-1 mb-1.5 rounded-lg bg-foreground/[0.04] pt-1.5">
+      <Swatches value={label.colour} name={label.name} onPick={onColour} />
+      {(onRename || onRemove) && (
+        <div className="flex items-center gap-1 px-1.5 pb-1.5">
+          {onRename && (
+            <input
+              aria-label={`Rename ${label.name}`}
+              aria-invalid={clash}
+              value={name}
+              name="label-name"
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(event) => setName(event.target.value)}
+              onBlur={commit}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  commit();
+                  if (!clash) onDone();
+                }
+                if (event.key === "Escape") {
+                  event.stopPropagation();
+                  setName(label.name);
+                  onDone();
+                }
+              }}
+              className={cn(
+                "h-7 min-w-0 flex-1 rounded-md bg-foreground/[0.06] px-2 text-small -outline-offset-1 select-text placeholder:text-faint-foreground",
+                clash && "text-negative",
+              )}
+            />
+          )}
+          {onRemove && (
+            <button
+              type="button"
+              aria-label={`Delete ${label.name}`}
+              title="Delete Label"
+              onClick={onRemove}
+              className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground -outline-offset-1 transition-[background-color,color,scale] duration-(--dur-press) ease-out hover:bg-negative/10 hover:text-negative active:scale-[0.9]"
+            >
+              <Trash className="size-3.5" aria-hidden="true" />
+            </button>
+          )}
+        </div>
+      )}
+      <p role="status" className={cn("px-2 pb-1.5 text-micro text-negative", !clash && "sr-only")}>
+        {clash ? "Another Label has that name." : ""}
+      </p>
+    </div>
+  );
+};
+
 const LabelPanel = ({
   labels,
   selected,
   onToggle,
   onCreate,
   onColour,
-}: {
-  labels: PickerLabel[];
-  selected: readonly string[];
-  onToggle: (label: PickerLabel) => void;
-  onCreate: (name: string, colour: AreaColour) => void;
-  onColour: (label: PickerLabel, colour: AreaColour) => void;
-}) => {
+  onRename,
+  onRemove,
+}: LabelPickerProps) => {
   const [query, setQuery] = useState("");
   const [colouring, setColouring] = useState<string | null>(null);
   const [pickedColour, setPickedColour] = useState<AreaColour | null>(null);
@@ -109,7 +190,7 @@ const LabelPanel = ({
               <div className="flex h-8 items-center rounded-lg transition-colors duration-(--dur-press) hover:bg-foreground/[0.06] has-[[data-arrow-item]:focus-visible]:bg-foreground/[0.06]">
                 <button
                   type="button"
-                  aria-label={`Change the colour of ${label.name}`}
+                  aria-label={`Edit ${label.name}`}
                   aria-expanded={colouring === label.id}
                   onClick={() => setColouring(colouring === label.id ? null : label.id)}
                   className="grid size-8 shrink-0 place-items-center rounded-lg -outline-offset-2 transition-[scale] duration-(--dur-press) ease-out active:scale-[0.86]"
@@ -139,13 +220,15 @@ const LabelPanel = ({
                 </button>
               </div>
               {colouring === label.id && (
-                <Swatches
-                  value={label.colour}
-                  name={label.name}
-                  onPick={(colour) => {
+                <LabelEditor
+                  label={label}
+                  taken={(name) => labels.some((other) => other.id !== label.id && fold(other.name) === fold(name))}
+                  onColour={(colour) => {
                     if (colour !== label.colour) onColour(label, colour);
-                    setColouring(null);
                   }}
+                  onRename={onRename && ((name) => onRename(label, name))}
+                  onRemove={onRemove && (() => onRemove(label))}
+                  onDone={() => setColouring(null)}
                 />
               )}
             </li>
@@ -180,13 +263,7 @@ export const LabelPicker = ({
   labels,
   selected,
   ...panel
-}: {
-  labels: PickerLabel[];
-  selected: readonly string[];
-  onToggle: (label: PickerLabel) => void;
-  onCreate: (name: string, colour: AreaColour) => void;
-  onColour: (label: PickerLabel, colour: AreaColour) => void;
-}) => (
+}: LabelPickerProps) => (
   <Popover align="end" className="w-60 p-1.5" trigger={<ToolButton icon={TagIcon} label="Labels" />}>
     <LabelPanel labels={labels} selected={selected} {...panel} />
   </Popover>

@@ -23,6 +23,9 @@ import {
   ArrowBendUpRight,
   ArrowSquareOut,
   SelectionAll,
+  ArrowDown,
+  ArrowUp,
+  ArrowUUpLeft,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Popover as PopoverPrimitive } from "radix-ui";
@@ -39,17 +42,27 @@ import { ContextMenu, type MenuGroup, type MenuItem } from "@/components/ui/acti
 import { haptic } from "@/lib/haptics";
 import { EASE_OUT, instant } from "@/lib/motion-tokens";
 import { useChange } from "./changes";
-import { useContainerActions, isDraftId, type SidebarArea, type SidebarProject } from "./container-actions";
-import { useView } from "./hooks";
-import type { Route } from "./route";
+import {
+  areaStepKey,
+  isDraftId,
+  projectStepKey,
+  useContainerActions,
+  type SidebarArea,
+  type SidebarProject,
+} from "./container-actions";
+import { drafts } from "./drafts";
+import { useQuietView } from "./hooks";
+import { routeHref, type Route } from "./route";
 import { selection, useRegisteredTasks, useSelectionSize } from "./selection";
 import { useSelectionActions, type MoveTarget } from "./selection-actions";
 import { useShell } from "./shell-context";
+import { useTrashActions } from "./trash-actions";
 
 type Target =
   | { kind: "tasks"; key: string }
   | { kind: "area"; id: string }
   | { kind: "project"; id: string }
+  | { kind: "trash"; id: string }
   | { kind: "empty" };
 
 type DatePick = { x: number; y: number; tone: "brand" | "deadline"; label: string; value?: string; pick: (date: string) => void };
@@ -63,6 +76,8 @@ const isTyping = (target: EventTarget | null) =>
 const targetOf: (element: Element) => Target = (element) => {
   const row = element.closest<HTMLElement>("[data-task-key]");
   if (row?.dataset.taskKey) return { kind: "tasks", key: row.dataset.taskKey };
+  const trashed = element.closest<HTMLElement>("[data-menu-trash]");
+  if (trashed?.dataset.menuTrash) return { kind: "trash", id: trashed.dataset.menuTrash.split(":")[1] ?? "" };
   const area = element.closest<HTMLElement>("[data-menu-area]");
   const project = element.closest<HTMLElement>("[data-menu-project]");
   if (project?.dataset.menuProject && (!area || area.contains(project))) return { kind: "project", id: project.dataset.menuProject };
@@ -82,6 +97,11 @@ export const openMenuFor = (element: Element, viaKeyboard = false) => {
     }),
   );
 };
+
+const stepItems: (up: string | null, down: string | null, move: (order: string) => void) => MenuItem[] = (up, down, move) => [
+  { id: "move-up", label: "Move Up", icon: ArrowUp, shortcut: "⌘↑", disabled: up === null, onSelect: () => up && move(up) },
+  { id: "move-down", label: "Move Down", icon: ArrowDown, shortcut: "⌘↓", disabled: down === null, onSelect: () => down && move(down) },
+];
 
 const newTaskFor = (route: Route, today: IsoDate) => {
   switch (route.kind) {
@@ -152,7 +172,9 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
   const change = useChange();
   const tasksDo = useSelectionActions(today);
   const containersDo = useContainerActions(shell);
-  const labels = useView(api.planner.labels.list, {}) ?? [];
+  const labels = useQuietView(api.planner.labels.list, {}) ?? [];
+  const trashRows = useQuietView(api.planner.trash.list, route.kind === "trash" ? {} : "skip")?.rows ?? [];
+  const trashDo = useTrashActions();
   const root = useRef<HTMLDivElement>(null);
   const [target, setTarget] = useState<Target>({ kind: "empty" });
   const [point, setPoint] = useState({ x: 0, y: 0 });
@@ -162,22 +184,51 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
   useSelectionSize();
 
   const newTask = useMemo(
-    () => () => {
-      const context = newTaskFor(route, today);
-      if (route.kind === "logbook" || route.kind === "missing") navigate({ kind: "inbox" }, "keyboard");
+    () => (byKey: boolean) => {
+      const home: Route = route.kind === "logbook" || route.kind === "trash" || route.kind === "missing" ? { kind: "inbox" } : route;
+      const context = newTaskFor(home, today);
+      if (home !== route) navigate(home, "keyboard");
+      const area = route.kind === "area" ? sidebar?.areas.find((entry) => entry._id === route.id) : undefined;
+      const projectArea = route.kind === "project" ? sidebar?.areas.find((entry) => entry.projects.some((project) => project._id === route.id)) : undefined;
+      const project =
+        route.kind === "project" ? [...(sidebar?.projects ?? []), ...(projectArea?.projects ?? [])].find((entry) => entry._id === route.id) : undefined;
+      const owner = area ?? projectArea;
+      const known = new Set([...document.querySelectorAll<HTMLElement>("#main [data-task-id]")].flatMap((row) => row.dataset.taskId ?? []));
+      const key = drafts.add(
+        routeHref(home),
+        {
+          title: "New Task",
+          notes: "",
+          when: context.when,
+          parent: ("parent" in context && context.parent) || { kind: "loose" },
+          labelIds: [],
+          status: { kind: "open" },
+          order: "~",
+          context: project?.title ?? area?.title,
+          area: owner && { _id: owner._id, title: owner.title, colour: owner.colour, icon: owner.icon },
+          project: project && { _id: project._id, title: project.title },
+          labels: [],
+          checklist: [],
+          workBlocks: [],
+        },
+        known,
+      );
+      selection.clear();
+      setOpenCard({ key, instant: byKey });
       void change({
         title: "Task created",
         mutation: api.planner.tasks.create,
         args: { title: "New Task", ...context },
         apply: () => undefined,
         revert: () => undefined,
-        onSaved: ({ taskId }) => {
-          selection.clear();
-          setOpenCard({ key: taskId, instant: false });
-        },
+        onSaved: ({ taskId }) => drafts.saved(key, taskId),
+      }).then((saved) => {
+        if (saved) return;
+        drafts.failed(key);
+        setOpenCard(null);
       });
     },
-    [change, navigate, route, setOpenCard, today],
+    [change, navigate, route, setOpenCard, sidebar, today],
   );
 
   useEffect(() => {
@@ -206,7 +257,7 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
       }
       if (!command && !event.shiftKey && event.key.toLowerCase() === "n") {
         event.preventDefault();
-        newTask();
+        newTask(true);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -432,6 +483,15 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
     ];
   };
 
+  const trashGroups: (id: string) => MenuGroup[] = (id) => {
+    const row = trashRows.find((entry) => entry.id === id);
+    if (!row) return [];
+    return [
+      { items: [{ id: "put-back", label: "Put Back", icon: ArrowUUpLeft, onSelect: () => trashDo.putBack([row]) }] },
+      { items: [{ id: "delete", label: "Delete Forever…", icon: Trash, destructive: true, onSelect: () => trashDo.deleteForever(row) }] },
+    ];
+  };
+
   const areaGroups: (area: SidebarArea) => MenuGroup[] = (area) => [
     {
       items: [
@@ -486,6 +546,11 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
         },
       ],
     },
+    {
+      items: sidebar
+        ? stepItems(areaStepKey(sidebar, area._id, -1), areaStepKey(sidebar, area._id, 1), (order) => containersDo.reorderArea(area, order))
+        : [],
+    },
     { items: [{ id: "new-project", label: "New Project Here", icon: Plus, onSelect: () => setDraft({ kind: "project", areaId: area._id }) }] },
     { items: [{ id: "trash", label: "Move Area to Trash", icon: Trash, destructive: true, onSelect: () => containersDo.trashArea(area) }] },
   ];
@@ -531,6 +596,13 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
         },
       ],
     },
+    {
+      items: sidebar
+        ? stepItems(projectStepKey(sidebar, project._id, -1), projectStepKey(sidebar, project._id, 1), (order) =>
+            containersDo.reorderProject(project, area?._id ?? null, order),
+          )
+        : [],
+    },
     { items: [{ id: "complete", label: "Complete Project", icon: CheckCircle, onSelect: () => containersDo.completeProject(project, area?._id) }] },
     { items: [{ id: "trash", label: "Move Project to Trash", icon: Trash, destructive: true, onSelect: () => containersDo.trashProject(project, area?._id) }] },
   ];
@@ -538,7 +610,7 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
   const emptyGroups: () => MenuGroup[] = () => [
     {
       items: [
-        { id: "new-task", label: "New Task", icon: CheckSquare, shortcut: "N", onSelect: newTask },
+        { id: "new-task", label: "New Task", icon: CheckSquare, shortcut: "N", onSelect: () => newTask(false) },
         {
           id: "new-project",
           label: "New Project",
@@ -552,6 +624,7 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
 
   const groupsFor: () => MenuGroup[] = () => {
     if (target.kind === "tasks") return taskGroups(target.key);
+    if (target.kind === "trash") return trashGroups(target.id);
     if (target.kind === "area") {
       const area = areas.find((entry) => entry._id === target.id);
       return area && !isDraftId(area._id) ? areaGroups(area) : emptyGroups();

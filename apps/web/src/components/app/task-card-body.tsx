@@ -14,7 +14,7 @@ import { ToolButton } from "@/components/lifeos/tool-button";
 import { WorkBlockList } from "@/components/lifeos/work-blocks";
 import { instant, springLayout } from "@/lib/motion-tokens";
 import { deadlineMark, localDate, relativeDay, shortDay, whenLabel } from "./dates";
-import { useView } from "./hooks";
+import { useQuietView } from "./hooks";
 import { Linkified, TitleLinks } from "./linkified";
 import { isOptimistic, useTaskActions } from "./task-actions";
 
@@ -64,6 +64,7 @@ export const TitleField = ({ task, today }: { task: PlannerTask; today: string }
     <input
       ref={field}
       aria-label="Title"
+      name="title"
       data-undo={draft === null ? "app" : undefined}
       value={draft ?? task.title}
       placeholder="New Task"
@@ -105,6 +106,8 @@ export const NotesField = ({ notes, onSave }: { notes: string; onSave: (notes: s
     <textarea
       ref={field}
       aria-label="Notes"
+      name="notes"
+      autoComplete="off"
       data-undo={draft === null ? "app" : undefined}
       rows={1}
       value={draft ?? notes}
@@ -123,7 +126,7 @@ export const NotesField = ({ notes, onSave }: { notes: string; onSave: (notes: s
 export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string }) => {
   const reduce = useReducedMotion();
   const actions = useTaskActions(task, today);
-  const labels = useView(api.planner.labels.list, {}) ?? task.labels;
+  const labels = useQuietView(api.planner.labels.list, {}) ?? task.labels;
   const items = useStableKeys(task.checklist);
   const [composing, setComposing] = useState(false);
   const composer = useRef<HTMLInputElement>(null);
@@ -197,6 +200,14 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
             onColour={({ id }, colour) => {
               const label = labels.find((entry) => entry._id === id);
               if (label) actions.recolourLabel(label, colour);
+            }}
+            onRename={({ id }, name) => {
+              const label = labels.find((entry) => entry._id === id);
+              if (label) actions.renameLabel(label, name);
+            }}
+            onRemove={({ id }) => {
+              const label = labels.find((entry) => entry._id === id);
+              if (label) actions.removeLabel(label);
             }}
           />
           {!hasChecklist && <ToolButton icon={ListChecks} label="Checklist" onClick={() => setComposing(true)} />}

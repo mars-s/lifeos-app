@@ -29,17 +29,27 @@ const withoutProject = (projectId: string) => (sidebar: SidebarView) => ({
   areas: sidebar.areas.map((area) => ({ ...area, projects: area.projects.filter((project) => project._id !== projectId) })),
 });
 
+const inOrder = <T extends { order: string }>(a: T, b: T) => (a.order < b.order ? -1 : a.order > b.order ? 1 : 0);
+
 const withProject = (project: SidebarProject, areaId: Id<"areas"> | null) => (sidebar: SidebarView) =>
   areaId === null
-    ? { ...sidebar, projects: [...sidebar.projects, project] }
-    : mapAreas((area) => (area._id === areaId ? { ...area, projects: [...area.projects, project] } : area))(sidebar);
+    ? { ...sidebar, projects: [...sidebar.projects, project].toSorted(inOrder) }
+    : mapAreas((area) => (area._id === areaId ? { ...area, projects: [...area.projects, project].toSorted(inOrder) } : area))(sidebar);
+
+const stepKey = <T extends { _id: string; order: string }>(siblings: readonly T[], id: string, step: 1 | -1) => {
+  const from = siblings.findIndex((entry) => entry._id === id);
+  const others = siblings.filter((entry) => entry._id !== id);
+  const to = from + step;
+  if (from === -1 || to < 0 || to > others.length) return null;
+  return generateKeyBetween(others[to - 1]?.order ?? null, others[to]?.order ?? null);
+};
 
 const nextColour = (sidebar: SidebarView | undefined) => {
   const used = new Set<AreaColour>(sidebar?.areas.map((area) => area.colour));
   return AREA_COLOURS.find((colour) => !used.has(colour)) ?? AREA_COLOURS[(sidebar?.areas.length ?? 0) % AREA_COLOURS.length] ?? "slate";
 };
 
-const byOrder = (a: SidebarArea, b: SidebarArea) => (a.order < b.order ? -1 : a.order > b.order ? 1 : 0);
+const byOrder = inOrder<SidebarArea>;
 
 export const useContainerActions = (shell: { route: Route; navigate: (route: Route, via: Via) => void }) => {
   const change = useChange();
@@ -68,7 +78,7 @@ export const useContainerActions = (shell: { route: Route; navigate: (route: Rou
       },
 
       createProject: (title: string, areaId: Id<"areas"> | null) => {
-        const draft = { _id: `${OPTIMISTIC}project:${title}` as Id<"projects">, title, someday: false, progress: { done: 0, total: 0 } };
+        const draft = { _id: `${OPTIMISTIC}project:${title}` as Id<"projects">, title, order: "~", someday: false, progress: { done: 0, total: 0 } };
         void change({
           title: `Project ${quoted(title)} created`,
           mutation: api.planner.projects.create,
@@ -175,13 +185,22 @@ export const useContainerActions = (shell: { route: Route; navigate: (route: Rou
           revert: nothing,
         }),
 
-      moveProject: (project: SidebarProject, to: { _id: Id<"areas">; title: string } | null) =>
+      moveProject: (project: SidebarProject, to: { _id: Id<"areas">; title: string } | null, order?: string) =>
         void change({
           title: to ? `Moved to ${quoted(to.title)}` : "Moved out of its Area",
           mutation: api.planner.projects.move,
-          args: { projectId: project._id, areaId: to?._id ?? null },
-          apply: patchSidebar((sidebar) => withProject(project, to?._id ?? null)(withoutProject(project._id)(sidebar))),
+          args: { projectId: project._id, areaId: to?._id ?? null, ...(order ? { order } : {}) },
+          apply: patchSidebar((sidebar) => withProject({ ...project, order: order ?? "~" }, to?._id ?? null)(withoutProject(project._id)(sidebar))),
           revert: nothing,
+        }),
+
+      reorderProject: (project: SidebarProject, areaId: Id<"areas"> | null, order: string) =>
+        void change({
+          title: `Moved ${quoted(project.title)}`,
+          mutation: api.planner.projects.move,
+          args: { projectId: project._id, areaId, order },
+          apply: patchSidebar((sidebar) => withProject({ ...project, order }, areaId)(withoutProject(project._id)(sidebar))),
+          revert: patchSidebar((sidebar) => withProject(project, areaId)(withoutProject(project._id)(sidebar))),
         }),
 
       completeProject: (project: { _id: Id<"projects">; title: string }, areaId: Id<"areas"> | undefined) => {
@@ -209,6 +228,20 @@ export const useContainerActions = (shell: { route: Route; navigate: (route: Rou
       },
     };
   }, [change, shell]);
+};
+
+export const areaStepKey = (sidebar: SidebarView, areaId: string, step: 1 | -1) => stepKey(sidebar.areas, areaId, step);
+
+export const projectHome = (sidebar: SidebarView, projectId: string) => {
+  const area = sidebar.areas.find((entry) => entry.projects.some((project) => project._id === projectId));
+  const siblings = area?.projects ?? sidebar.projects;
+  const project = siblings.find((entry) => entry._id === projectId);
+  return project ? { project, siblings, area } : null;
+};
+
+export const projectStepKey = (sidebar: SidebarView, projectId: string, step: 1 | -1) => {
+  const home = projectHome(sidebar, projectId);
+  return home ? stepKey(home.siblings, projectId, step) : null;
 };
 
 export type ContainerActions = ReturnType<typeof useContainerActions>;
