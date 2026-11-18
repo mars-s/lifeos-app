@@ -30,7 +30,7 @@ const SignInScreen = () => {
       started.status === "redirect"
         ? await WebBrowser.openAuthSessionAsync(started.redirect.toString(), "lifeos://auth")
         : null;
-    const code = session?.type === "success" ? new URL(session.url).searchParams.get("code") : null;
+    const code = session?.type === "success" ? new URL(session.url).searchParams.get("convexAuthCode") : null;
     const finished = code ? await signIn({ code }) : null;
     setBusy(false);
     if (finished?.status === "complete" || session?.type === "cancel") return;
