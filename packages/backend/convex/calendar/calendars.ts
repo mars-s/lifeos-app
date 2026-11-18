@@ -14,7 +14,7 @@ export const list = ownerQuery({
     return {
       calendars: calendars
         .toSorted((a, b) => a.source.localeCompare(b.source) || a.title.localeCompare(b.title))
-        .map(({ _id, title, colour, source, kind, included }) => ({ _id, title, colour, source, kind, included })),
+        .map(({ _id, calendarId, title, colour, source, kind, included }) => ({ _id, calendarId, title, colour, source, kind, included })),
       syncedAt: sync?.syncedAt ?? null,
     };
   },

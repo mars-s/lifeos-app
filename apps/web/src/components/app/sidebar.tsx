@@ -30,6 +30,7 @@ import {
   type ContainerActions,
   type SidebarArea,
 } from "./container-actions";
+import { CalendarsButton } from "./calendars-setting";
 import { timeAgo } from "./dates";
 import { useNow, useQuietView } from "./hooks";
 import { RouteLink } from "./list-page";
@@ -526,7 +527,10 @@ export const Sidebar = ({ view, via, notice }: { view: SidebarView | undefined; 
       )}
       {draft?.kind === "area" && <DraftRow kind="area" indent={false} onCommit={(title) => actions.createArea(title, view)} />}
       <div className="mt-auto pt-2">
-        <NewList />
+        <div className="flex items-center justify-between">
+          <NewList />
+          <CalendarsButton />
+        </div>
         <div className="flex items-center">
           <SyncIndicator />
           <SignOutButton />

@@ -18,3 +18,6 @@ export type AreaView = NonNullable<FunctionReturnType<typeof api.planner.lists.a
 export type ProjectView = NonNullable<FunctionReturnType<typeof api.planner.lists.project>>;
 export type TrashView = FunctionReturnType<typeof api.planner.trash.list>;
 export type TrashRow = TrashView["rows"][number];
+export type CommitmentRow = Ok<FunctionReturnType<typeof api.calendar.commitments.range>>[number];
+export type CalendarsView = FunctionReturnType<typeof api.calendar.calendars.list>;
+export type CapacityView = Ok<FunctionReturnType<typeof api.calendar.capacity.days>>;

@@ -2,11 +2,14 @@
 
 import { Moon } from "@phosphor-icons/react";
 import { api } from "@lifeos/backend/api";
+import type { IsoDate } from "@lifeos/backend/date";
 import type { PlannerTask } from "@lifeos/backend/types";
 import { areaVar } from "@/components/lifeos/area";
+import { CommitmentStrip } from "@/components/lifeos/commitments";
 import { formatMinutes } from "@/components/lifeos/format";
 import { EmptyState } from "@/components/lifeos/states";
 import { RollingNumber } from "@/components/ui/rolling-number";
+import { useCommitmentsByDay, useFreeToday } from "../calendar";
 import { longDay } from "../dates";
 import { useView, valueOf } from "../hooks";
 import { ListPage, ListSkeleton, SectionHeading } from "../list-page";
@@ -14,6 +17,7 @@ import { useShell } from "../shell-context";
 import { LIST_META } from "../sidebar";
 import { TaskItems, useHasDrafts } from "../task-item";
 
+const NO_COMMITMENTS = [] as const;
 const DOT_MINUTES = 15;
 const MAX_DOTS = 48;
 
@@ -51,12 +55,20 @@ const PlannedStrip = ({ tasks }: { tasks: PlannerTask[] }) => {
   );
 };
 
+const CalendarToday = ({ today }: { today: IsoDate }) => {
+  const items = useCommitmentsByDay(today, today).get(today) ?? NO_COMMITMENTS;
+  const free = useFreeToday(today);
+  if (items.length === 0 && free === null) return null;
+  return <CommitmentStrip items={items} free={free} />;
+};
+
 export const TodayScreen = () => {
   const { today } = useShell();
   const view = valueOf(useView(api.planner.today.get, { date: today }));
   const drafting = useHasDrafts();
   return (
     <ListPage title="Today" icon={LIST_META.today.icon} subtitle={longDay(today)}>
+      <CalendarToday today={today} />
       {!view ? (
         <ListSkeleton />
       ) : view.tasks.length + view.evening.length === 0 && !drafting ? (

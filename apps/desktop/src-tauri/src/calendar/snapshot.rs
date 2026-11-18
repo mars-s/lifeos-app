@@ -191,13 +191,15 @@ impl Snapshot {
 
 #[cfg(test)]
 mod tests {
+    use std::env;
+
     use serde_json::{Value, json};
 
     use super::{
         Availability, Calendar, CalendarKind, Colour, Commitment, Event, Response, Snapshot,
         Status, Window,
     };
-    use crate::convex::Token;
+    use crate::convex::{self, Function, Token};
 
     const FIXTURE: &str = include_str!("../../fixtures/calendar-window.json");
     const NOV_19_NOON_UTC: i64 = 1_795_089_600_000;
@@ -424,5 +426,38 @@ mod tests {
             "the window"
         );
         assert_eq!(Window::around(midnight + 1), window, "the same all day");
+    }
+
+    #[test]
+    #[ignore = "sends the fixture window to the Convex backend named by LIFEOS_TEST_CONVEX_URL"]
+    fn sends_the_fixture_window_to_a_running_backend() {
+        let url = env::var("LIFEOS_TEST_CONVEX_URL").expect("LIFEOS_TEST_CONVEX_URL is set");
+        let token = convex::read_token().expect("LIFEOS_THINGS_SYNC_TOKEN names a test Worker");
+        let snapshot = Snapshot::new(
+            Window::around(NOV_19_NOON_UTC),
+            fixture_calendars(),
+            fixture_events(),
+        );
+        let first: Value = convex::call(
+            &url,
+            Function::Mutation,
+            &snapshot.request_body(&token),
+            &token,
+        )
+        .expect("the backend answers");
+        let again: Value = convex::call(
+            &url,
+            Function::Mutation,
+            &snapshot.request_body(&token),
+            &token,
+        )
+        .expect("the backend answers again");
+        println!("first: {first}\nagain: {again}");
+        assert_eq!(first["ok"], json!(true), "accepted: {first}");
+        assert_eq!(
+            again["value"]["commitments"]["unchanged"].as_f64(),
+            Some(8.0),
+            "unchanged the second time: {again}"
+        );
     }
 }
