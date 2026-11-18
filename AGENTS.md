@@ -11,7 +11,10 @@ A calm personal planner for one person, Avi. Web, iPhone and Mac apps share one 
 
 - TypeScript first, `strict` everywhere. Run `pnpm check` (oxlint, clippy, typecheck, tests, web build) before you call work done.
 - Keep it lean. Add a dependency, file or abstraction only when the current task needs it.
-- Declare each domain type once, in `packages/backend/convex/schema.ts`. Apps import `Doc`, `Id` and function types from `@lifeos/backend/*`. Never redeclare a table shape in an app.
+- Declare each domain type once, in the Convex schema. `packages/backend/convex/schema.ts` composes one `tables.ts` per module. Apps import `Doc`, `Id` and function types from `@lifeos/backend/*`. Never redeclare a table shape in an app. `docs/data-model.md` lists every table, its indexes and the queries they serve.
+- Module code lives in `packages/backend/convex/<module>/`: `platform` (Activity, undo, Jobs, Workers, entity links) and `planner` (Tasks, Areas, Projects, Checklist Items, Work Blocks, Today, the Things Bridge). A new module adds a folder with its own `tables.ts`.
+- Build every public mutation with `changeMutation` from `convex/platform/change.ts` and write through its recorder, so each change records Activity, can be undone, and queues a Things Operation when it touches a Things-owned field.
+- Backend tests use convex-test and vitest (`pnpm --filter @lifeos/backend test`). Put each `*.test.ts` beside the module it tests and call public functions through `api`. Convex skips files with more than one dot, so test files and `*.test-utils.ts` helpers are never deployed.
 - Handle expected failures with `neverthrow`. A `Result` that crosses the server/client boundary goes through `serialise` and `deserialise` from `@lifeos/backend/result`, because a class instance does not survive Convex's JSON transport.
 - oxlint runs `@interfere/landmines`. It rejects prose comments and annotated return types. Let names carry meaning and put rationale in the commit or PR.
 - Use the domain words in `CONTEXT.md` (Task, Area, Project, When, Deadline, Estimate, Work Block, and so on). Its Authority section says which system owns which field.

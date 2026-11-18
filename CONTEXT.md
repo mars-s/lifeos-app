@@ -57,11 +57,17 @@ _Avoid_: timebox in code (fine in UI copy), event.
 
 ## System
 
-**Activity**: the append-only record of every change. It powers undo, visualisations and the Things Bridge.
+**Activity**: the append-only record of every change. One Activity entry is one action (one edit, one undo, one Things snapshot) and holds each change with its value before and after, so it can be inverted. It powers undo, visualisations and the Things Bridge.
+
+**Undo**: reverting one Activity entry, or every entry of an Agent Run, in one step. Undo is refused when a later change touched the same fields.
 
 **Things Bridge**: the two-way link with Things 3. Snapshots come in from the Mac; Things Operations go out through a queue. It covers only the fields Things owns.
 
-**Things Operation**: one queued change for Things (complete, rename, reschedule, move, create) with its receipt.
+**Things Operation**: one queued change for Things (create, update or delete of a Task, Project or Area, carrying the changed Things-owned fields) with its receipt. It is a Job of kind `things`.
+
+**Things Link**: the Things id (and, for a Task, its Things list and position) stored on a mirrored record. A record without one exists only in LifeOS.
+
+**Order Key**: a fractional index string that places a record among its siblings. Moving a record changes only its own key.
 
 ## Platform
 
@@ -73,7 +79,11 @@ _Avoid_: timebox in code (fine in UI copy), event.
 
 **Job**: a unit of background work queued in Core, with a lease, retries and a receipt. A Things Operation is one kind of Job.
 
-**Worker**: a process outside Convex that claims Jobs it can handle (the Things Worker on the Mac, agent and indexing Workers on the Home Server).
+**Worker**: a process outside Convex that claims Jobs it can handle (the Things Worker on the Mac, agent and indexing Workers on the Home Server). It authenticates with its own token. Core keeps only the token's SHA-256 hash and the Job kinds the Worker may claim.
+
+**Lease**: the time a claimed Job belongs to one Worker. The Worker extends it with a heartbeat. When it runs out, the next Worker to claim takes the Job.
+
+**Entity Reference**: one typed pointer (`{ table, id }`) to any linkable record: Task, Project, Area, Heading, Label, Checklist Item, Work Block, and later Note, Saved Link and External Commitment. Links between records use it, so every record can list its **Backlinks**.
 
 **Agent Run**: one execution of an in-app agent. Its changes are recorded in Activity with the run as the actor, so the whole run can be undone.
 
