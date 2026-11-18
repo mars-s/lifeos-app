@@ -16,3 +16,5 @@ apps/desktop/src-tauri/target/
 apps/desktop/src-tauri/gen/
 
 apps/web/art-source/**/*.png
+
+.claude/worktrees/
