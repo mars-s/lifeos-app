@@ -9,6 +9,7 @@ import { deserialise } from "@lifeos/backend/result";
 import type { TodayTask } from "@lifeos/backend/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { isConvexConfigured } from "@/components/convex-client-provider";
+import { SignOutButton } from "@/components/owner-gate";
 
 const greetingFor = (hour: number) =>
   hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
@@ -29,10 +30,13 @@ export const TodayView = () => {
   return (
     <section className="mx-auto w-full max-w-xl px-6 py-16">
       <header className="mb-10">
-        <h1 className="flex items-center gap-3 text-3xl font-semibold tracking-tight">
-          <Star weight="fill" className="size-6 text-brand" aria-hidden />
-          Today
-        </h1>
+        <div className="flex items-center justify-between gap-4">
+          <h1 className="flex items-center gap-3 text-3xl font-semibold tracking-tight">
+            <Star weight="fill" className="size-6 text-brand" aria-hidden />
+            Today
+          </h1>
+          {isConvexConfigured && <SignOutButton />}
+        </div>
         <p className="mt-2 min-h-5 text-sm text-muted-foreground">
           {date && greeting && `${greeting}, Avi. ${longDate(date)}.`}
         </p>
