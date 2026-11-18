@@ -1,4 +1,5 @@
 mod haptics;
+mod things_import;
 
 use tauri::{App, AppHandle, Manager, Url, WebviewWindowBuilder};
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -24,6 +25,7 @@ fn set_up(app: &App) -> tauri::Result<()> {
     open_main_window(app.handle())?;
     let handle = app.handle().clone();
     app.deep_link().on_open_url(move |_| bring_forward(&handle));
+    things_import::start();
     Ok(())
 }
 
