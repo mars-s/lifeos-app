@@ -120,8 +120,9 @@ No indexes: the guard reads the row by the id the session holds.
 | Index | Serves |
 | --- | --- |
 | `by_things_id` (`things.id`) | Inbound sync lookup |
-| `by_trashed_status_when` (`trashedAt`, `status.kind`, `when.kind`, `when.date`) | Today (open, untrashed, scheduled on or before a date). Later: Inbox, Anytime, Someday, Upcoming ranges. Inbound departures (all open, untrashed Tasks). |
-| `by_trashed_status_deadline` (`trashedAt`, `status.kind`, `deadline`) | Today (due on or before a date). Later: Upcoming Deadlines. |
+| `by_trashed_status_when` (`trashedAt`, `status.kind`, `when.kind`, `when.date`) | Today (open, untrashed, scheduled on or before a date). Inbox, Anytime and Someday (one When kind each). Upcoming (scheduled after today, inside a window). The sidebar counts. Inbound departures (all open, untrashed Tasks). |
+| `by_trashed_status_deadline` (`trashedAt`, `status.kind`, `deadline`) | Today (due on or before a date). Upcoming Deadlines (due after today, inside a window). |
+| `by_trashed_closed_at` (`trashedAt`, `status.at`) | The Logbook: completed and canceled Tasks, newest first, paginated, and narrowed to a range of moments. Open Tasks have no `status.at`, so a lower bound of 0 leaves them out. |
 | `by_project_order` (`parent.projectId`, `order`) | Project page. The last key when appending. |
 | `by_area_order` (`parent.areaId`, `order`) | Area page. The last key when appending. |
 | `by_parent_kind_order` (`parent.kind`, `order`) | Loose Tasks in order. The last key when appending. |
@@ -160,6 +161,27 @@ Apple Calendar write-back adds an optional `calendarEvent { calendarId, eventId 
 ### `thingsSync`
 
 One row: `syncedAt` and the counts of the last snapshot. Read by the "Synced from Things" note.
+
+## Planner view queries
+
+Each screen reads one query that returns exactly what it draws. All go through `ownerQuery`.
+
+| Query | Screen | Reads |
+| --- | --- | --- |
+| `planner/sidebar:get` (`date`) | The sidebar: Inbox and Today counts, Areas in order, each with its open Projects and their progress | `tasks.by_trashed_status_when`, `areas.by_order`, `projects.by_area_order`, `tasks.by_project_order` |
+| `planner/today:get` (`date`) | Today and This Evening | `tasks.by_trashed_status_when`, `tasks.by_trashed_status_deadline` |
+| `planner/lists:inbox` | Inbox | `tasks.by_trashed_status_when` |
+| `planner/lists:anytime` (`date`) | Anytime, grouped by Area and Project, with Today's Tasks included. Projects parked in Someday or scheduled later are left out | as the sidebar |
+| `planner/lists:someday` | Someday Tasks by container, and Projects parked whole | as the sidebar |
+| `planner/lists:upcoming` (`date`, `days`) | Each day after `date` that has Tasks or Deadlines, up to 90 days | both `by_trashed_status_*` indexes |
+| `planner/lists:logbook` (`paginationOpts`, `from?`, `to?`) | Closed Tasks, newest first, one page at a time | `tasks.by_trashed_closed_at` |
+| `planner/lists:logbookTimeline` (`from`) | One completion moment per closed Task since `from`, for the dot timeline. The client buckets them by local day | `tasks.by_trashed_closed_at` |
+| `planner/lists:area` (`areaId`) | An Area page: its open Tasks and its Projects with progress | `tasks.by_area_order`, `projects.by_area_order` |
+| `planner/lists:project` (`projectId`) | A Project page: open Tasks under their Headings, and progress over every Task | `headings.by_project_order`, `tasks.by_project_order` |
+
+Every list row has the same shape (`enrich` in `planner/rows.ts`): the Task, plus its Area (title and colour), its Project, its Labels and its Checklist Items. A Task card opens from the row it already has, with no second read.
+
+`planner/seed.test-utils.ts` builds a realistic planner (five Areas, six Projects, Headings, Deadlines, a Logbook). The list tests use it, and a scratch local backend can run it for visual checks.
 
 ## Tables later slices add
 

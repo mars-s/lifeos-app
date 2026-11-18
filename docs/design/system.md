@@ -171,6 +171,22 @@ LifeOS (`components/lifeos`). All take plain props and make no backend calls.
 | `EmptyState`, `ThingsStatus` | `states.tsx` | The calm empty view, and "Waiting for Things" |
 | `AreaDot` | `area.tsx` | The Area colour as a dot |
 
+## The app shell
+
+The real screens live in `apps/web/src/components/app`. They read Convex and compose the components above.
+
+| Piece | File | What it does |
+| --- | --- | --- |
+| `AppShell` | `app-shell.tsx` | The sidebar on `surface`, the main column as one `surface-inset` panel, the phone drawer, the keyboard map, and a warm subscription to the five main lists so switching never waits |
+| `Route` | `route.ts` | The one model of where you are: a list, an Area or a Project. `/area?id=` and `/project?id=` use a query string because the Mac app ships static files |
+| `Sidebar` | `sidebar.tsx` | Lists with rolling counts, Areas with their Projects, the "Synced from Things" note, Sign out |
+| `TaskItem` | `task-item.tsx` | A row that opens in place into its card. Things-owned fields are read-only for now, with "Open in Things" |
+| Screens | `screens/` | Inbox, Today, Upcoming, Anytime, Someday, Logbook, Area, Project |
+
+Keys: `1` to `6` (and Cmd+1 to Cmd+6 in the Mac app) switch lists. Arrow keys or `J` and `K` move through rows, or through the sidebar when it has focus. Enter opens a row, Escape closes it. A pointer switch slides the selection and fades the list in. A keyboard switch is instant.
+
+`apps/web/scripts/screens.sh <folder>` screenshots every list in light and dark at 1440 and 390 px with agent-browser. Set `SESSION` to a JSON file with `accessToken` and `refreshToken` to start signed in.
+
 ## Building a new screen
 
 1. Start from a `Shell` with a `Panel` inside. Put floating things on `popover` with a shadow.
