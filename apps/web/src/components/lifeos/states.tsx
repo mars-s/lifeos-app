@@ -2,6 +2,7 @@
 
 import { Check } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
+import { MorphText } from "@/components/ui/morph-text";
 import { cn } from "@/lib/utils";
 import { round } from "./format";
 
@@ -51,23 +52,18 @@ export const EmptyState = ({
 export const ThingsStatus = ({ state }: { state: "waiting" | "confirmed" }) => (
   <span role="status" className="inline-flex items-center gap-1.5">
     {state === "waiting" ? (
-      <>
-        <span aria-hidden="true" className="flex gap-[3px]">
-          {[0, 1, 2].map((index) => (
-            <span
-              key={index}
-              className="size-1 animate-pending rounded-full bg-brand"
-              style={{ animationDelay: `${index * 160}ms` }}
-            />
-          ))}
-        </span>
-        Waiting for Things
-      </>
+      <span aria-hidden="true" className="flex gap-[3px]">
+        {[0, 1, 2].map((index) => (
+          <span
+            key={index}
+            className="size-1 animate-pending rounded-full bg-brand"
+            style={{ animationDelay: `${index * 160}ms` }}
+          />
+        ))}
+      </span>
     ) : (
-      <>
-        <Check weight="bold" className="size-3 text-positive" aria-hidden="true" />
-        Confirmed by Things
-      </>
+      <Check weight="bold" className="size-3 text-positive" aria-hidden="true" />
     )}
+    <MorphText>{state === "waiting" ? "Waiting for Things" : "Confirmed by Things"}</MorphText>
   </span>
 );

@@ -10,6 +10,8 @@ import {
   useSyncExternalStore,
 } from "react";
 import { Button, IconButton } from "@/components/ui/action-button";
+import { MorphText } from "@/components/ui/morph-text";
+import { haptic } from "@/lib/haptics";
 import { CSS_EASE_OUT } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +40,7 @@ let counter = 0;
 function upsert(title: React.ReactNode, tone: ToastTone, options: ToastOptions = {}) {
   const id = options.id ?? `toast-${++counter}`;
   const next: ToastData = { duration: 4000, ...options, id, title, tone };
+  if (tone === "error") haptic("error");
   toasts = toasts.some((t) => t.id === id)
     ? toasts.map((t) => (t.id === id ? { ...t, ...next, dismissing: false } : t))
     : [next, ...toasts];
@@ -298,7 +301,9 @@ function ToastItem({
           className={cn("mt-0.5 size-4 shrink-0", toneClass)}
         />
         <div className="min-w-0 flex-1 transition-opacity duration-150">
-          <p className="text-sm font-medium">{item.title}</p>
+          <p className="text-sm font-medium">
+            {typeof item.title === "string" ? <MorphText>{item.title}</MorphText> : item.title}
+          </p>
           {item.description && (
             <p className="mt-0.5 text-[0.8125rem] text-muted-foreground">
               {item.description}

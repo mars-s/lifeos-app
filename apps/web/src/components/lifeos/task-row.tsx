@@ -2,6 +2,7 @@
 
 import { Flag, ListChecks } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
+import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 import { AreaDot, type AreaColour } from "./area";
 import { formatMinutes } from "./format";
@@ -40,7 +41,10 @@ export const TaskCheckbox = ({
     role="checkbox"
     aria-checked={checked}
     aria-label={label}
-    onClick={() => onCheckedChange(!checked)}
+    onClick={() => {
+      haptic(checked ? "toggle" : "complete");
+      onCheckedChange(!checked);
+    }}
     className={cn(
       "group/check relative grid shrink-0 place-items-center outline-offset-4 transition-transform duration-(--dur-press) ease-out before:absolute before:-inset-2.5 active:scale-[0.86]",
       size === "md" ? "size-[18px] rounded-[6px]" : "size-4 rounded-full",

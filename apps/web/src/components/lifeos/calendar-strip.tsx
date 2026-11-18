@@ -3,6 +3,8 @@
 import { CalendarBlank } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "motion/react";
 import { useRef, useState } from "react";
+import { MorphText } from "@/components/ui/morph-text";
+import { haptic } from "@/lib/haptics";
 import { instant, springSettle } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
 import { areaVar, type AreaColour } from "./area";
@@ -20,7 +22,7 @@ const rubber = (overshoot: number) => (overshoot * 120 * 0.55) / (120 + 0.55 * M
 export type Commitment = { title: string; source: string; start: number; end: number };
 export type WorkBlock = { title: string; colour: AreaColour; start: number; duration: number };
 
-type Gesture = { mode: "move" | "resize"; pointerY: number; start: number; duration: number };
+type Gesture = { mode: "move" | "resize"; pointerY: number; start: number; duration: number; notch: number };
 
 export const CalendarStrip = ({
   dayStart,
@@ -51,28 +53,43 @@ export const CalendarStrip = ({
     if (gesture.current) return;
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
-    gesture.current = { mode, pointerY: event.clientY, start: block.start, duration: block.duration };
+    gesture.current = {
+      mode,
+      pointerY: event.clientY,
+      start: block.start,
+      duration: block.duration,
+      notch: mode === "move" ? block.start : block.duration,
+    };
     setLive({ start: block.start, duration: block.duration, mode });
   };
 
   const track = (event: React.PointerEvent<HTMLElement>) => {
     const active = gesture.current;
     if (!active) return;
+    const click = (bounded: number) => {
+      const notch = snap(bounded, SNAP);
+      if (notch === active.notch) return;
+      active.notch = notch;
+      haptic("snap");
+    };
     const delta = ((event.clientY - active.pointerY) / HOUR_PX) * 60;
     if (active.mode === "move") {
       const raw = active.start + delta;
       const bounded = clamp(raw, dayStart, dayEnd - active.duration);
+      click(bounded);
       setLive({ start: bounded + rubber(raw - bounded), duration: active.duration, mode: "move" });
       return;
     }
     const raw = active.duration + delta;
     const bounded = clamp(raw, MIN_DURATION, dayEnd - active.start);
+    click(bounded);
     setLive({ start: active.start, duration: bounded + rubber(raw - bounded), mode: "resize" });
   };
 
   const finish = () => {
     if (!gesture.current) return;
     gesture.current = null;
+    haptic("drop");
     const nextStart = clamp(snap(start, SNAP), dayStart, dayEnd - MIN_DURATION);
     const nextDuration = clamp(snap(duration, SNAP), MIN_DURATION, dayEnd - nextStart);
     setLive(null);
@@ -157,7 +174,7 @@ export const CalendarStrip = ({
             {block.title}
           </span>
           <span className="flex gap-2 truncate text-micro text-foreground/70">
-            <span className="font-mono">{formatRange(shownStart, shownStart + shownDuration)}</span>
+            <MorphText className="font-mono">{formatRange(shownStart, shownStart + shownDuration)}</MorphText>
             {clash && <span className="truncate font-medium text-negative">Overlaps {clash.title}</span>}
           </span>
           <span
@@ -179,8 +196,8 @@ export const CalendarStrip = ({
           )}
           style={{ top: toPx(shownStart - dayStart) - 28 }}
         >
-          {formatRange(shownStart, shownStart + shownDuration)}
-          <span className="opacity-60">{formatMinutes(shownDuration)}</span>
+          <MorphText>{formatRange(shownStart, shownStart + shownDuration)}</MorphText>
+          <MorphText className="opacity-60">{formatMinutes(shownDuration)}</MorphText>
         </div>
       </div>
     </div>

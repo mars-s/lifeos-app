@@ -2,7 +2,9 @@
 
 import { Pause, Play } from "@phosphor-icons/react";
 import { useEffect, useEffectEvent, useState } from "react";
+import { MorphText } from "@/components/ui/morph-text";
 import { RollingNumber } from "@/components/ui/rolling-number";
+import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 import { formatCountdown, round } from "./format";
 
@@ -78,16 +80,20 @@ export const FocusTimerPill = ({
       )}
     >
       <DotRing remaining={remainingSeconds / totalSeconds} />
-      <span className="min-w-0 truncate text-small text-muted-foreground">{done ? "Session complete" : title}</span>
+      <MorphText className="min-w-0 truncate text-small text-muted-foreground">{done ? "Session complete" : title}</MorphText>
       <RollingNumber value={formatCountdown(Math.max(0, remainingSeconds))} stagger={0} className="font-mono font-medium" />
       <button
         type="button"
-        aria-label={running ? "Pause Focus Session" : "Resume Focus Session"}
+        aria-label={running ? "Pause Focus Session" : "Start Focus Session"}
         disabled={done}
-        onClick={() => onRunningChange(!running)}
-        className="grid size-9 shrink-0 place-items-center rounded-full bg-foreground text-background transition-[scale,opacity] duration-(--dur-press) ease-out active:scale-[0.92] disabled:opacity-40"
+        onClick={() => {
+          haptic("toggle");
+          onRunningChange(!running);
+        }}
+        className="flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-foreground pr-3.5 pl-3 text-small font-medium text-background transition-[scale,opacity] duration-(--dur-press) ease-out active:scale-[0.96] disabled:opacity-40"
       >
-        {running ? <Pause weight="fill" className="size-4" /> : <Play weight="fill" className="size-4" />}
+        {running ? <Pause weight="fill" className="size-3.5" /> : <Play weight="fill" className="size-3.5" />}
+        <MorphText>{running ? "Pause" : "Start"}</MorphText>
       </button>
     </div>
   );

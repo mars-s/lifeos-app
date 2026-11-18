@@ -2,6 +2,7 @@
 
 import { MotionConfig, motion } from "motion/react";
 import { useId, useRef, useState } from "react";
+import { haptic } from "@/lib/haptics";
 import { spring } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
 
@@ -43,6 +44,7 @@ export function Segmented<T extends string = string>({
 
   const select = (next: T, fromKeyboard: boolean) => {
     setInstant(fromKeyboard);
+    if (!fromKeyboard && next !== value) haptic("toggle");
     if (valueProp === undefined) setInner(next);
     onValueChange?.(next);
   };

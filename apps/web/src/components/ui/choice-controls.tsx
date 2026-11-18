@@ -2,6 +2,7 @@
 
 import { Check, Minus } from "@phosphor-icons/react";
 import { createContext, useContext, useRef, useState } from "react";
+import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 
 // Controls sit slightly recessed: a soft inner shadow on the track, the box and the dot.
@@ -85,6 +86,7 @@ export function Switch({
       data-instant={instant || undefined}
       onClick={(e) => {
         setInstant(e.detail === 0);
+        if (e.detail !== 0) haptic("toggle");
         setChecked(!checked);
       }}
       className={cn(
@@ -173,7 +175,10 @@ export function Checkbox({
         role="checkbox"
         aria-checked={checked}
         disabled={disabled}
-        onClick={() => setChecked(checked !== true)}
+        onClick={(e) => {
+          if (e.detail !== 0) haptic("toggle");
+          setChecked(checked !== true);
+        }}
         className={cn(
           "flex size-5 shrink-0 items-center justify-center rounded-[6px] transition-[background-color,scale] duration-150 active:scale-[0.92] disabled:opacity-40",
           ease,
@@ -282,7 +287,10 @@ export function Radio({
         aria-checked={checked}
         tabIndex={tabStop ? 0 : -1}
         disabled={disabled}
-        onClick={() => group.select(value)}
+        onClick={(e) => {
+          if (e.detail !== 0 && !checked) haptic("toggle");
+          group.select(value);
+        }}
         className={cn(
           "flex size-5 shrink-0 items-center justify-center rounded-full transition-[background-color,scale] duration-150 active:scale-[0.92] disabled:opacity-40",
           ease,

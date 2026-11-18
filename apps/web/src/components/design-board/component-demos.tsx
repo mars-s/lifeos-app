@@ -14,6 +14,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/action-button";
 import { Kbd } from "@/components/ui/key-hint";
+import { MorphText } from "@/components/ui/morph-text";
 import { RollingNumber } from "@/components/ui/rolling-number";
 import { toast } from "@/components/ui/toast-stack";
 import { ActivityTimeline, type Brush } from "@/components/lifeos/activity-timeline";
@@ -31,6 +32,7 @@ import { TaskCard } from "@/components/lifeos/task-card";
 import { TaskList } from "@/components/lifeos/task-list";
 import { TaskRow } from "@/components/lifeos/task-row";
 import { showUndo } from "@/components/lifeos/undo";
+import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 import {
   ACTIVITY,
@@ -167,14 +169,15 @@ const CapacityDemo = () => {
               key={task.id}
               type="button"
               aria-pressed={on}
-              onClick={() =>
+              onClick={() => {
+                haptic("toggle");
                 setPicked((current) => {
                   const copy = new Set(current);
                   if (on) copy.delete(task.id);
                   else copy.add(task.id);
                   return copy;
-                })
-              }
+                });
+              }}
               className={cn(
                 "inline-flex h-8 items-center gap-2 rounded-full pr-2 pl-3 text-small transition-[background-color,color,scale] duration-(--dur-press) ease-out active:scale-[0.96]",
                 on ? "bg-foreground/[0.09] text-foreground" : "bg-foreground/[0.04] text-muted-foreground hover:bg-foreground/[0.07]",
@@ -198,8 +201,8 @@ const WorkBlockDemo = () => {
       <p className="flex flex-wrap items-baseline justify-between gap-x-4 text-small text-muted-foreground">
         <span>Drag the block, or pull its lower edge</span>
         <span className="font-mono text-foreground">
-          {formatRange(block.start, block.start + block.duration)}
-          <span className="ml-2 text-muted-foreground">{formatMinutes(block.duration)}</span>
+          <MorphText>{formatRange(block.start, block.start + block.duration)}</MorphText>
+          <MorphText className="ml-2 text-muted-foreground">{formatMinutes(block.duration)}</MorphText>
         </span>
       </p>
       <CalendarStrip dayStart={8 * 60} dayEnd={14 * 60} commitments={COMMITMENTS} block={block} onBlockChange={setBlock} />
@@ -248,7 +251,9 @@ const RingDemo = () => {
           </p>
         </div>
       </div>
-      <Button onClick={() => setDone(done >= total ? 0 : done + 1)}>{done >= total ? "Start over" : "Complete a Task"}</Button>
+      <Button onClick={() => setDone(done >= total ? 0 : done + 1)}>
+        <MorphText>{done >= total ? "Start over" : "Complete a Task"}</MorphText>
+      </Button>
     </>
   );
 };

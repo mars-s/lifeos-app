@@ -14,6 +14,7 @@ Three principles decide every choice:
 | --- | --- |
 | Tokens (colour, type, radius, shadow, motion) | `apps/web/src/styles.css` |
 | Spring and easing presets for `motion` | `apps/web/src/lib/motion-tokens.ts` |
+| Haptics helper | `apps/web/src/lib/haptics.ts`, `apps/mobile/src/lib/haptics.ts` |
 | Foundation components (TuffUI, restyled) | `apps/web/src/components/ui` |
 | LifeOS components | `apps/web/src/components/lifeos` |
 | The board and its sample data | `apps/web/src/components/design-board` |
@@ -112,9 +113,42 @@ Rules:
 - Reduced motion: keyframes stop, springs become instant, fills and strikes become a short fade. Check with `useReducedMotion()` from `motion/react` or the `motion-reduce:` variant.
 - Server-rendered SVG that uses `Math.sin` or `Math.cos` must round its coordinates (`round` in `lifeos/format.ts`), or hydration will warn.
 
+## Morphing text
+
+A label that changes in place morphs: the letters it shares with the next label slide across, the rest fade. Use `MorphText` from `components/ui/morph-text.tsx` (it wraps Torph's `TextMorph` with our 280 ms ease-out).
+
+- Use it for words and readouts that swap where they stand: Start and Pause on the focus pill, "Waiting for Things" becoming "Confirmed by Things", the Work Block's time range while you drag, a toast title that updates in place, a button label such as Save and Saving.
+- Do not use it for numbers that count. Those roll (`RollingNumber`).
+- It takes one plain string. Icons sit beside it, not inside it.
+- Reduced motion: the text swaps instantly. Torph handles this itself.
+
+## Haptics
+
+One call, `haptic(name)`, from `apps/web/src/lib/haptics.ts`. Components name what happened. The helper picks the platform. The iPhone app has the same call in `apps/mobile/src/lib/haptics.ts`.
+
+| Name | When | Mac app (trackpad) | Web on a phone | iPhone app |
+| --- | --- | --- | --- | --- |
+| `snap` | A drag crosses a 15 minute step | `alignment` | `selection`, a very light tick | Selection |
+| `toggle` | A switch, checkbox, radio, segmented control or Start and Pause changes | `alignment` | `light` | Light impact |
+| `drop` | A dragged thing is let go | `levelChange` | `medium` | Medium impact |
+| `complete` | A Task or Checklist Item is ticked | `generic` | `success` | Success notification |
+| `error` | An action is refused (every error toast) | `generic`, twice | `error` | Error notification |
+
+- The Mac app calls the Tauri command `haptic` in `apps/desktop/src-tauri/src/haptics.rs`, which plays an `NSHapticFeedbackPattern` now. It is only felt with a finger on a Force Touch trackpad.
+- Web on a phone uses `web-haptics`: the Vibration API on Android, the hidden switch on iPhone Safari. iPhone Safari only plays it inside a tap, so drag ticks may stay silent there.
+- A desktop browser does nothing.
+
+Rules:
+
+- Fire on the event that caused it, in the same frame as the visual change. Never after an animation ends.
+- Fire for a touch or a pointer. Never for scroll, hover or a keyboard action.
+- Snaps are throttled to one every 50 ms inside the helper, so a fast drag ticks and does not buzz.
+- Fire only when something changed. Unticking a Task is a `toggle`, not a `complete`.
+- Do not add a new name for one screen. If none of the five fits, the moment probably does not need a haptic.
+
 ## Components
 
-Foundation (`components/ui`, from the TuffUI registry): `surface` (Shell, Panel, Inset), `action-button`, `choice-controls` (Switch, Checkbox, RadioGroup), `status-pill` (StatusPill, Tag), `segmented-control`, `progress-bar` (ProgressBar, SegmentedBar), `rolling-number`, `toast-stack`, `key-hint`, `tooltip-hint`, `popover-panel`. Add more with `pnpm dlx shadcn@latest add https://tuffui.com/r/<name>.json` from `apps/web`. They read our tokens, so most need no edits. Icons are Phosphor, fill weight, 16 px.
+Foundation (`components/ui`, from the TuffUI registry): `surface` (Shell, Panel, Inset), `action-button`, `choice-controls` (Switch, Checkbox, RadioGroup), `status-pill` (StatusPill, Tag), `segmented-control`, `progress-bar` (ProgressBar, SegmentedBar), `rolling-number`, `toast-stack`, `key-hint`, `tooltip-hint`, `popover-panel`, `morph-text`. Add more with `pnpm dlx shadcn@latest add https://tuffui.com/r/<name>.json` from `apps/web`. They read our tokens, so most need no edits. Icons are Phosphor, fill weight, 16 px.
 
 LifeOS (`components/lifeos`). All take plain props and make no backend calls.
 

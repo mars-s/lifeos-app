@@ -6,6 +6,7 @@ import { Button, IconButton } from "@/components/ui/action-button";
 import { Checkbox, Radio, RadioGroup, Switch } from "@/components/ui/choice-controls";
 import { KeyCombo } from "@/components/ui/key-hint";
 import { Popover } from "@/components/ui/popover-panel";
+import { MorphText } from "@/components/ui/morph-text";
 import { ProgressBar, SegmentedBar } from "@/components/ui/progress-bar";
 import { Segmented } from "@/components/ui/segmented-control";
 import { StatusPill, Tag } from "@/components/ui/status-pill";
@@ -52,7 +53,7 @@ export const ControlSpecimens = () => {
               setTimeout(() => setSaving(false), 1200);
             }}
           >
-            {saving ? "Saving" : "Save"}
+            <MorphText>{saving ? "Saving" : "Save"}</MorphText>
           </Button>
           <Button variant="danger" icon={Trash}>
             Delete
@@ -175,7 +176,16 @@ export const ControlSpecimens = () => {
           <Button onClick={() => showUndo("Moved to Tomorrow", () => toast("Back in Today"))}>Reschedule</Button>
         </div>
         <div className="flex flex-wrap justify-center gap-2">
-          <Button variant="quiet" onClick={() => toast.success("Day closed")}>
+          <Button
+            variant="quiet"
+            onClick={() =>
+              toast.promise(new Promise((resolve) => setTimeout(resolve, 1100)), {
+                loading: "Closing the day",
+                success: "Day closed",
+                error: "Could not close the day",
+              })
+            }
+          >
             Confirm
           </Button>
           <Button
