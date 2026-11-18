@@ -1,0 +1,29 @@
+{
+  "name": "@lifeos/backend",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./api": "./convex/_generated/api.js",
+    "./dataModel": {
+      "types": "./convex/_generated/dataModel.d.ts"
+    },
+    "./result": "./shared/result.ts",
+    "./date": "./shared/date.ts"
+  },
+  "scripts": {
+    "dev": "convex dev",
+    "codegen": "convex codegen",
+    "deploy": "convex deploy",
+    "seed": "convex run tasks:seedSample",
+    "typecheck": "tsc -p convex && tsc -p shared"
+  },
+  "dependencies": {
+    "@convex-dev/mcp": "0.1.0-alpha.7",
+    "convex": "^1.51.0",
+    "neverthrow": "^8.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "~6.0.3"
+  }
+}

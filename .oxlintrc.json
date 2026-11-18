@@ -1,0 +1,40 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "extends": [
+    "./node_modules/@interfere/landmines/configs/recommended.json"
+  ],
+  "plugins": [
+    "typescript",
+    "react",
+    "import",
+    "unicorn",
+    "oxc"
+  ],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/_generated/**",
+    "**/.expo/**",
+    "**/src-tauri/target/**",
+    "**/src-tauri/gen/**",
+    "apps/web/src/components/ui/**",
+    "apps/web/src/lib/utils.ts",
+    "**/*.gen.ts"
+  ],
+  "rules": {
+    "react/react-in-jsx-scope": "off",
+    "eslint/no-underscore-dangle": "off",
+    "import/no-unassigned-import": [
+      "warn",
+      {
+        "allow": [
+          "**/*.css"
+        ]
+      }
+    ]
+  }
+}
