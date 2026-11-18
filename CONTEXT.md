@@ -63,6 +63,26 @@ _Avoid_: timebox in code (fine in UI copy), event.
 
 **Things Operation**: one queued change for Things (complete, rename, reschedule, move, create) with its receipt.
 
+## Platform
+
+**Core**: the hosted Convex deployment. It holds the live app data and the Job queue.
+
+**Home Server**: one thin LXC container on Avi's Proxmox box, on his Tailscale network, with the 2 TB SSD. It runs Workers.
+
+**Module**: one area of the life OS (Planner, Calendar, Notes, Saved Links, Agents). It owns its tables, queries, MCP tools, Job kinds and screens, and shares Areas, entity references, Activity, Labels, search and Jobs with the others.
+
+**Job**: a unit of background work queued in Core, with a lease, retries and a receipt. A Things Operation is one kind of Job.
+
+**Worker**: a process outside Convex that claims Jobs it can handle (the Things Worker on the Mac, agent and indexing Workers on the Home Server).
+
+**Agent Run**: one execution of an in-app agent. Its changes are recorded in Activity with the run as the actor, so the whole run can be undone.
+
+**Actor**: who made a change: Avi, an Agent Run, or Things (through the bridge).
+
+**Note**: a local-first document kept on each device and the Home Server, merged with a CRDT. Core holds only its searchable projection.
+
+**Saved Link**: a captured URL, indexed by a Worker, searchable in Core.
+
 ## Authority
 
 Things 3 is the boss for now (Avi, 18 November 2026). He keeps working in Things while LifeOS is built.
