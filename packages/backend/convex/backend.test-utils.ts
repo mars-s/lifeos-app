@@ -44,6 +44,21 @@ export const signInWithGithub = async (t: SignedOutBackend, githubId: string, lo
   return t.withIdentity(sessionIdentity(tokens));
 };
 
+export const strangerSession = async (t: SignedOutBackend) => {
+  const userId = await t.run((ctx) => ctx.db.insert("users", { githubId: "2002", login: "stranger" }));
+  const tokens = await t.run(async (ctx) =>
+    ctx.runMutation(components.auth.public._internal_dangerous_signIn, {
+      claims: { method: "github", profile: { id: "2002", login: "stranger", emailVerified: false } },
+      componentPath: "authGithub",
+      userId,
+      accessTokenTtlSeconds: 60,
+      refreshInactivityTimeoutSeconds: 3600,
+      sessionMaxLifetimeSeconds: 3600,
+    }),
+  );
+  return t.withIdentity(sessionIdentity(tokens));
+};
+
 export const newBackend = async () => signInWithGithub(newSignedOutBackend(), ownerGithubId, "avi");
 
 export type Backend = Awaited<ReturnType<typeof newBackend>>;

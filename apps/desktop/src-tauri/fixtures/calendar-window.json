@@ -1,0 +1,127 @@
+{
+  "window": {
+    "start": 1794441600000,
+    "end": 1800316800000
+  },
+  "calendars": [
+    {
+      "calendarId": "CAL-WORK",
+      "title": "Work",
+      "colour": {
+        "red": 0.2,
+        "green": 0.6,
+        "blue": 0.9
+      },
+      "source": "iCloud",
+      "kind": "calDAV"
+    },
+    {
+      "calendarId": "CAL-HOME",
+      "title": "Home",
+      "colour": {
+        "red": 0.95,
+        "green": 0.75,
+        "blue": 0.1
+      },
+      "source": "On My Mac",
+      "kind": "local"
+    },
+    {
+      "calendarId": "CAL-HOLIDAYS",
+      "title": "Australian Holidays",
+      "colour": {
+        "red": 0.4,
+        "green": 0.8,
+        "blue": 0.3
+      },
+      "source": "Other",
+      "kind": "subscription"
+    }
+  ],
+  "commitments": [
+    {
+      "calendarId": "CAL-WORK",
+      "eventKey": "EV-STANDUP@1795127400000",
+      "title": "Standup",
+      "start": 1795127400000,
+      "end": 1795128300000,
+      "allDay": false,
+      "availability": "busy",
+      "response": "accepted",
+      "recurring": true
+    },
+    {
+      "calendarId": "CAL-WORK",
+      "eventKey": "EV-STANDUP@1795386600000",
+      "title": "Standup",
+      "start": 1795386600000,
+      "end": 1795387500000,
+      "allDay": false,
+      "availability": "busy",
+      "response": "accepted",
+      "recurring": true
+    },
+    {
+      "calendarId": "CAL-HOME",
+      "eventKey": "EV-DENTIST",
+      "title": "Dentist",
+      "start": 1795132800000,
+      "end": 1795136400000,
+      "allDay": false,
+      "location": "Surry Hills",
+      "availability": "busy",
+      "recurring": false
+    },
+    {
+      "calendarId": "CAL-HOME",
+      "eventKey": "EV-LUNCH",
+      "title": "Lunch with Sam",
+      "start": 1795138200000,
+      "end": 1795141800000,
+      "allDay": false,
+      "availability": "free",
+      "recurring": false
+    },
+    {
+      "calendarId": "CAL-WORK",
+      "eventKey": "EV-REVIEW",
+      "title": "Design review",
+      "start": 1795147200000,
+      "end": 1795150800000,
+      "allDay": false,
+      "availability": "busy",
+      "response": "declined",
+      "recurring": false
+    },
+    {
+      "calendarId": "CAL-HOME",
+      "eventKey": "EV-DINNER",
+      "title": "Dinner at Mum's",
+      "start": 1795161600000,
+      "end": 1795168800000,
+      "allDay": false,
+      "availability": "busy",
+      "recurring": false
+    },
+    {
+      "calendarId": "CAL-WORK",
+      "eventKey": "EV-OFFSITE",
+      "title": "Team offsite",
+      "start": 1795438800000,
+      "end": 1795525200000,
+      "allDay": true,
+      "availability": "free",
+      "recurring": false
+    },
+    {
+      "calendarId": "CAL-HOLIDAYS",
+      "eventKey": "EV-HOLIDAY",
+      "title": "Bank holiday",
+      "start": 1796562000000,
+      "end": 1796648400000,
+      "allDay": true,
+      "availability": "unknown",
+      "recurring": false
+    }
+  ]
+}

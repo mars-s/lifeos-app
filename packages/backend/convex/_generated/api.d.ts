@@ -9,6 +9,13 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as calendar_calendars from "../calendar/calendars.js";
+import type * as calendar_capacity from "../calendar/capacity.js";
+import type * as calendar_commitments from "../calendar/commitments.js";
+import type * as calendar_model from "../calendar/model.js";
+import type * as calendar_sync from "../calendar/sync.js";
+import type * as calendar_tables from "../calendar/tables.js";
+import type * as calendar_workingHours from "../calendar/workingHours.js";
 import type * as http from "../http.js";
 import type * as mcp from "../mcp.js";
 import type * as planner_areas from "../planner/areas.js";
@@ -46,6 +53,13 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  "calendar/calendars": typeof calendar_calendars;
+  "calendar/capacity": typeof calendar_capacity;
+  "calendar/commitments": typeof calendar_commitments;
+  "calendar/model": typeof calendar_model;
+  "calendar/sync": typeof calendar_sync;
+  "calendar/tables": typeof calendar_tables;
+  "calendar/workingHours": typeof calendar_workingHours;
   http: typeof http;
   mcp: typeof mcp;
   "planner/areas": typeof planner_areas;

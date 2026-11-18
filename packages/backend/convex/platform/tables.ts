@@ -14,6 +14,8 @@ export const vEntityRef = v.union(
 export const vRecordRef = v.union(
   ...vEntityRef.members,
   v.object({ table: v.literal("entityLinks"), id: v.id("entityLinks") }),
+  v.object({ table: v.literal("calendars"), id: v.id("calendars") }),
+  v.object({ table: v.literal("workingHours"), id: v.id("workingHours") }),
 );
 
 export const vActor = v.union(
@@ -37,7 +39,7 @@ export const vUndoTarget = v.union(
 
 export const vJobKind = v.literal("agent");
 
-export const vCapability = v.union(v.literal("things"), vJobKind);
+export const vCapability = v.union(v.literal("things"), v.literal("calendar"), vJobKind);
 
 export const vJob = v.object({ kind: vJobKind, payload: v.object({ request: v.string() }) });
 

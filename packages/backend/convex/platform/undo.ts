@@ -59,7 +59,7 @@ const expectedState = (changes: Doc<"activityChanges">[]) => {
 };
 
 const dependentsOf = async (ctx: MutationCtx, entity: RecordRef) => {
-  if (entity.table === "entityLinks") return [];
+  if (entity.table === "entityLinks" || entity.table === "calendars" || entity.table === "workingHours") return [];
   const links = [
     ...(await ctx.db
       .query("entityLinks")

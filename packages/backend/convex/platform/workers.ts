@@ -45,3 +45,18 @@ export const register = internalMutation({
     return ctx.db.insert("workers", worker);
   },
 });
+
+export const grant = internalMutation({
+  args: { name: v.string(), capability: vCapability },
+  handler: async (ctx, { name, capability }) => {
+    const worker = await ctx.db
+      .query("workers")
+      .withIndex("by_name", (q) => q.eq("name", name))
+      .unique();
+    if (!worker) throw new ConvexError(`No Worker is named ${name}.`);
+    if (worker.capabilities.includes(capability)) return worker.capabilities;
+    const capabilities = [...worker.capabilities, capability];
+    await ctx.db.patch("workers", worker._id, { capabilities });
+    return capabilities;
+  },
+});

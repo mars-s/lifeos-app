@@ -1,13 +1,12 @@
 import { expect, test } from "vitest";
-import { sessionIdentity } from "@convex-dev/auth/test";
-import { api, components, internal } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import {
   newSignedOutBackend,
   ownerGithubId,
   registerWorker,
   signInWithGithub,
+  strangerSession,
   unwrap,
-  type SignedOutBackend,
 } from "../backend.test-utils";
 import { rowsOf, thingsItem } from "../planner/things.test-utils";
 
@@ -20,21 +19,6 @@ const refusal = async (call: Promise<unknown>) => {
     (thrown: unknown) => thrown,
   );
   return error && typeof error === "object" && "data" in error ? error.data : error;
-};
-
-const strangerSession = async (t: SignedOutBackend) => {
-  const userId = await t.run((ctx) => ctx.db.insert("users", { githubId: "2002", login: "stranger" }));
-  const tokens = await t.run(async (ctx) =>
-    ctx.runMutation(components.auth.public._internal_dangerous_signIn, {
-      claims: { method: "github", profile: { id: "2002", login: "stranger", emailVerified: false } },
-      componentPath: "authGithub",
-      userId,
-      accessTokenTtlSeconds: 60,
-      refreshInactivityTimeoutSeconds: 3600,
-      sessionMaxLifetimeSeconds: 3600,
-    }),
-  );
-  return t.withIdentity(sessionIdentity(tokens));
 };
 
 const ownerWork = async () => {
