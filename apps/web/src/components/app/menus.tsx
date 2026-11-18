@@ -18,6 +18,7 @@ import {
   Stack,
   Star,
   Tag,
+  Timer,
   Trash,
   Tray,
   ArrowBendUpRight,
@@ -51,6 +52,7 @@ import {
   type SidebarProject,
 } from "./container-actions";
 import { drafts } from "./drafts";
+import { useActiveFocus, useFocusActions } from "./focus";
 import { useQuietView } from "./hooks";
 import { routeHref, type Route } from "./route";
 import { selection, useRegisteredTasks, useSelectionSize } from "./selection";
@@ -171,6 +173,8 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
   const { today, route, navigate, setOpenCard, setRenaming, setDraft } = shell;
   const change = useChange();
   const tasksDo = useSelectionActions(today);
+  const focusDo = useFocusActions();
+  const focusNow = useActiveFocus();
   const containersDo = useContainerActions(shell);
   const labels = useQuietView(api.planner.labels.list, {}) ?? [];
   const trashRows = useQuietView(api.planner.trash.list, route.kind === "trash" ? {} : "skip")?.rows ?? [];
@@ -210,6 +214,7 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
           labels: [],
           checklist: [],
           workBlocks: [],
+          focus: { ms: 0, sessions: [] },
         },
         known,
       );
@@ -255,6 +260,17 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
         tasksDo.trash(chosen);
         return;
       }
+      if (!command && !event.shiftKey && event.key.toLowerCase() === "f") {
+        const [only, ...others] = chosen;
+        if (only && others.length === 0 && only.status.kind === "open") {
+          event.preventDefault();
+          focusDo.start(only, "keyboard");
+        } else if (!only && focusNow) {
+          event.preventDefault();
+          focusDo.toggle();
+        }
+        return;
+      }
       if (!command && !event.shiftKey && event.key.toLowerCase() === "n") {
         event.preventDefault();
         newTask(true);
@@ -262,7 +278,7 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [newTask, tasksDo]);
+  }, [newTask, tasksDo, focusDo, focusNow]);
 
   const touched = useRef<{ element: Element; x: number; y: number } | null>(null);
 
@@ -399,6 +415,19 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
                   shortcut: "↵",
                   onSelect: () => setOpenCard({ key, instant: false }),
                 } satisfies MenuItem,
+              ]
+            : []),
+          ...(one && one.status.kind === "open"
+            ? [
+                focusNow?.taskId === one._id
+                  ? ({ id: "focus", label: "Stop Focus Session", icon: Timer, onSelect: () => focusDo.stop() } satisfies MenuItem)
+                  : ({
+                      id: "focus",
+                      label: "Start Focus Session",
+                      icon: Timer,
+                      shortcut: "F",
+                      onSelect: () => focusDo.start(one, viaKeyboard ? "keyboard" : "pointer"),
+                    } satisfies MenuItem),
               ]
             : []),
           ...(touch && one

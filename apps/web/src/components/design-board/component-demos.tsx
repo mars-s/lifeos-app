@@ -215,7 +215,7 @@ const FocusDemo = () => {
   const session = useFocusSession(25 * 60, 24 * 60 + 58);
   return (
     <>
-      <FocusTimerPill title="Draft the thesis outline" {...session} />
+      <FocusTimerPill {...session.pill} />
       <div className="flex gap-1">
         <Button variant="quiet" icon={FastForward} onClick={() => session.skip(300)}>
           Skip 5 minutes
@@ -308,8 +308,7 @@ export const HeroToday = () => {
         </div>
       </div>
       <FocusTimerPill
-        title="Draft the thesis outline"
-        {...session}
+        {...session.pill}
         className="absolute -bottom-5 left-1/2 max-w-[calc(100%-2rem)] -translate-x-1/2"
       />
     </div>

@@ -12,6 +12,7 @@ import { Toaster } from "@/components/ui/toast-stack";
 import { cn } from "@/lib/utils";
 import { ConfirmHost } from "./confirm";
 import { drafts } from "./drafts";
+import { FocusPill, FocusProvider } from "./focus";
 import { useLocalDate, useQuietView, useViewState, valueOf } from "./hooks";
 import { AppMenu } from "./menus";
 import { PanelBoundary, PanelNotice } from "./panel-boundary";
@@ -143,6 +144,7 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
 
   return (
     <ShellContext value={shell}>
+      <FocusProvider>
       <WarmLists today={today} />
       <PanelBoundary panel="list" fallback={() => children}>
       <AppMenu sidebar={sidebar}>
@@ -211,10 +213,14 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
           <PanelBoundary panel="bar" fallback={() => null}>
             <SelectionBar />
           </PanelBoundary>
+          <PanelBoundary panel="bar" fallback={() => null}>
+            <FocusPill />
+          </PanelBoundary>
         </div>
       </div>
       </AppMenu>
       </PanelBoundary>
+      </FocusProvider>
     </ShellContext>
   );
 };

@@ -110,6 +110,39 @@ export const EstimateChip = ({ minutes, className }: { minutes: number; classNam
   </span>
 );
 
+export const ActualChip = ({
+  actual,
+  estimate,
+  meter,
+  className,
+}: {
+  actual: number;
+  estimate?: number;
+  meter: ReactNode;
+  className?: string;
+}) => (
+  <span
+    title={estimate === undefined ? "Actual Time" : "Actual Time against the Estimate"}
+    className={cn(
+      "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-md bg-foreground/[0.06] px-1.5 font-mono text-small text-foreground/80",
+      className,
+    )}
+  >
+    {meter}
+    <span className={cn(estimate !== undefined && actual > estimate && "text-negative")}>
+      <span className="sr-only">Actual Time </span>
+      {formatMinutes(actual)}
+    </span>
+    {estimate !== undefined && (
+      <span className="text-faint-foreground">
+        <span aria-hidden="true">/ </span>
+        <span className="sr-only">Estimate </span>
+        {formatMinutes(estimate)}
+      </span>
+    )}
+  </span>
+);
+
 export const DeadlineMarker = ({ deadline, className }: { deadline: DeadlineMark; className?: string }) => (
   <span
     className={cn(

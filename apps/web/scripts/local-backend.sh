@@ -12,15 +12,41 @@ ln -s "$ROOT/packages/backend/node_modules" "$SCRATCH/node_modules"
 
 cat > "$SCRATCH/convex/scratch.ts" <<'SCRATCH_TS'
 import { createFunctionHandle } from "convex/server";
+import { v } from "convex/values";
 import { components, internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
 import { localIsoDate } from "../shared/date";
+import { activeSession } from "./planner/focus";
 import { seedPlanner } from "./planner/seed.test-utils";
+
+const SEEDED = [
+  "areas",
+  "projects",
+  "headings",
+  "labels",
+  "tasks",
+  "checklistItems",
+  "workBlocks",
+  "focusSessions",
+  "thingsSync",
+  "activity",
+  "activityChanges",
+] as const;
 
 export const seed = internalMutation({
   args: {},
   handler: async (ctx) => {
+    for (const table of SEEDED) for (const row of await ctx.db.query(table).collect()) await ctx.db.delete(table, row._id);
     await seedPlanner(ctx, localIsoDate(new Date()), Date.now());
+    return null;
+  },
+});
+
+export const rewindFocus = internalMutation({
+  args: { minutes: v.number() },
+  handler: async (ctx, { minutes }) => {
+    const session = await activeSession(ctx);
+    if (session) await ctx.db.patch("focusSessions", session._id, { start: session.start - minutes * 60_000 });
     return null;
   },
 });

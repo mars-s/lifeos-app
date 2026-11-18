@@ -204,6 +204,8 @@ li[data-selected]:has(+ li[data-selected]) .task-selected {
   --animate-delayed-in: delayed-in 200ms var(--ease-out) 160ms both;
   --animate-refuse: refuse 260ms var(--ease-out);
   --animate-dot-in: dot-in 220ms var(--ease-out) both;
+  --animate-focus-done: focus-done 520ms var(--ease-out) both;
+  --animate-focus-bloom: focus-bloom 900ms var(--ease-out) both;
   --animate-fade-in: fade-in 200ms var(--ease-out) both;
   --animate-fade-out: fade-out 140ms var(--ease-out) both;
   --animate-dialog-in: dialog-in 200ms var(--ease-out) both;
@@ -248,6 +250,23 @@ li[data-selected]:has(+ li[data-selected]) .task-selected {
     from {
       opacity: 0;
       transform: scale(0.5);
+    }
+  }
+
+  @keyframes focus-done {
+    35% {
+      transform: scale(1.045);
+    }
+  }
+
+  @keyframes focus-bloom {
+    from {
+      opacity: 0.45;
+      transform: scale(0.7);
+    }
+    to {
+      opacity: 0;
+      transform: scale(2.4);
     }
   }
 
@@ -341,5 +360,21 @@ li[data-selected]:has(+ li[data-selected]) .task-selected {
       animation-iteration-count: 1 !important;
       scroll-behavior: auto !important;
     }
+  }
+}
+
+[data-toaster] {
+  transition: bottom var(--dur-base) var(--ease-out);
+}
+
+@media (max-width: 79.99rem) {
+  body:has([data-focus-pill]) [data-toaster] {
+    bottom: calc(max(1.25rem, env(safe-area-inset-bottom)) + 3.75rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-toaster] {
+    transition: none;
   }
 }

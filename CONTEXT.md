@@ -44,9 +44,11 @@ _Avoid_: event (in code), meeting.
 
 **Capacity**: free time inside Working Hours once External Commitments are taken out. Overlapping commitments count once. Compared with the sum of Estimates planned for that day.
 
-**Focus Session**: a stretch of timed work on one Task. Its length is the Task's Actual Time.
+**Focus Session**: a stretch of timed work on one Task. Only one runs at a time. It can be paused, and paused time does not count. A Stopwatch session counts up until it is stopped. A Pomodoro session has a planned length, then offers a Break.
 
-**Actual Time**: the sum of a Task's Focus Sessions. Compared with its Estimate.
+**Break**: the rest between two Pomodoro Focus Sessions on the same Task. It never counts as Actual Time.
+
+**Actual Time**: the sum of a Task's Focus Sessions, without Breaks, pauses or time past a planned length. Compared with its Estimate.
 
 ## Rituals
 

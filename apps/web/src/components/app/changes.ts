@@ -201,6 +201,7 @@ const REASONS: Record<string, string> = {
   name_taken: "Another Label already has that name.",
   not_trashed: "It is no longer in Trash.",
   not_undoable: "That change is permanent.",
+  invalid_focus: "That Focus Session has already changed.",
   selection_too_large: "That is too many Tasks at once. Try 500 or fewer.",
 };
 
@@ -214,6 +215,7 @@ export type Change<Mutation extends ChangeMutation> = {
   revert: Updater;
   slot?: string;
   permanent?: boolean;
+  silent?: boolean;
   onSaved?: (value: SavedValue<Mutation>) => void;
 };
 
@@ -237,7 +239,7 @@ export const useChange = () => {
       if (!result?.ok) toast.error("That could not be undone", { description: reasonFor(result?.error.kind) });
     };
 
-    return <Mutation extends ChangeMutation>({ title, mutation, args, apply, revert, slot, permanent, onSaved }: Change<Mutation>) => {
+    return <Mutation extends ChangeMutation>({ title, mutation, args, apply, revert, slot, permanent, silent, onSaved }: Change<Mutation>) => {
       const refused = (kind: string | undefined) => {
         forget();
         toast.error("That did not save", { description: reasonFor(kind) });
@@ -252,7 +254,7 @@ export const useChange = () => {
         },
         () => refused(undefined),
       );
-      const forget = permanent
+      const forget = permanent || silent
         ? nothing
         : showUndo(
             title,

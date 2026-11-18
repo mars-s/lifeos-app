@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, CalendarDots, ListChecks, Moon, Note, Stack, Star, Tray, X, type Icon } from "@phosphor-icons/react";
+import { Archive, CalendarDots, ListChecks, Moon, Note, Play, Stack, Star, Tray, X, type Icon } from "@phosphor-icons/react";
 import { DndContext, KeyboardSensor, MouseSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -10,13 +10,15 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Result } from "neverthrow";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { PlannerTask } from "@lifeos/backend/types";
-import { AreaDot } from "@/components/lifeos/area";
-import { DeadlineMarker, EstimateChip, TaskCheckbox } from "@/components/lifeos/task-row";
+import { AreaDot, areaVar } from "@/components/lifeos/area";
+import { ActualMeter } from "@/components/lifeos/focus-timer";
+import { ActualChip, DeadlineMarker, EstimateChip, TaskCheckbox } from "@/components/lifeos/task-row";
 import { haptic } from "@/lib/haptics";
 import { instant, springLayout } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
 import { clockTime, deadlineMark, isToday, localDate, shortDay, whenLabel } from "./dates";
 import { drafts, isDraftTask, useDraftCount, useRows } from "./drafts";
+import { FocusBadge, useActualMs, useFocusActions, useFocusOn } from "./focus";
 import { PanelBoundary } from "./panel-boundary";
 import { routeHref } from "./route";
 import { selection, useLingering, useSelected } from "./selection";
@@ -98,6 +100,41 @@ const StatusBox = ({ task, today }: { task: PlannerTask; today: string }) => {
   );
 };
 
+const TimeChip = ({ task, className: wanted }: { task: PlannerTask; className?: string }) => {
+  const className = cn(useFocusOn(task._id) && "hidden @sm:inline-flex", wanted);
+  const actual = Math.floor(useActualMs(task) / 60_000);
+  if (actual === 0) return task.estimateMinutes === undefined ? null : <EstimateChip minutes={task.estimateMinutes} className={className} />;
+  return (
+    <ActualChip
+      actual={actual}
+      estimate={task.estimateMinutes}
+      className={className}
+      meter={<ActualMeter size="sm" actual={actual} estimate={task.estimateMinutes} colour={task.area ? areaVar(task.area.colour) : undefined} />}
+    />
+  );
+};
+
+const RowFocus = ({ task }: { task: PlannerTask }) => {
+  const active = useFocusOn(task._id);
+  const { start } = useFocusActions();
+  if (active) return <FocusBadge active={active} />;
+  return (
+    <button
+      type="button"
+      data-no-select
+      aria-label={`Start a Focus Session on ${task.title}`}
+      title="Start a Focus Session (F)"
+      onClick={(event) => {
+        if (event.detail > 0) haptic("toggle");
+        start(task, event.detail === 0 ? "keyboard" : "pointer");
+      }}
+      className="relative hidden size-6 shrink-0 place-items-center rounded-full text-muted-foreground opacity-0 transition-[opacity,background-color,color,scale] duration-(--dur-press) ease-out before:absolute before:-inset-1.5 hover:bg-foreground/[0.08] hover:text-foreground focus-visible:opacity-100 active:scale-[0.9] @sm:grid [@media(hover:hover)]:group-hover/row:opacity-100 [@media(hover:none)]:hidden"
+    >
+      <Play weight="fill" className="size-3" aria-hidden="true" />
+    </button>
+  );
+};
+
 const ChecklistCount = ({ items }: { items: PlannerTask["checklist"] }) => (
   <span className="inline-flex shrink-0 items-center gap-1 font-mono text-micro text-faint-foreground">
     <ListChecks className="size-3.5" aria-hidden="true" />
@@ -162,7 +199,7 @@ const ClosedBody = ({ task, today }: { task: PlannerTask; today: string }) => (
         ))}
         <span className="ml-auto flex items-center gap-3">
           {task.deadline && <DeadlineMarker deadline={deadlineMark(task.deadline, today)} className="[&>span:last-child]:inline" />}
-          {task.estimateMinutes !== undefined && <EstimateChip minutes={task.estimateMinutes} />}
+          <TimeChip task={task} />
         </span>
       </div>
     </div>
@@ -178,7 +215,7 @@ const keepFocusInside = (event: React.KeyboardEvent, container: HTMLElement) => 
   (event.shiftKey ? stops.at(-1) : stops[0])?.focus();
 };
 
-const OUTSIDE_THE_CARD = "[data-radix-popper-content-wrapper], [data-toaster], [role=menu]";
+const OUTSIDE_THE_CARD = "[data-radix-popper-content-wrapper], [data-toaster], [role=menu], [data-focus-pill]";
 
 export type TaskItemShow = { context?: boolean; star?: boolean; when?: boolean; closedAt?: boolean };
 
@@ -342,6 +379,7 @@ const TaskItem = ({
           )}
           {!open && (
             <span className="flex shrink-0 items-center gap-3 pt-px">
+              {!closed && !unsaved && <RowFocus task={task} />}
               {show.when && task.when.kind === "scheduled" && !isToday(task.when, today) && (
                 <span className="hidden text-small text-muted-foreground @sm:inline">{whenLabel(task.when, today)}</span>
               )}
@@ -352,9 +390,7 @@ const TaskItem = ({
                   {clockTime(plannedToday.start)}
                 </span>
               )}
-              {task.estimateMinutes !== undefined && (
-                <EstimateChip minutes={task.estimateMinutes} className={cn(closed && "hidden opacity-60 @md:inline-flex")} />
-              )}
+              <TimeChip task={task} className={cn(closed && "hidden opacity-60 @md:inline-flex")} />
               {show.closedAt && task.status.kind !== "open" && (
                 <time dateTime={new Date(task.status.at).toISOString()} className="w-[4.5rem] text-right font-mono text-small text-faint-foreground">
                   {clockTime(task.status.at)}

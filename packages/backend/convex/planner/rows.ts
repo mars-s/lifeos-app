@@ -1,6 +1,6 @@
 import type { QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
-import { focusedMs } from "../../shared/focus";
+import { MINUTE_MS, focusedMs } from "../../shared/focus";
 
 const CHECKLIST_LIMIT = 100;
 const WORK_BLOCK_LIMIT = 100;
@@ -25,7 +25,8 @@ const focusSummary = (sessions: Doc<"focusSessions">[]) => {
       ? [{ _id, start, end: state.at, ms: focusedMs({ ...clock, start, state }, state.at) }]
       : [],
   );
-  return { ms: done.reduce((sum, session) => sum + session.ms, 0), sessions: done.slice(0, FOCUS_HISTORY) };
+  const counted = done.filter((session) => session.ms >= MINUTE_MS);
+  return { ms: counted.reduce((sum, session) => sum + session.ms, 0), sessions: counted.slice(0, FOCUS_HISTORY) };
 };
 
 export const isLive = (record: { trashedAt?: number }) => record.trashedAt === undefined;

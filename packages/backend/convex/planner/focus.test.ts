@@ -113,6 +113,12 @@ test("Actual Time is the sum of a Task's focus time: breaks, removed sessions an
   unwrap(await t.mutation(api.platform.undo.undo, { activityId: edited.activityId! }));
   expect(await actualMinutes(first)).toBe(45);
 
+  const blip = await begin(second);
+  after(0.5);
+  unwrap(await t.mutation(api.planner.focus.stop, { sessionId: blip.sessionId }));
+  const rows = await t.query(api.planner.lists.inbox, {});
+  expect(rows.tasks.find((task) => task._id === second)?.focus).toEqual({ ms: 0, sessions: [] });
+
   expect(await t.mutation(api.planner.focus.setMinutes, { sessionId: one.sessionId, minutes: 0 })).toEqual({
     ok: false,
     error: { kind: "invalid_focus", reason: "minutes" },

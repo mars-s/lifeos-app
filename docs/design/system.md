@@ -167,7 +167,9 @@ LifeOS (`components/lifeos`). All take plain props and make no backend calls.
 | `ToolButton`, `MenuRow` | `tool-button.tsx` | The card's icon tools that grow a label on hover, and a menu row |
 | `DayColumnHeader`, `CapacityMeter` | `capacity.tsx` | Planned time against free time as a dot strip (one dot is 15 minutes) |
 | `CalendarStrip` | `calendar-strip.tsx` | A Work Block you can drag and resize, with External Commitments hatched |
-| `FocusTimerPill`, `DotRing` | `focus-timer.tsx` | The floating timer with a draining ring of dots |
+| `FocusTimerPill`, `DotRing` | `focus-timer.tsx` | The floating timer with a draining ring of dots. It takes one `view` (phase, status, seconds, ring) and shows the right label and main button for it: Pause, Resume, Break, Skip or Focus |
+| `ActualMeter`, `ActualChip` | `focus-timer.tsx`, `task-row.tsx` | Actual Time against the Estimate as dots: a solid dot is time spent, a faint one is still planned, a red one is over. The unit grows so the strip never gets long |
+| `FocusHistory`, `FocusPlanPanel` | `focus-timer.tsx` | Today's Focus Sessions as chips that open to edit or remove, and the Stopwatch or Pomodoro choice with its lengths |
 | `ShutdownSummary`, `AreaBar` | `review.tsx` | The end-of-day card with Actual Time by Area |
 | `EstimateActual` | `review.tsx` | Two dot columns a day (one dot is 30 minutes) |
 | `FocusHeatmap` | `review.tsx` | Hour by weekday |
@@ -190,6 +192,7 @@ The real screens live in `apps/web/src/components/app`. They read Convex and com
 | `CalendarsButton` | `calendars-setting.tsx` | The calendar button beside New List. Its panel says when the Mac last read Apple Calendar, lists each Calendar by account with a switch for whether it counts (undoable, applied in the same frame), and shows Working Hours |
 | `TaskItem` | `task-item.tsx` | A row that opens in place into its card. Focus stays inside. Escape, Cmd+Enter or a click away closes it and saves what was typed |
 | `TaskCardBody` | `task-card-body.tsx` | The open card: title, notes with clickable links, Checklist, Work Blocks, Estimate, When, Labels and Deadline |
+| `FocusPill`, `useFocusActions` | `focus.tsx` | The live Focus Session. The pill floats over every list and survives a reload, because the session lives in Convex and the clock is worked out from its timestamps. One 250 ms ticker runs only while a session is running. Start, stop and switch raise an undo toast. Pause, resume and extend answer on the pill itself. The last mode (Stopwatch or Pomodoro, with lengths) is remembered in this browser |
 | `useChange`, `useTaskActions` | `changes.ts`, `task-actions.ts` | Every edit: it shows at once (an optimistic update over every list that holds the Task), records Activity, and raises one undo toast per card |
 | Screens | `screens/` | Inbox, Today, Upcoming, Anytime, Someday, Logbook, Trash, Area, Project |
 | `PanelBoundary` | `panel-boundary.tsx` | One failing query or render stays in its own part: the screen, the sidebar, the open card and the selection bar each show a calm notice with Try Again. Signed-out and not-owner errors pass through to their own screens. `useQuietView` reads a query without throwing, for the shell and the warm subscriptions |
@@ -197,6 +200,8 @@ The real screens live in `apps/web/src/components/app`. They read Convex and com
 | `askToConfirm` | `confirm.tsx` | The one confirm dialog, for changes that cannot be undone (Delete Forever, Empty Trash, deleting a Label) |
 
 Selection: text never highlights in the chrome or the lists (fields and notes stay selectable). A click selects a Task, Cmd+click adds or removes one, Shift+click selects a range, a drag across rows or a lasso from empty space selects what it crosses, Shift+arrow extends, Cmd+A selects the list and Escape clears. A double-click or Enter opens the card. On a phone a tap opens, and a long-press opens the menu, where Select More starts a selection that taps then add to. Two or more selected Tasks show a count pill with Complete, Trash and More.
+
+Focus: `F` starts a Focus Session on the selected Task, and pauses or resumes when nothing is selected. A row shows a play button on hover, the card has a Focus tool, and the menu has Start Focus Session. Starting on another Task switches to it. The row in focus shows a small ring and the time. When a Pomodoro runs out the ring relights dot by dot, the pill lifts once, the label morphs to "Session complete" and the `complete` haptic fires, all in the frame the time ends. Reduced motion keeps only the colour change. Toasts move up while the pill is showing on screens narrower than 1280 px.
 
 Menus: one `AppMenu` (`components/app/menus.tsx`, built on the TuffUI action menu in `components/ui/action-menu.tsx`) replaces the browser menu everywhere except text fields. It reads `data-task-key`, `data-menu-area` and `data-menu-project` from what was clicked. Shift+F10 and the menu key open it for the focused row. `N` makes a Task, Cmd+K completes the selection and Backspace moves it to Trash.
 
@@ -208,12 +213,13 @@ Browser checks live in `apps/web/scripts` and run with agent-browser against a t
 
 | Script | What it does |
 | --- | --- |
-| `local-backend.sh` | Copies the backend to a scratch folder, starts Convex's anonymous local backend there, seeds it and writes `session.json`. Never touches the real deployment link |
+| `local-backend.sh` | Copies the backend to a scratch folder, starts Convex's anonymous local backend there, seeds it and writes `session.json`. Never touches the real deployment link. `npx convex run scratch:seed` in that folder wipes and reseeds |
 | `signin.sh` | Signs the check browser in from `SESSION` |
 | `screens.sh <folder>` | Screenshots every list in light and dark at 1440 and 390 px |
 | `check-trash.sh <folder>` | Trash a Task and an Area, put back, undo, Delete Forever, Empty Trash |
 | `check-polish.sh <folder>` | New Task in the same frame, drag and keyboard reorder of Tasks, Projects and Areas, a row leaving |
 | `check-boundaries.sh <folder>` | Points one query at a missing function with `?__fail=<name>` (dev builds only) and checks the rest of the app still works |
+| `check-focus.sh <folder>` | A whole Pomodoro on the first Task: start from the card, options, pause, time up, Break, Break over and finish, at both sizes and themes. `scratch:rewindFocus` moves the session back so time runs out at once. `MOTION=reduced-motion` runs it with reduced motion |
 | `check-card.sh <folder>` | The open Task card and the Label editor at both sizes and themes |
 | `audit-guidelines.sh` | Greps every UI file for the mechanical Web Interface Guidelines rules |
 

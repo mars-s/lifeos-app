@@ -158,6 +158,29 @@ No indexes: the guard reads the row by the id the session holds.
 
 Apple Calendar write-back adds an optional `calendarEvent { calendarId, eventKey }` field.
 
+### `focusSessions`
+
+One stretch of timed work, or one Pomodoro Break, on one Task.
+
+| Field | Type |
+| --- | --- |
+| `taskId` | `Id<"tasks">` |
+| `kind` | `focus` or `break`. Only `focus` counts as **Actual Time** |
+| `start` | Moment |
+| `plannedMinutes` | Optional. Missing on a Stopwatch session, which counts up |
+| `pausedMs` | Milliseconds spent paused so far, not counting a pause still open |
+| `state` | `running`, `paused { at }` or `ended { at }` |
+| `pomodoro` | Optional `{ focusMinutes, breakMinutes }`: the lengths the next step of the cycle uses |
+| `removedAt` | Optional moment. Set when a session is removed from a Task's history, so undo restores the same row |
+
+| Index | Serves |
+| --- | --- |
+| `by_task_start` (`taskId`, `start`) | Actual Time and the history on a Task row |
+| `by_start` (`start`) | Analytics and the focus heatmap, later |
+| `by_state` (`state.kind`) | The one running or paused session |
+
+The clock is never stored and no server tick runs. `shared/focus.ts` works every figure out from these fields and the current time: focused time is the end (or now) minus `start` minus `pausedMs`, capped at `plannedMinutes`. The web app and the backend share that file (`@lifeos/backend/focus`), so a pill in two tabs and the stored Actual Time always agree. A session whose planned time has run out stays as it is until Avi finishes it, extends it or starts a Break. It gains no more time while it waits.
+
 ### `thingsSync`
 
 One row: `syncedAt`, the counts of the last Things Import per table, and `retiredAt` once Switch Day has run. Read by the "Synced from Things" note, which hides after Switch Day.
@@ -185,9 +208,11 @@ Each screen reads one query that returns exactly what it draws. All go through `
 | `planner/labels:list` | The Label picker on a Task card | `labels.by_order` |
 | `planner/trash:list` | Trash: trashed Areas, Projects and Tasks, newest first. A record that went to Trash with its Area or Project is counted on that row, not listed again | `tasks.by_trashed_closed_at`, `projects.by_trashed`, `areas.by_trashed` |
 
-Every list row has the same shape (`enrich` in `planner/rows.ts`): the Task, plus its Area (title and colour), its Project, its Labels, its Checklist Items (with their Order Keys) and its Work Blocks that are not removed. A Task card opens from the row it already has, with no second read.
+Every list row has the same shape (`enrich` in `planner/rows.ts`): the Task, plus its Area (title and colour), its Project, its Labels, its Checklist Items (with their Order Keys), its Work Blocks that are not removed, and `focus`: its Actual Time in milliseconds and its 12 newest Focus Sessions. A session shorter than a minute is left out of both. A Task card opens from the row it already has, with no second read.
 
 The card writes through `planner/tasks` (`rename`, `setNotes`, `setWhen`, `setDeadline`, `setEstimate`, `setLabels`), `planner/checklist` (`add`, `edit`, `tick`, `reorder`, `remove`) and `planner/labels` (`create`, `setColour`, `rename`, `remove`). `tasks:reorder` sets one Task's Order Key, for drag to reorder. `labels:rename` refuses a name another Label holds (`name_taken`). `labels:remove` takes the Label off every open Task and deletes it. It cannot be undone, because undo cannot bring a record back under its old id. `labels:create` takes an optional `taskId` and adds the new Label to that Task in the same action, so one undo removes both. A Label name is used once, ignoring case: creating it again returns the Label that exists.
+
+Focus Sessions change through `planner/focus`. `start` (`taskId`, `plan`) ends whatever session is active and starts one on the Task, in one Activity row, so one undo brings the old session back. Starting on the Task already in focus changes nothing. `pause` and `resume` are safe to repeat. `stop` ends the session. `extend` adds minutes to a planned session and forgives the time that ran past the plan. `advance` moves a Pomodoro from focus to its Break and back. `setPlan` switches a running session between Stopwatch and Pomodoro. `setMinutes` and `remove` edit a finished session, because every field is editable. Only an open, live Task can start a session (`invalid_focus`, reason `task_closed`). Completing or trashing the Task, alone, in a selection or with its Project or Area, ends its session in the same Activity row. `planner/focus:current` returns the active session with its Task title and Area colour, or `null`.
 
 A selection of Tasks changes through `planner/selection` (`setWhen`, `setDeadline`, `setEstimate`, `setLabel`, `move`, `complete`, `reopen`, `trash`, `restore`). Each takes `taskIds` (up to 500), validates the whole request first, and records one Activity row, so one undo reverts every Task. A missing Task or an invalid value changes nothing.
 
@@ -278,9 +303,8 @@ Each slice adds these as new tables, or as variants of `vEntityRef` and `vJob`. 
 
 - Writing Work Blocks to Apple Calendar adds an optional `calendarEvent { calendarId, eventKey }` to `workBlocks`, and a Mac-side writer that only changes events LifeOS created.
 
-### Focus and rituals
+### Rituals
 
-- **`focusSessions`**: optional `taskId`, `start`, optional `end`, `plannedMinutes`, `kind` (`focus` or `break`). Indexes: `by_task_start` (Actual Time per Task), `by_start` (analytics, the focus heatmap).
 - **`dayPlans`**: `date`, `capacityMinutes`, optional `shutdown { at, note }`. Index: `by_date`.
 - **`dayPlanEntries`**: `dayPlanId`, `taskId`, `order`. Indexes: `by_plan_order` (the day column), `by_task` (which days a Task was planned on). A child table, because a plan's Task list has no fixed bound.
 
@@ -312,7 +336,7 @@ One search across modules: a search index on `title` for `tasks` and `projects`,
 2. The handler validates its input and returns a `Result`. It writes only through the recorder (`platform/activity.ts`), which records each insert, patch and delete in `activityChanges` under one `activity` row.
 3. The mutation returns `serialise(result)` with the `activityId`, so the client can offer undo.
 
-Undo (`platform/undo:undo` and `undoRun`) checks that every touched record still holds the values the action left. If a later action changed them, it refuses with `changed_since` and writes nothing. Undoing a create is refused the same way while the record has Checklist Items, Work Blocks or links that the undo would not also remove. Otherwise undo writes the inverse as a new Activity row. A record the undone actions both created and deleted is skipped. Undo refuses to undo an undo or a Things Import. `undoRun` refuses with `run_active` while the run's Job is still claimed, and an Agent Run can act only while its lease holds.
+Undo (`platform/undo:undo` and `undoRun`) checks that every touched record still holds the values the action left. If a later action changed them, it refuses with `changed_since` and writes nothing. Undoing a create is refused the same way while the record has Checklist Items, Work Blocks, Focus Sessions or links that the undo would not also remove. Otherwise undo writes the inverse as a new Activity row. A record the undone actions both created and deleted is skipped. Undo refuses to undo an undo or a Things Import. `undoRun` refuses with `run_active` while the run's Job is still claimed, and an Agent Run can act only while its lease holds.
 
 ## How a Things Import lands
 
@@ -330,6 +354,8 @@ Until Switch Day, `planner/things:importRows` takes the rows `apps/things-sync/t
 
 - **Activity rows group changes by action, and actors group actions by run.** Undoing one action reads one group. Undoing a run reads every group for that Job. Both write one undo row, so either undo is itself one step in history.
 - **Undo refuses rather than merges.** When a later action touched the same fields, a silent overwrite would lose Avi's later edit. The error names the record, so the UI can say why.
+- **A Focus Session is one row with a state, not a row per stretch.** Pausing adds to `pausedMs` and never splits the session, so "only one runs" is one index read and the history shows what Avi did, not how often he paused.
+- **Time past a planned length is not Actual Time.** A Pomodoro left running overnight records its 25 minutes, not 14 hours. Extending says "I kept going" on purpose.
 - **Work Blocks are removed with a timestamp, not deleted.** Convex cannot re-insert a row with its old id. A hard delete would break undo of every earlier change to that block.
 - **Today order starts from Things.** An imported Task sorts by its Things Today position (`things.todayIndex`), then the rest by date, Deadline and Order Key. A LifeOS overlay key for Today (`todayOrder`) arrives with drag to reorder.
 - **Nothing writes to Things.** LifeOS is the home of Avi's Tasks. The two-way bridge and its `things` Jobs were removed on 18 November 2026 (#35).

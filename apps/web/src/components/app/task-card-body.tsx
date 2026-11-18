@@ -14,6 +14,7 @@ import { ToolButton } from "@/components/lifeos/tool-button";
 import { WorkBlockList } from "@/components/lifeos/work-blocks";
 import { instant, springLayout } from "@/lib/motion-tokens";
 import { deadlineMark, localDate, relativeDay, shortDay, whenLabel } from "./dates";
+import { FocusSection, FocusTool } from "./focus";
 import { useQuietView } from "./hooks";
 import { Linkified, TitleLinks } from "./linkified";
 import { isOptimistic, useTaskActions } from "./task-actions";
@@ -180,6 +181,7 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
         />
       )}
       <EstimateField minutes={task.estimateMinutes} onChange={(minutes) => void actions.setEstimate(minutes)} />
+      <FocusSection task={task} today={today} />
       <div className="-ml-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1.5">
         <WhenPicker when={task.when} label={whenLabel(task.when, today)} today={today} onChange={actions.setWhen} />
         {task.area && <Chip colour={task.area.colour}>{task.project?.title ?? task.area.title}</Chip>}
@@ -189,6 +191,7 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
           </Chip>
         ))}
         <span className="ml-auto flex items-center gap-0.5">
+          <FocusTool task={task} />
           <LabelPicker
             labels={labels.map((label) => ({ id: label._id, name: label.name, colour: label.colour }))}
             selected={task.labelIds}
