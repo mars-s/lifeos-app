@@ -30,6 +30,10 @@ Follow these before your own habits, and read them before writing code in that a
 - **Convex (`packages/backend`):** read `packages/backend/convex/_generated/ai/guidelines.md` first. Convex's own agent skills live in `packages/backend/.claude/skills`.
 - **TuffUI (`apps/web`):** https://tuffui.com/llms.txt. Install components with `pnpm dlx shadcn@latest add https://tuffui.com/r/<name>.json` from `apps/web`.
 - **Waku (`apps/web`):** the official docs for agents at https://waku.gg/llms.txt (full text at https://waku.gg/llms-full.txt).
+- **UI code (web and Mac):** load `vercel-react-best-practices` and `vercel-composition-patterns` while building, `vercel-react-view-transitions` for route and list transitions, and run `web-design-guidelines` over every changed UI file before calling a slice done. Fix what it finds.
+- **iPhone code:** load `vercel-react-native-skills` alongside ExpoKit.
+- **Browser checks:** `webapp-testing` (Playwright) for repeatable UI checks; save useful scripts so the next agent can rerun them.
+- **MCP server:** load `mcp-builder` before changing `packages/backend/convex/mcp.ts`.
 - **Errors:** `neverthrow` only. Do not add Effect alongside it. One error model is enough until a real need for Effect's runtime (fibres, scheduling, dependency injection) shows up.
 
 ## Convex

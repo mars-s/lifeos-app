@@ -128,6 +128,8 @@ The Convex deployment is also a remote MCP server at `https://<deployment>.conve
 - Matt Pocock's skills (`mattpocock-skills@claude-plugins-official`).
 - BeautifulRust (`beautiful-rust@beautiful-rust`) for idiomatic Rust.
 
+`.claude/skills` holds project skills installed with the `skills` CLI (versions pinned in `skills-lock.json`): Vercel's `web-design-guidelines`, `vercel-react-best-practices`, `vercel-composition-patterns`, `vercel-react-native-skills` and `vercel-react-view-transitions`, plus Anthropic's `webapp-testing` and `mcp-builder`. Update them with `npx skills update -p`.
+
 `.mcp.json` adds the ExpoKit MCP server, so agents can find and add iPhone components. Claude Code asks you to trust the project marketplaces and MCP server the first time you open the repo. `CLAUDE.md` and `AGENTS.md` hold the house rules.
 
 ## From the old LifeOS
