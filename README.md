@@ -6,7 +6,7 @@ A calm place to plan the day. One Convex backend serves a web app, an iPhone app
 
 <img src="docs/assets/today-iphone.png" alt="The same Today view on an iPhone 17 Pro in the iOS Simulator." width="280" />
 
-This repo replaces the old LifeOS ([`mars-s/lifeos`](https://github.com/mars-s/lifeos)). Things 3 stays the canonical task store and Apple Calendar stays the calendar source. Convex mirrors them so every surface reads the same data.
+This repo replaces the old LifeOS ([`mars-s/lifeos`](https://github.com/mars-s/lifeos)). LifeOS is the home of Avi's Tasks. Things 3 feeds it one way until Switch Day, then retires ([`docs/leaving-things.md`](docs/leaving-things.md)). Apple Calendar stays the calendar source.
 
 ## Layout
 
@@ -16,7 +16,7 @@ This repo replaces the old LifeOS ([`mars-s/lifeos`](https://github.com/mars-s/l
 | `apps/web` | Waku 1.0 RC. `ConvexProvider` lives in a `'use client'` component mounted from the root layout. |
 | `apps/mobile` | Expo SDK 58 with Expo Router, ExpoKit components and `convex/react`. iPhone first. |
 | `apps/desktop` | Tauri 2. Wraps the static web build. |
-| `apps/things-sync` | Reads Things 3 on your Mac and mirrors it into Convex. |
+| `apps/things-sync` | Imports Things 3 into LifeOS, one way, until Switch Day. |
 | `docs` | Design notes, starting with the [MCP connector](docs/mcp.md). |
 
 It is a plain pnpm workspace. There is no Turborepo.
@@ -56,7 +56,7 @@ npx convex dev
 
 Sign in when it asks, and create a new project called `lifeos-app` on the free tier. Leave it running: it watches `convex/` and regenerates `convex/_generated`. It writes the deployment URL to `packages/backend/.env.local`.
 
-Things 3 fills the app. See "Things 3 sync" below.
+Things 3 fills the app until Switch Day. See "Importing from Things 3" below.
 
 ### 2. Point the apps at it
 
@@ -75,21 +75,25 @@ pnpm dev:mobile    # then press i for the iOS Simulator
 pnpm dev:desktop   # starts the web dev server and opens the Mac app
 ```
 
-## Things 3 sync
+## Importing from Things 3
 
-Things 3 stays the source of truth. `apps/things-sync` reads it on your Mac with Apple's supported scripting (never Things' private database) and sends one snapshot to Convex. Convex checks it against the schema, updates only what changed, and removes tasks that left Things' open lists.
+Avi is leaving Things 3. Until Switch Day, LifeOS imports from it one way. Nothing is ever written to Things, and LifeOS wins every conflict. [`docs/leaving-things.md`](docs/leaving-things.md) explains it in plain words.
+
+`apps/things-sync` copies the Things database to a temporary folder, reads the copy with `apps/things-sync/things.sql`, and sends the rows to Convex. The LifeOS Mac app does the same every 5 minutes while it is open.
 
 ```sh
-pnpm sync:things          # sync once
-pnpm sync:things:watch    # sync every 2 minutes while the terminal stays open
+pnpm sync:things                # import once
+pnpm sync:things -- --dry-run   # count what is in each Things list, send nothing
+pnpm sync:things:watch          # import every 5 minutes while the terminal stays open
+pnpm things:switch              # Switch Day: one last import, then retire Things
 ```
 
 It needs two things on the Mac:
 
 - `apps/things-sync/.env.local` with `CONVEX_URL` (see `.env.example`).
-- A sync token in your Keychain under `lifeos-app-things-sync`. Convex keeps only its SHA-256 in the `THINGS_SYNC_TOKEN_SHA256` environment variable. To rotate it, store a new token with `security add-generic-password -U -s lifeos-app-things-sync -a "$USER" -w <token>`, then set the new hash with `npx convex env set`.
+- The Things Worker token in your Keychain under `lifeos-app-things-sync`. Convex keeps only its SHA-256 in the `workers` table. To rotate it, store a new token with `security add-generic-password -U -s lifeos-app-things-sync -a "$USER" -w <token>`, then run `npx convex run platform/workers:register '{"name":"things","capabilities":["things"],"tokenHash":"<sha256 of the token>"}'` in `packages/backend`.
 
-The first run asks macOS for permission to control Things. Today shows Things' Today list, plus anything whose start date or deadline has arrived, so it stays right even when the last sync was yesterday.
+macOS may ask once whether your terminal (or LifeOS) may access data from other apps. Say yes.
 
 ## Commands
 
@@ -99,7 +103,7 @@ The first run asks macOS for permission to control Things. Today shows Things' T
 | `pnpm lint` | oxlint with landmines. |
 | `pnpm lint:rust` | rustfmt check and clippy with BeautifulRust's lints, warnings as errors. |
 | `pnpm typecheck` | `tsc` in each package. |
-| `pnpm test` | Unit tests (the Things snapshot mapping). |
+| `pnpm test` | Backend tests (convex-test) and the Things import CLI tests. |
 | `pnpm build` | Static web build into `apps/web/dist/public`. |
 | `pnpm build:mobile` | Bundle the iPhone JavaScript with `expo export`. |
 | `pnpm build:desktop` | Build `LifeOS.app` with Tauri. |

@@ -102,7 +102,7 @@ const ProjectItem = ({ project, colour, indent, via }: { project: SidebarView["p
 const SyncIndicator = () => {
   const status = useView(api.planner.things.status, {});
   const now = useNow();
-  if (status === undefined || now === null) return <p className="h-8 flex-1" />;
+  if (status === undefined || now === null || status?.retiredAt !== undefined) return <p className="h-8 flex-1" />;
   const fresh = status !== null && now - status.syncedAt < STALE_AFTER_MS;
   return (
     <p

@@ -57,15 +57,16 @@ _Avoid_: timebox in code (fine in UI copy), event.
 
 ## System
 
-**Activity**: the append-only record of every change. One Activity entry is one action (one edit, one undo, one Things snapshot) and holds each change with its value before and after, so it can be inverted. It powers undo, visualisations and the Things Bridge.
+**Activity**: the append-only record of every change. One Activity entry is one action (one edit, one undo, one batch of a Things Import) and holds each change with its value before and after, so it can be inverted. It powers undo and visualisations.
 
 **Undo**: reverting one Activity entry, or every entry of an Agent Run, in one step. Undo is refused when a later change touched the same fields.
 
-**Things Bridge**: the two-way link with Things 3. Snapshots come in from the Mac; Things Operations go out through a queue. It covers only the fields Things owns.
+**Things Import**: one one-way copy of Avi's Things 3 data into LifeOS, read from a copy of the Things database on the Mac. It runs until Switch Day. It brings in new records and Things-side changes to fields LifeOS has not touched, and never deletes anything. Nothing is ever written to Things.
+_Avoid_: Things Bridge, Things sync (except for the `pnpm sync:things` command), snapshot.
 
-**Things Operation**: one queued change for Things (create, update or delete of a Task, Project or Area, carrying the changed Things-owned fields) with its receipt. It is a Job of kind `things`.
+**Things Link**: the Things id stored on an imported record, with the field values Things had at the last import (its base). A record without one exists only in LifeOS.
 
-**Things Link**: the Things id (and, for a Task, its Things list and position) stored on a mirrored record. A record without one exists only in LifeOS.
+**Switch Day**: the day Avi retires Things (`pnpm things:switch`). One last Things Import runs, then every later import is refused. Things Links stay for reference.
 
 **Order Key**: a fractional index string that places a record among its siblings. Moving a record changes only its own key.
 
@@ -77,12 +78,12 @@ _Avoid_: timebox in code (fine in UI copy), event.
 
 **Module**: one area of the life OS (Planner, Calendar, Notes, Saved Links, Agents). It owns its tables, queries, MCP tools, Job kinds and screens, and shares Areas, entity references, Activity, Labels, search and Jobs with the others.
 
-**Job**: a unit of background work queued in Core, with a lease, retries and a receipt. A Things Operation is one kind of Job.
+**Job**: a unit of background work queued in Core, with a lease, retries and a receipt. An Agent Run is one kind of Job.
 
 **Owner**: the one person a LifeOS belongs to, Avi. He signs in with his GitHub account. Every other account is refused.
 _Avoid_: admin, user (in code, `users` is only Convex Auth's table).
 
-**Worker**: a process outside Convex that claims Jobs it can handle (the Things Worker on the Mac, agent and indexing Workers on the Home Server). It authenticates with its own token. Core keeps only the token's SHA-256 hash and the Job kinds the Worker may claim.
+**Worker**: a process outside Convex that works for Core with its own token (the Things Worker on the Mac, which sends Things Imports until Switch Day; agent and indexing Workers on the Home Server, which claim Jobs). Core keeps only the token's SHA-256 hash and the capabilities the Worker has.
 
 **Lease**: the time a claimed Job belongs to one Worker. The Worker extends it with a heartbeat. When it runs out, the next Worker to claim takes the Job.
 
@@ -90,7 +91,7 @@ _Avoid_: admin, user (in code, `users` is only Convex Auth's table).
 
 **Agent Run**: one execution of an in-app agent. Its changes are recorded in Activity with the run as the actor, so the whole run can be undone.
 
-**Actor**: who made a change: Avi, an Agent Run, or Things (through the bridge).
+**Actor**: who made a change: Avi, an Agent Run, or Things (through a Things Import).
 
 **Note**: a local-first document kept on each device and the Home Server, merged with a CRDT. Core holds only its searchable projection.
 
@@ -98,10 +99,11 @@ _Avoid_: admin, user (in code, `users` is only Convex Auth's table).
 
 ## Authority
 
-LifeOS is the home of Avi's Tasks (Avi, 18 November 2026). They live in Convex. Things 3 stays connected while he keeps using it.
+LifeOS is the home of Avi's Tasks (Avi, 18 November 2026). They live in Convex. Avi is leaving Things 3: it is only a migration source until Switch Day (`docs/leaving-things.md`).
 
 - Every field is editable in LifeOS. The UI never locks a field as "Things owns this".
-- An edit made in LifeOS to a field Things also stores (title, notes, When, Deadline, Area, Project, tags, status) is queued and applied to Things by the Mac, then read back.
-- **LifeOS wins.** A Things snapshot never undoes a LifeOS edit. A change made in Things flows into LifeOS only when LifeOS has not changed that field since the last confirmed sync.
-- LifeOS alone holds the planning layer: Estimates, Work Blocks, Checklist Items, Focus Sessions, Day Plans, Recurrence Rules, Templates, Area and Label colours, and LifeOS order keys.
+- Nothing is ever written to Things. LifeOS edits stay in LifeOS.
+- **LifeOS wins.** A Things Import never overwrites a field LifeOS has changed since the last import. A change made in Things flows in only when LifeOS has not touched that field.
+- A record that leaves Things is never deleted from LifeOS.
+- LifeOS alone holds the planning layer: Estimates, Work Blocks, Focus Sessions, Day Plans, Recurrence Rules, Templates, Area and Label colours, and Order Keys.
 - Apple Calendar owns the timing of External Commitments and, once written back, of Work Blocks.

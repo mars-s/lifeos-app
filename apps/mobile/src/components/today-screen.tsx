@@ -86,7 +86,7 @@ const clockTime = (ms: number) =>
 const SyncNote = () => {
   const { colors, text } = useKit();
   const status = useQuery(api.planner.things.status);
-  if (status === undefined) return null;
+  if (status === undefined || status?.retiredAt !== undefined) return null;
   return (
     <Text style={[text.xs, styles.note, { color: colors.mutedForeground }]}>
       {status ? `Synced from Things at ${clockTime(status.syncedAt)}.` : "Not synced from Things yet."}

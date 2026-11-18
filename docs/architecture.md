@@ -8,7 +8,7 @@ Decided with Avi on 18 November 2026. LifeOS is a whole life OS, not only a plan
 | --- | --- | --- |
 | **Core** | Hosted Convex (free tier), reachable from anywhere | The live app data: Tasks, Areas, Projects, planning, Activity, the Job queue, and searchable indexes of notes and saved links. Every client and the MCP connector talk to it. |
 | **Home Server** | One thin LXC container on Avi's Proxmox box, on his Tailscale network, with the 2 TB SSD | Always-on Workers: in-app agents using Avi's Claude and ChatGPT subscriptions (Claude Code and Codex logged in inside the container), link indexing (a small embedding model, plus the OpenAI API for classification), the always-on Notes peer and archive, and large files. Keep it thin: Node, the two agent CLIs, Tailscale, nothing else. |
-| **Mac app** | Tauri on Avi's MacBook | The Things Worker (Things 3 scripting only works on the Mac), trackpad haptics, a Notes peer, and a fallback agent runner when the Home Server is down. |
+| **Mac app** | Tauri on Avi's MacBook | The Things Worker until Switch Day (it imports from a copy of the Things database every few minutes, one way), trackpad haptics, a Notes peer, and a fallback agent runner when the Home Server is down. |
 
 Clients (web, Mac, iPhone) read and write Core. They never depend on the Home Server being up, except for notes edited on another device, which merge when the peers meet.
 
@@ -18,14 +18,15 @@ Anything that must happen outside Convex is a **Job** in Core, claimed by a **Wo
 
 - A Job has a kind, a payload, an idempotency key, a status (queued, claimed, done, failed), a lease with a heartbeat, an attempt count, and a result or receipt.
 - A Worker registers what it can do (for example `things`, `agent:claude`, `agent:codex`, `index:link`), subscribes to queued Jobs it can handle, claims one with a lease, heartbeats while working, and reports a result. An expired lease returns the Job to the queue.
-- Things Operations, agent runs, link indexing and note archiving are all Job kinds. There is one queue, one claim rule and one retry rule, so a new module adds a Job kind, not a new queue.
+- Agent runs, link indexing and note archiving are all Job kinds. There is one queue, one claim rule and one retry rule, so a new module adds a Job kind, not a new queue.
+- The Things Worker is the one Worker that claims no Jobs. Its `things` capability lets it send Things Imports until Switch Day (`docs/leaving-things.md`). Nothing in LifeOS writes to Things.
 - Workers authenticate with a scoped machine token per Worker, stored in that machine's keychain or secret store. Convex keeps only its hash.
 - People authenticate with GitHub through Convex Auth, and only the owner's account gets in. Every public function goes through the owner guard (`docs/auth.md`).
 
 ## Agents
 
 - **Runners**: agents run in a Worker on the Home Server, using Claude Code or Codex with Avi's subscriptions. The Mac app can run them too. A cloud runner (Vercel Eve or similar, paid per API call through an AI gateway) can be added later as another Worker, with no change to Core.
-- **Power**: agents act on their own and every change can be undone. An agent changes data through the same mutations as the UI, with the actor recorded as that agent run. Activity keeps the inverse of every change, so a whole run can be undone in one step. A change to a Things-owned field still goes through the Things queue, so undoing it queues the inverse change.
+- **Power**: agents act on their own and every change can be undone. An agent changes data through the same mutations as the UI, with the actor recorded as that agent run. Activity keeps the inverse of every change, so a whole run can be undone in one step.
 - **Generative UI**: agents answer with structured results rendered by our own components. The AffectUI library in `docs/design/references/affectui/` is the inspiration.
 
 ## Modules

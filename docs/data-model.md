@@ -9,9 +9,9 @@ Each index name lists its fields. Convex appends `_creationTime` to every index,
 - **Dates a person picks** (When, Deadline, Day Plan) are local calendar dates stored as `YYYY-MM-DD` strings and parsed with `parseIsoDate` at every boundary. **Moments** (Work Blocks, Focus Sessions, completion and trash times) are epoch milliseconds.
 - **Order Keys** are fractional index strings from `fractional-indexing`. A drag writes one document. Keys sort as plain strings.
 - **Status and placement are tagged unions**, never loose optional fields. A Task cannot be "completed" without a completion time, and a Heading cannot be set without its Project.
-- **Things Links** are an optional `things` object on a mirrored record. The Things Bridge writes it without recording Activity, because it is bookkeeping, not a change Avi made.
+- **Things Links** are an optional `things { id, base? }` object on an imported record. `base` holds the values Things had at the last Things Import, which is how an import tells a field LifeOS changed from one it did not. The import writes the link without recording Activity, because it is bookkeeping, not a change Avi made.
 - **Colours** are one of the eight design tokens: `violet`, `green`, `orange`, `teal`, `rose`, `olive`, `plum`, `slate` (`docs/design/system.md`).
-- **Trash is a time, not a status.** `trashedAt` sits beside `status`, because Things keeps a trashed Task's status and restores it unchanged.
+- **Trash is a time, not a status.** `trashedAt` sits beside `status`, so a trashed Task keeps its status and comes back unchanged.
 - Absent optional fields are missing, never `null`. Activity stores a missing field as `null`, because a stored record cannot hold `undefined`.
 
 ## Platform module (`convex/platform`)
@@ -20,12 +20,12 @@ Shared primitives every module uses.
 
 ### `activity`
 
-One row per action: one mutation call, one undo, or one Things snapshot.
+One row per action: one mutation call, one undo, or one batch of a Things Import.
 
 | Field | Type |
 | --- | --- |
 | `actor` | `{ kind: "avi" }`, `{ kind: "agentRun", jobId }` or `{ kind: "things" }` |
-| `action` | Action name, such as `task.rename` or `things.snapshot` |
+| `action` | Action name, such as `task.rename` or `things.import` |
 | `at` | Moment |
 | `undoes` | Optional. `{ kind: "activity", activityId }` or `{ kind: "run", jobId }` on an undo |
 
@@ -66,7 +66,7 @@ One unit of background work.
 
 | Field | Type |
 | --- | --- |
-| `job` | `{ kind: "things", payload: { op, entity, thingsId?, set } }` or `{ kind: "agent", payload: { request } }` |
+| `job` | `{ kind: "agent", payload: { request } }`. A new module adds its own kind. |
 | `idempotencyKey` | Unique per logical piece of work |
 | `status` | `queued { availableAt }`, `claimed { workerId, leaseUntil, heartbeatAt }`, `done { at, receipt }` or `failed { at, error }` |
 | `attempts` | Claims so far |
@@ -77,14 +77,14 @@ One unit of background work.
 | `by_kind_status_available` (`job.kind`, `status.kind`, `status.availableAt`) | Claim the oldest queued Job of a kind whose retry delay has passed |
 | `by_kind_status_lease` (`job.kind`, `status.kind`, `status.leaseUntil`) | Claim a Job whose lease expired |
 
-`claim` returns the Job with its attempt number. `heartbeat`, `complete` and `fail` must name that attempt, so a stale attempt cannot finish a Job its Worker has claimed again. Each kind sets its own limits in `jobKinds` (`platform/jobs.ts`): `things` allows 5 attempts with a 60 second lease, `agent` allows 1 attempt with a 15 minute lease. A failed attempt with `retry: true` waits 5 seconds, doubling up to 5 minutes. An expired lease returns the Job to whichever Worker claims next. After the last attempt the Job fails with `lease_expired`.
+`claim` returns the Job with its attempt number. `heartbeat`, `complete` and `fail` must name that attempt, so a stale attempt cannot finish a Job its Worker has claimed again. Each kind sets its own limits in `jobKinds` (`platform/jobs.ts`): `agent` allows 1 attempt with a 15 minute lease. A failed attempt with `retry: true` waits 5 seconds, doubling up to 5 minutes. An expired lease returns the Job to whichever Worker claims next. After the last attempt the Job fails with `lease_expired`.
 
 ### `workers`
 
 | Field | Type |
 | --- | --- |
 | `name` | Unique, such as `things` |
-| `capabilities` | Job kinds this Worker may claim |
+| `capabilities` | What this Worker may do: `agent` (a Job kind it may claim) or `things` (send Things Imports) |
 | `tokenHash` | SHA-256 hex of the Worker's token. The token itself lives only in that machine's keychain. |
 
 Indexes: `by_name` (register), `by_token_hash` (authenticate every Worker call).
@@ -106,21 +106,21 @@ No indexes: the guard reads the row by the id the session holds.
 
 | Field | Type | Owner |
 | --- | --- | --- |
-| `title`, `notes` | string | Things |
-| `when` | `inbox`, `anytime`, `someday`, or `scheduled { date, evening }` | Things (LifeOS keeps `evening`, which Things scripting cannot read) |
-| `deadline` | Optional local date | Things |
+| `title`, `notes` | string | LifeOS |
+| `when` | `inbox`, `anytime`, `someday`, or `scheduled { date, evening }` | LifeOS |
+| `deadline` | Optional local date | LifeOS |
 | `estimateMinutes` | Optional, 1 to 1440 | LifeOS |
-| `parent` | `loose`, `area { areaId }` or `project { projectId, headingId? }` | Things (LifeOS keeps `headingId`) |
-| `labelIds` | `Id<"labels">[]` | Things (tags) |
-| `status` | `open`, `completed { at }` or `canceled { at }` | Things |
-| `trashedAt` | Optional moment | Things |
+| `parent` | `loose`, `area { areaId }` or `project { projectId, headingId? }` | LifeOS |
+| `labelIds` | `Id<"labels">[]` | LifeOS |
+| `status` | `open`, `completed { at }` or `canceled { at }` | LifeOS |
+| `trashedAt` | Optional moment | LifeOS |
 | `order` | Order Key inside its parent | LifeOS |
-| `things` | Optional `{ id, list, index, modifiedAt }`: the Things id, the Things list it sits in and its position there | Things Bridge |
+| `things` | Optional `{ id, todayIndex, base? }`: the Things id, its position in Things' Today, and the imported fields as Things last had them | Things Import |
 
 | Index | Serves |
 | --- | --- |
-| `by_things_id` (`things.id`) | Inbound sync lookup |
-| `by_trashed_status_when` (`trashedAt`, `status.kind`, `when.kind`, `when.date`) | Today (open, untrashed, scheduled on or before a date). Inbox, Anytime and Someday (one When kind each). Upcoming (scheduled after today, inside a window). The sidebar counts. Inbound departures (all open, untrashed Tasks). |
+| `by_things_id` (`things.id`) | Things Import lookup |
+| `by_trashed_status_when` (`trashedAt`, `status.kind`, `when.kind`, `when.date`) | Today (open, untrashed, scheduled on or before a date). Inbox, Anytime and Someday (one When kind each). Upcoming (scheduled after today, inside a window). The sidebar counts. |
 | `by_trashed_status_deadline` (`trashedAt`, `status.kind`, `deadline`) | Today (due on or before a date). Upcoming Deadlines (due after today, inside a window). |
 | `by_trashed_closed_at` (`trashedAt`, `status.at`) | The Logbook: completed and canceled Tasks, newest first, paginated, and narrowed to a range of moments. Open Tasks have no `status.at`, so a lower bound of 0 leaves them out. |
 | `by_project_order` (`parent.projectId`, `order`) | Project page. The last key when appending. |
@@ -129,23 +129,23 @@ No indexes: the guard reads the row by the id the session holds.
 
 ### `areas`
 
-`title`, `colour`, optional `icon`, `order`, optional `trashedAt`, optional `things { id, index }`. Indexes: `by_things_id`, `by_order` (sidebar). A new Area from Things takes the colour at its Things position, cycling through the eight tokens.
+`title`, `colour`, optional `icon`, `order`, optional `trashedAt`, optional `things { id, base? }`. Indexes: `by_things_id`, `by_order` (sidebar). A new Area from Things takes the colour at its Things position, cycling through the eight tokens.
 
 ### `projects`
 
-`title`, `notes`, optional `areaId`, `when`, optional `deadline`, `labelIds`, `status`, optional `trashedAt`, `order`, optional `things { id, index }`. Indexes: `by_things_id`, `by_area_order` (`areaId`, `order`) for the sidebar and Area page.
+`title`, `notes`, optional `areaId`, `when`, optional `deadline`, `labelIds`, `status`, optional `trashedAt`, `order`, optional `things { id, base? }`. Indexes: `by_things_id`, `by_area_order` (`areaId`, `order`) for the sidebar and Area page.
 
 ### `headings`
 
-`projectId`, `title`, `order`, optional `things { id }`. Index: `by_project_order`. Things scripting does not expose Headings, so none are mirrored yet.
+`projectId`, `title`, `order`, optional `things { id, base? }`. Indexes: `by_things_id`, `by_project_order`.
 
 ### `labels`
 
-`name`, `colour`, `order`. Indexes: `by_name` (tags map to Labels by name), `by_order`. A Task holds its Label ids as an array. Views filter by Label in memory after an index read. A cross-module "everything labelled X" query adds a `labelLinks` table (`labelId`, `entity`) with a `by_label` index, without changing `labelIds`.
+`name`, `colour`, `order`, optional `things { id, base? }`. Indexes: `by_name` (a Things tag links to an unlinked Label of the same name), `by_things_id`, `by_order`. A Task holds its Label ids as an array. Views filter by Label in memory after an index read. A cross-module "everything labelled X" query adds a `labelLinks` table (`labelId`, `entity`) with a `by_label` index, without changing `labelIds`.
 
 ### `checklistItems`
 
-`taskId`, `title`, `done`, `order`. Index: `by_task_order`. LifeOS only. Things checklists are not read.
+`taskId`, `title`, `done`, `order`, optional `things { id, base? }`. Indexes: `by_task_order`, `by_things_id`.
 
 ### `workBlocks`
 
@@ -160,7 +160,7 @@ Apple Calendar write-back adds an optional `calendarEvent { calendarId, eventId 
 
 ### `thingsSync`
 
-One row: `syncedAt` and the counts of the last snapshot. Read by the "Synced from Things" note.
+One row: `syncedAt`, the counts of the last Things Import per table, and `retiredAt` once Switch Day has run. Read by the "Synced from Things" note, which hides after Switch Day.
 
 ## Planner view queries
 
@@ -226,28 +226,29 @@ One search across modules: a search index on `title` for `tasks` and `projects`,
 
 1. A public mutation built with `changeMutation` (`platform/change.ts`) resolves the actor. With no `agentRun` argument the actor is Avi. With `agentRun: { token, jobId }` it must be a claimed `agent` Job held by that Worker.
 2. The handler validates its input and returns a `Result`. It writes only through the recorder (`platform/activity.ts`), which records each insert, patch and delete in `activityChanges` under one `activity` row.
-3. When the action changed a field listed in `thingsOwnedFields` (`planner/tables.ts`) and the actor is not Things, the recorder enqueues one `things` Job per record, keyed `things:<activityId>:<recordId>`, carrying only the changed Things-owned fields.
-4. The mutation returns `serialise(result)` with the `activityId`, so the client can offer undo.
+3. The mutation returns `serialise(result)` with the `activityId`, so the client can offer undo.
 
-Undo (`platform/undo:undo` and `undoRun`) checks that every touched record still holds the values the action left. If a later action changed them, it refuses with `changed_since` and writes nothing. Undoing a create is refused the same way while the record has Checklist Items, Work Blocks or links that the undo would not also remove. Otherwise undo writes the inverse as a new Activity row, which queues the inverse Things Operation too. A record the undone actions both created and deleted is skipped. Undo refuses to undo an undo or a Things snapshot. `undoRun` refuses with `run_active` while the run's Job is still claimed, and an Agent Run can act only while its lease holds.
+Undo (`platform/undo:undo` and `undoRun`) checks that every touched record still holds the values the action left. If a later action changed them, it refuses with `changed_since` and writes nothing. Undoing a create is refused the same way while the record has Checklist Items, Work Blocks or links that the undo would not also remove. Otherwise undo writes the inverse as a new Activity row. A record the undone actions both created and deleted is skipped. Undo refuses to undo an undo or a Things Import. `undoRun` refuses with `run_active` while the run's Job is still claimed, and an Agent Run can act only while its lease holds.
 
-## How a Things snapshot lands
+## How a Things Import lands
 
-`planner/things:sync` takes a snapshot from the Things Worker (token checked against `workers`, capability `things`).
+Until Switch Day, `planner/things:importRows` takes the rows `apps/things-sync/things.sql` reads from a copy of the Things database. Only a Worker with the `things` capability may call it. `docs/leaving-things.md` explains it for Avi.
 
-- A snapshot with an invalid date is refused. A snapshot with no Areas and no Tasks is refused when the last one had some, so a Things hiccup cannot complete the whole mirror.
-- Linked records get only their Things-owned fields patched. Estimates, Checklist Items, Work Blocks, Order Keys, colours and the This Evening flag (while the date is unchanged) survive.
-- A linked open Task or Project leaves Things when it is missing from the snapshot or sits in the snapshot's `trash` list. It moves to Trash when its id is in `trash`, and is completed otherwise. Things scripting does not say whether a Task that left was completed or canceled, so it is recorded as completed. An Area missing from the snapshot moves to Trash. Nothing is deleted.
-- A record that comes back to Things is restored by the next snapshot.
-- Changes are recorded as one Activity row with the actor Things, and queue no Things Operations. An unchanged snapshot records nothing.
+- `planner/thingsRows.ts` maps the rows to LifeOS fields in one pure function. A repeating template, an impossible date or an unknown status is skipped and reported, never guessed.
+- `planner/thingsImport.ts` writes them in batches of 200 per table (Areas, Labels, Projects, Headings, Tasks, Checklist Items), one mutation and one Activity row per batch, so a large Logbook stays inside Convex's limits.
+- A new record is inserted with its Things Link and an Order Key after its last sibling, in Things order.
+- An existing record is merged field by field. A field takes Things' value only while LifeOS still holds the value in `base`. A field LifeOS changed is kept. A record with a link but no `base` keeps every field. Then `base` becomes what Things has now.
+- A record that leaves Things is left exactly as it is. Nothing is deleted.
+- An unchanged import records no Activity and changes nothing.
+- `planner/things:retire` (Switch Day) sets `retiredAt`. From then on `importRows` and every batch refuse with `retired`, and the Mac app stops importing.
 
 ## Decisions
 
 - **Activity rows group changes by action, and actors group actions by run.** Undoing one action reads one group. Undoing a run reads every group for that Job. Both write one undo row, so either undo is itself one step in history.
 - **Undo refuses rather than merges.** When a later action touched the same fields, a silent overwrite would lose Avi's later edit. The error names the record, so the UI can say why.
 - **Work Blocks are removed with a timestamp, not deleted.** Convex cannot re-insert a row with its old id. A hard delete would break undo of every earlier change to that block.
-- **Today order comes from Things.** A Task in Things' Today list sorts by its Things position (`things.index`), then the rest by date, Deadline and Order Key. A LifeOS overlay key for Today (`todayOrder`) arrives with drag to reorder.
-- **Queued Things Operations wait for the outbound Worker.** Nothing applies them yet. A Things snapshot can overwrite the field first, so the Worker must read the record's current values when it claims a Job, not trust `set`, and must fail Jobs queued before it shipped.
+- **Today order starts from Things.** An imported Task sorts by its Things Today position (`things.todayIndex`), then the rest by date, Deadline and Order Key. A LifeOS overlay key for Today (`todayOrder`) arrives with drag to reorder.
+- **Nothing writes to Things.** LifeOS is the home of Avi's Tasks. The two-way bridge and its `things` Jobs were removed on 18 November 2026 (#35).
 - **Lease expiry happens at claim time.** `claim` takes expired Jobs as well as queued ones, so no cron is needed and an expired Job is reclaimed the moment a Worker asks.
 - **Planner tables are plain folders in the main app, not Convex components.** Components isolate tables, which would block cross-module links and shared Activity (`docs/architecture.md`).
 - **Every public function checks the caller in one place.** `platform/access.ts` builds every public query and mutation, so a new function cannot forget the owner check (#17).
