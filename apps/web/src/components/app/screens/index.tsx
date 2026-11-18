@@ -9,7 +9,6 @@ import { LogbookScreen } from "./logbook";
 import { PlannerScreen } from "./planner";
 import { InboxScreen, TodayScreen } from "./today";
 import { TrashScreen } from "./trash";
-import { UpcomingScreen } from "./upcoming";
 
 export { UPCOMING_DAYS } from "./upcoming";
 
@@ -25,9 +24,8 @@ export const Screen = ({ route, sidebar, sidebarFailed }: { route: Route; sideba
     case "today":
       return <TodayScreen />;
     case "planner":
-      return <PlannerScreen />;
     case "upcoming":
-      return <UpcomingScreen />;
+      return <PlannerScreen tab={route.kind} />;
     case "anytime":
       return <AnytimeScreen />;
     case "someday":

@@ -11,7 +11,7 @@ const pomodoro = { kind: "pomodoro", focusMinutes: 25, breakMinutes: 5 } as cons
 let clock = nineAm;
 
 beforeEach(() => {
-  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.useFakeTimers({ toFake: ["Date"], now: nineAm - minute });
   clock = nineAm;
 });
 

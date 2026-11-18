@@ -13,6 +13,7 @@ export type ListDraft = { kind: "area" } | { kind: "project"; areaId: Id<"areas"
 
 export type ShellState = {
   route: Route;
+  via: Via;
   today: IsoDate;
   navigate: (route: Route, via: Via) => void;
   openCard: OpenCard | null;

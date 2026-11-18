@@ -12,6 +12,9 @@ export type Route =
 
 export type Via = "pointer" | "keyboard";
 
+export const PLANNER_TABS = ["planner", "upcoming"] as const;
+export type PlannerTab = (typeof PLANNER_TABS)[number];
+
 const isList = (segment: string): segment is ListKind => LISTS.some((list) => list === segment);
 
 export const routeHref = (route: Route) =>
@@ -28,5 +31,7 @@ export const parseRoute = (href: string) => {
   if (segment === "project" && id) return { kind: "project", id: id as Id<"projects"> } satisfies Route;
   return { kind: "missing" } satisfies Route;
 };
+
+export const screenKey = (route: Route) => routeHref(route.kind === "upcoming" ? { kind: "planner" } : route);
 
 export const sameRoute = (a: Route, b: Route) => routeHref(a) === routeHref(b) && a.kind === b.kind;

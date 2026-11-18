@@ -11,9 +11,8 @@ import { cn } from "@/lib/utils";
 import { useCommitmentsByDay } from "../calendar";
 import { dayNumber, daysBetween, deadlineMark, monthLong, relativeDay, weekdayLong } from "../dates";
 import { useView, valueOf } from "../hooks";
-import { ListPage, ListSkeleton } from "../list-page";
+import { ListSkeleton } from "../list-page";
 import { useShell } from "../shell-context";
-import { LIST_META } from "../sidebar";
 import { TaskItems, useHasDrafts } from "../task-item";
 
 export const UPCOMING_DAYS = 28;
@@ -87,7 +86,7 @@ const DaySection = ({
   );
 };
 
-export const UpcomingScreen = () => {
+export const UpcomingList = () => {
   const { today } = useShell();
   const view = valueOf(useView(api.planner.lists.upcoming, { date: today, days: UPCOMING_DAYS }));
   const drafting = useHasDrafts();
@@ -98,7 +97,7 @@ export const UpcomingScreen = () => {
     .filter((date) => !week.includes(date))
     .toSorted();
   return (
-    <ListPage title="Upcoming" icon={LIST_META.upcoming.icon}>
+    <div className="mx-auto w-full max-w-[44rem] px-5 pt-2 pb-28 md:px-10 md:pt-0 [&_[data-arrow-item]]:scroll-mt-28 md:[&_[data-arrow-item]]:scroll-mt-20">
       {!view ? (
         <ListSkeleton />
       ) : view.days.length === 0 && commitments.size === 0 && !drafting ? (
@@ -116,6 +115,6 @@ export const UpcomingScreen = () => {
           ))}
         </>
       )}
-    </ListPage>
+    </div>
   );
 };

@@ -503,8 +503,7 @@ export const Sidebar = ({ view, via, notice }: { view: SidebarView | undefined; 
       </div>
       <div>
         <NavItem to={{ kind: "today" }} {...LIST_META.today} count={view?.counts.today} via={via} />
-        <NavItem to={{ kind: "planner" }} {...PLANNER_META} via={via} />
-        <NavItem to={{ kind: "upcoming" }} {...LIST_META.upcoming} via={via} />
+        <NavItem to={{ kind: shell.route.kind === "upcoming" ? "upcoming" : "planner" }} {...PLANNER_META} via={via} />
         <NavItem to={{ kind: "anytime" }} {...LIST_META.anytime} via={via} />
         <NavItem to={{ kind: "someday" }} {...LIST_META.someday} via={via} />
       </div>

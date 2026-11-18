@@ -16,7 +16,7 @@ import { FocusPill, FocusProvider } from "./focus";
 import { useLocalDate, useQuietView, useViewState, valueOf } from "./hooks";
 import { AppMenu } from "./menus";
 import { PanelBoundary, PanelNotice } from "./panel-boundary";
-import { LISTS, parseRoute, routeHref, type Route, type Via } from "./route";
+import { LISTS, parseRoute, routeHref, screenKey, type Route, type Via } from "./route";
 import { Screen, UPCOMING_DAYS } from "./screens";
 import { SelectionBar } from "./selection-bar";
 import { useSelectionGestures } from "./selection-gestures";
@@ -65,6 +65,7 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
   const aside = useRef<HTMLElement>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
   const hadDrawer = useRef(false);
+  if (pending && pending.from !== actual) setPending(null);
   const href = pending?.from === actual ? pending.to : actual;
   const route = useMemo(() => parseRoute(href), [href]);
   const [sidebarAttempt, setSidebarAttempt] = useState(0);
@@ -83,6 +84,7 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
     };
     return {
       route,
+      via,
       today,
       navigate,
       openCard: card?.href === href ? card : null,
@@ -95,7 +97,7 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
         setDraft(next);
       },
     } satisfies ShellState;
-  }, [route, today, card, href, actual, router, renaming, draft]);
+  }, [route, via, today, card, href, actual, router, renaming, draft]);
 
   useEffect(() => {
     latest.current = shell;
@@ -209,7 +211,7 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
                 <MenuIcon weight="bold" className="size-5" aria-hidden="true" />
               </button>
             </div>
-            <div key={href} className={cn(via === "pointer" && "animate-screen-in")}>
+            <div key={screenKey(route)} className={cn(via === "pointer" && "animate-screen-in")}>
               <PanelBoundary panel="list" variant="screen">
                 <Screen route={route} sidebar={sidebar} sidebarFailed={sidebarState.error !== null} />
               </PanelBoundary>

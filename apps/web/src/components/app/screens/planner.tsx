@@ -18,16 +18,26 @@ import { BrainDump, DayColumn } from "../planner/lists";
 import { INBOX, dayContainer, nextFreeSlot, usePlanner, type PlannerModel } from "../planner/model";
 import { TimeboxPane, type TimeboxView } from "../planner/timebox-pane";
 import { selection } from "../selection";
+import type { PlannerTab } from "../route";
 import { useShell } from "../shell-context";
-import { PLANNER_META } from "../sidebar";
+import { ScreenTabs, type ScreenTab } from "../screen-tabs";
+import { LIST_META, PLANNER_META } from "../sidebar";
+import { UpcomingList } from "./upcoming";
 
-type Tab = "dump" | "days" | "timebox";
+type Pane = "dump" | "days" | "timebox";
 
-const TABS = [
+const PANES = [
   { value: "dump", label: "Brain Dump" },
   { value: "days", label: "Days" },
   { value: "timebox", label: "Timebox" },
-] satisfies { value: Tab; label: string }[];
+] satisfies { value: Pane; label: string }[];
+
+const PANEL_ID = "planner-panel";
+
+const SCREEN_TABS = [
+  { to: { kind: "planner" }, label: PLANNER_META.label, icon: PLANNER_META.icon },
+  { to: { kind: "upcoming" }, label: LIST_META.upcoming.label, icon: LIST_META.upcoming.icon },
+] satisfies ScreenTab[];
 
 const TABBED_BELOW_PX = 896;
 
@@ -62,8 +72,8 @@ const focusRow = (key: string, list: string, tries = FOCUS_TRIES) =>
     button?.scrollIntoView({ block: "nearest", inline: "nearest" });
   });
 
-const shows = (pane: Tab, tab: Tab, wide: boolean) =>
-  pane === tab ? (wide ? "flex" : "flex @4xl/planner:hidden") : wide ? "hidden @4xl/planner:flex" : "hidden";
+const shows = (pane: Pane, shown: Pane, wide: boolean) =>
+  pane === shown ? (wide ? "flex" : "flex @4xl/planner:hidden") : wide ? "hidden @4xl/planner:flex" : "hidden";
 
 const Panes = ({
   model,
@@ -71,8 +81,8 @@ const Panes = ({
   actions,
   view,
   setView,
-  tab,
-  setTab,
+  pane,
+  setPane,
   tabbed,
 }: {
   tabbed: boolean;
@@ -81,8 +91,8 @@ const Panes = ({
   actions: PlanActions;
   view: TimeboxView;
   setView: (view: TimeboxView) => void;
-  tab: Tab;
-  setTab: (tab: Tab) => void;
+  pane: Pane;
+  setPane: (pane: Pane) => void;
 }) => {
   const { setOpenCard } = useShell();
   const registry = usePlanRegistry();
@@ -172,14 +182,14 @@ const Panes = ({
       return true;
     };
     if (open() || task.status.kind !== "open") return;
-    setTab(task.when.kind === "inbox" ? "dump" : "days");
+    setPane(task.when.kind === "inbox" ? "dump" : "days");
     if (week && task.when.kind !== "inbox") setView({ mode: "day", anchor: date });
     requestAnimationFrame(() => requestAnimationFrame(open));
   };
 
   return (
     <div className="flex min-h-0 flex-1 gap-1 px-1 @4xl/planner:px-2">
-      <BrainDump tasks={model.dump} actions={actions} className={cn("w-full @4xl/planner:w-[17rem] @4xl/planner:shrink-0", shows("dump", tab, true))} />
+      <BrainDump tasks={model.dump} actions={actions} className={cn("w-full @4xl/planner:w-[17rem] @4xl/planner:shrink-0", shows("dump", pane, true))} />
       <ViewTransition>
       <div
         role="group"
@@ -188,7 +198,7 @@ const Panes = ({
         data-plan-strip=""
         className={cn(
           "min-w-0 flex-1 snap-x snap-mandatory gap-1 overflow-x-auto overscroll-x-contain [scrollbar-width:thin] @4xl/planner:snap-none",
-          shows("days", tab, !week),
+          shows("days", pane, !week),
         )}
       >
         {model.days.map((day) => (
@@ -205,22 +215,23 @@ const Panes = ({
         workingHours={model.workingHours}
         actions={actions}
         onOpenTask={openTask}
-        className={cn("w-full", week ? "@4xl/planner:min-w-0 @4xl/planner:flex-1" : "@4xl/planner:w-[21rem] @4xl/planner:shrink-0", shows("timebox", tab, true))}
+        className={cn("w-full", week ? "@4xl/planner:min-w-0 @4xl/planner:flex-1" : "@4xl/planner:w-[21rem] @4xl/planner:shrink-0", shows("timebox", pane, true))}
       />
       </ViewTransition>
     </div>
   );
 };
 
-export const PlannerScreen = () => {
-  const { today } = useShell();
+export const PlannerScreen = ({ tab }: { tab: PlannerTab }) => {
+  const { today, via } = useShell();
   const model = usePlanner(today);
   const actions = usePlanActions(today);
   const [view, setView] = useState<TimeboxView>({ mode: "day", anchor: today });
-  const [tab, setTab] = useState<Tab>("days");
+  const [pane, setPane] = useState<Pane>("days");
   const { root, tabbed } = useTabbed();
   const byPointer = useRef(false);
-  const Glyph = PLANNER_META.icon;
+  const board = tab === "planner";
+  const name = board ? PLANNER_META.label : LIST_META.upcoming.label;
 
   const showBlock = (date: IsoDate) =>
     setView((current) => (current.mode === "day" || startOfWeek(date) !== startOfWeek(current.anchor) ? { mode: current.mode, anchor: date } : current));
@@ -239,33 +250,50 @@ export const PlannerScreen = () => {
       onKeyDownCapture={() => {
         byPointer.current = false;
       }}
-      className="@container/planner flex h-[calc(100dvh-3rem)] flex-col overflow-hidden md:h-[calc(100dvh-0.75rem)]"
+      className={cn("@container/planner flex flex-col", board && "h-[calc(100dvh-3rem)] overflow-hidden md:h-[calc(100dvh-0.75rem)]")}
     >
-      <title>Planner · LifeOS</title>
-      <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 px-5 pt-1 pb-3 md:px-6 md:pt-5 md:pb-4">
-        <Glyph weight="fill" className="size-6 shrink-0 text-brand" aria-hidden="true" />
-        <h1 className="text-title font-semibold">Planner</h1>
-        <p className="mt-1 text-small text-muted-foreground max-sm:hidden">{longDay(today)}</p>
-        <Segmented
-          label="Planner pane"
-          options={TABS}
-          value={tab}
-          onValueChange={(next) => {
-            haptic("toggle");
-            setTab(next);
-          }}
-          className="ml-auto @4xl/planner:hidden"
-        />
+      <title>{`${name} · LifeOS`}</title>
+      <header
+        className={cn(
+          "flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 px-5 pt-1 pb-3 md:px-6 md:pt-5 md:pb-4",
+          !board && "sticky top-12 z-10 bg-surface-inset/85 backdrop-blur-md md:top-0",
+        )}
+      >
+        <h1 className="sr-only">{name}</h1>
+        <ScreenTabs label="Planner view" tabs={SCREEN_TABS} panel={PANEL_ID} />
+        <p className="text-small text-muted-foreground max-sm:hidden">{longDay(today)}</p>
+        {board && (
+          <Segmented
+            label="Planner pane"
+            options={PANES}
+            value={pane}
+            onValueChange={(next) => {
+              haptic("toggle");
+              setPane(next);
+            }}
+            className="ml-auto @4xl/planner:hidden"
+          />
+        )}
       </header>
-      {model ? (
-        <PlannerDrag today={today} actions={actions} onBlock={showBlock}>
-          <Panes model={model} today={today} actions={actions} view={view} setView={changeView} tab={tab} setTab={setTab} tabbed={tabbed} />
-        </PlannerDrag>
-      ) : (
-        <div className="px-6">
-          <ListSkeleton />
-        </div>
-      )}
+      <div
+        key={tab}
+        id={PANEL_ID}
+        role="tabpanel"
+        aria-label={name}
+        className={cn(board && "flex min-h-0 flex-1 flex-col", via === "pointer" && "animate-fade-in")}
+      >
+        {!board ? (
+          <UpcomingList />
+        ) : model ? (
+          <PlannerDrag today={today} actions={actions} onBlock={showBlock}>
+            <Panes model={model} today={today} actions={actions} view={view} setView={changeView} pane={pane} setPane={setPane} tabbed={tabbed} />
+          </PlannerDrag>
+        ) : (
+          <div className="px-6">
+            <ListSkeleton />
+          </div>
+        )}
+      </div>
     </div>
   );
 };
