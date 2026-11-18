@@ -178,3 +178,33 @@ LifeOS (`components/lifeos`). All take plain props and make no backend calls.
 3. Give every control a press state and every change an undo toast.
 4. Draw data as dots, rings or meters from the components above before reaching for a chart library.
 5. Check it at 1440 px and 390 px, in light and dark, and with reduced motion on.
+
+## Art
+
+The app is quiet on purpose, so art is the one place it gets rich. It appears in a few fixed places only, never as decoration on a working screen. Every image was made with an image model from a written prompt and then picked by hand.
+
+| Kind | Component | Where it goes | Files |
+| --- | --- | --- | --- |
+| Mark | `LifeosMark` (`lifeos/mark.tsx`) | The logo: nine dots, four filled, "the day filling up" | Geometry in `lifeos/mark-geometry.ts` |
+| App icon | none | iPhone (paper in light, graphite in dark), Mac (graphite), favicon (flat mark) | `apps/mobile/assets`, `apps/desktop/src-tauri/icons`, `public/favicon.svg` |
+| Spot illustration | `SpotArt` | Empty screens, one per list and ritual. Has a light and a night version | `public/art/spots/{light,dark}` |
+| Area cover | `AreaCover` | The head of an Area page. One per Area colour, built from painted dots | `public/art/covers` |
+| Ritual scene | `RitualArt` | Daily planning, Focus Session, Shutdown, Inbox, Someday, day closed | `public/art/rituals` |
+| Backdrop | `BackdropScene` | Behind a Focus Session and the rituals. Three sets (`blur`, `painted`, `room`), each at dawn, morning, afternoon, dusk and night | `public/art/{blur,painted,backdrops}` |
+| Dot layer | `DotMatrix` (`lifeos/dot-matrix.tsx`) | Drawn live over a `blur` backdrop: a dot per cell, sized by the photo's brightness | none |
+| Welcome backdrop | none yet | Paper or graphite with pressed dots, or the blurred sea | `public/art/backdrops/material-*`, `public/art/blur/sea.webp` |
+
+Rules:
+
+- One bright thing per screen. If a cover or a ritual scene is showing, everything around it stays tone and dots.
+- Pick the backdrop from the clock with `backdropForHour(hour)`. Ask `backdropIsDark(backdrop, set)` whether text on it should be white.
+- Spot illustrations blend into any surface: the light ones multiply, the dark ones screen, and the edges fade. Do not put them on a coloured background.
+- Words go on the calm part of a backdrop. Every backdrop keeps its centre and upper two thirds plain for that reason.
+- No text is ever baked into an image.
+
+Rebuilding:
+
+- `apps/web/scripts/build-art.sh <folder>` turns original PNGs into the web images, the phone icons and the Mac icon master. The folder holds `spots-light`, `spots-dark`, `backdrops`, `covers`, `painted`, `rituals`, `blur` and `icon`.
+- `pnpm --filter @lifeos/web build:mark` rebuilds the favicon and flat marks. `node apps/web/scripts/build-mobile-marks.ts` rebuilds the Android, splash and favicon marks for the phone.
+- After changing the Mac icon master (`apps/desktop/art/app-icon.png`), run `pnpm --filter @lifeos/desktop tauri icon art/app-icon.png` and keep the six files the app uses.
+- The original PNGs live in `apps/web/art-source` on Avi's machine and are not committed (about 107 MB). The prompt that made each one is committed beside it as `<name>.prompt.txt`, so any image can be made again.

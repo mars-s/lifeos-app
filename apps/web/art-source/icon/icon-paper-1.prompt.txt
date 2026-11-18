@@ -1,0 +1,16 @@
+OUTPUT SIZE: 1024 by 1024 pixels, a native 1024-pixel square PNG. The attached style sample's resolution and layout should not be inherited.
+
+Create a single 1024 × 1024 PNG for the LifeOS app icon. Orthographic, dead-on view of a material surface that fills the entire square, corner to corner. Use the attached reference exclusively for material grain, lighting, and the look of the recesses. Replace its layout entirely with the following nine circles.
+
+Three rows, three columns. The complete colour map, top to bottom:
+BLUE | BLUE | BLUE
+BLUE | EMPTY | EMPTY
+EMPTY | EMPTY | EMPTY
+
+Exactly four blue circles and five empty dimples. Exactly nine circles total. The middle row begins blue, then two empty dimples. The bottom row is all empty dimples. Arrange them in a mathematically regular square grid centred on the canvas. Circle centres in each axis are at pixel 303, 512, and 721. Every circle has a 155 px diameter and gaps are 54 px. Grid is about 56% of the canvas on both axes, with equal opposite margins. Perfectly round and equally sized marks, with aligned rows and columns.
+
+Soft light from top left, very fine matte grain, no gloss, glow halo, or hue gradients. Full bleed with square corners and uninterrupted material at all four edges. No tile silhouette, border, frame, device, mockup, outer drop shadow, text, letters, numbers, logos or watermarks.
+
+Thick warm cotton paper #F7F4EF. Filled circles are flat solid blue ink #186BC5 sitting in the dimples, with matching fine paper grain. Empty circles are shallow debossed dimples in the same paper, #E6E3DD in shadow.
+
+Use identical 15.1%-of-canvas circle diameters and exact 20.4%-of-canvas centre steps. The outer extent is 56% square and the four outside margins are each 22% of the canvas.

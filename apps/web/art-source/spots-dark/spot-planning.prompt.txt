@@ -1,0 +1,9 @@
+Generate one opaque PNG at exactly 1536 × 1024 pixels. Match the attached approved LifeOS dark illustration's centred, sparse product photography, matte surfaces, soft upper-left light and small scale. Use the reference for the shoot and lighting. The new subject is described below.
+
+Use a completely uniform flat sRGB fill of exactly #121314, RGB(18,19,20), across the empty background reaching every edge and all four corners. Treat the colour as a solid digital fill, exempt from any light, grain or shading. Every perimeter pixel is the same colour. The only interruption outside the subject is a faint, tight ambient contact shadow at the foot of the subject. No vignette, falloff, gradient, grain in the background, backdrop seam, halo or floor lighting.
+
+One compact centred arrangement at about 35% of the canvas width. Restrained low-key light, fine matte texture on the subject only. Dark material is lifted graphite #2E2F32 to #3A3C40, readable at the edges. Where called for, paper or other light material is soft dim off-white #C9CBCF. Exactly one small matte blue #5DADFC accent, no glow. No text, letters, numerals, dates, logos, watermarks, people, hands or extra objects.
+
+One sharpened pencil resting diagonally from lower left to upper right on one blank dim off-white index card, forming a single compact arrangement. Matte dim off-white pencil body and dark graphite tip, with neutral grey sharpening and no coloured ferrule or eraser. One small flat printed blue dot in the card's lower right corner. No ruling. Gentle contact shading makes the pencil legible.
+
+Match the framing and view of the reference card, with a card and pencil only. Make the combined arrangement around 550 pixels wide.

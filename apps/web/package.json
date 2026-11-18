@@ -6,7 +6,8 @@
     "dev": "waku dev",
     "build": "waku build",
     "start": "waku start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:mark": "node scripts/build-mark.ts"
   },
   "dependencies": {
     "@fontsource-variable/geist-mono": "^5.3.0",

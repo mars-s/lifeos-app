@@ -1,0 +1,7 @@
+Generate a new 1024 × 1024 pixel PNG (width=1024, height=1024). Render directly on that square canvas. The supplied image is a material swatch for grain and top-left lighting only. Create a fresh composition at the specified pixel dimensions.
+
+Place exactly nine equal 155 px circular marks at the intersections of x=303, 512, 721 and y=303, 512, 721. The 54 px gaps are the same horizontally and vertically. Centre the whole grid exactly at (512,512), with equal margins on all sides. Fill only the three marks at y=303 and the leftmost mark at y=512. The other five marks are empty recesses: two to the right of the middle-left blue circle, and three across the bottom. The visible image contains this 3 × 3 grid only.
+
+Matte graphite #1A1B1D shading neutrally to #101113 at the bottom. Blue circles are flat matte #5DADFC inlays exactly flush with the graphite and non-emissive. Empty circles are recessed #0C0D0F dimples with a faint lit lower rim.
+
+Head-on orthographic view. Soft upper-left light and very fine matte grain. Full-bleed material all the way into all four square corners. No tile outline, rounded corners, border, frame, device, mockup, outer drop shadow, gloss, halo, glow, hue gradient, text, letters, numbers, logo or watermark. Output a native 1024 × 1024 PNG.

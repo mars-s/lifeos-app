@@ -4,6 +4,7 @@ import { Check } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { MorphText } from "@/components/ui/morph-text";
 import { cn } from "@/lib/utils";
+import { SpotArt, type Spot } from "./art";
 import { round } from "./format";
 
 const HORIZON_DOTS = 13;
@@ -32,15 +33,17 @@ export const EmptyState = ({
   title,
   hint,
   action,
+  spot,
   className,
 }: {
+  spot?: Spot;
   title: string;
   hint: ReactNode;
   action?: ReactNode;
   className?: string;
 }) => (
   <div className={cn("flex flex-col items-center gap-3 px-6 py-8 text-center", className)}>
-    <Horizon />
+    {spot ? <SpotArt spot={spot} className="-my-3" /> : <Horizon />}
     <div className="space-y-1">
       <p className="font-medium">{title}</p>
       <p className="text-small text-pretty text-muted-foreground">{hint}</p>

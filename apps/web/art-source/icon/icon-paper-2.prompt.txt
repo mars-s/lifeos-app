@@ -1,0 +1,9 @@
+Generate a new 1024 × 1024 pixel PNG (width=1024, height=1024). Render directly on that square canvas. The supplied image is a material swatch for grain and top-left lighting only. Create a fresh composition at the specified pixel dimensions.
+
+Place exactly nine equal 155 px circular marks at the intersections of x=303, 512, 721 and y=303, 512, 721. The 54 px gaps are the same horizontally and vertically. Centre the whole grid exactly at (512,512), with equal margins on all sides. Fill only the three marks at y=303 and the leftmost mark at y=512. The other five marks are empty recesses: two to the right of the middle-left blue circle, and three across the bottom. The visible image contains this 3 × 3 grid only.
+
+Thick warm cotton paper #F7F4EF. Filled circles are blue #186BC5 enamel discs, very slightly raised with a subtly domed matte profile and a small soft contact shadow. Empty circles are shallow debossed dimples in the same paper, #E6E3DD in shadow.
+
+Give the enamel a smooth matte crown with a tiny contact shadow along the outside lower-right edge. Let the cotton fibres read clearly in the surrounding paper, and keep them much finer on the enamel.
+
+Head-on orthographic view. Soft upper-left light and very fine matte grain. Full-bleed material all the way into all four square corners. No tile outline, rounded corners, border, frame, device, mockup, outer drop shadow, gloss, halo, glow, hue gradient, text, letters, numbers, logo or watermark. Output a native 1024 × 1024 PNG.

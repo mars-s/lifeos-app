@@ -1,0 +1,9 @@
+Generate one opaque PNG at exactly 1536 × 1024 pixels. Match the attached approved LifeOS dark illustration's centred, sparse product photography, matte surfaces, soft upper-left light and small scale. Use the reference for the shoot and lighting. The new subject is described below.
+
+Use a completely uniform flat sRGB fill of exactly #121314, RGB(18,19,20), across the empty background reaching every edge and all four corners. Treat the colour as a solid digital fill, exempt from any light, grain or shading. Every perimeter pixel is the same colour. The only interruption outside the subject is a faint, tight ambient contact shadow at the foot of the subject. No vignette, falloff, gradient, grain in the background, backdrop seam, halo or floor lighting.
+
+One compact centred arrangement at about 35% of the canvas width. Restrained low-key light, fine matte texture on the subject only. Dark material is lifted graphite #2E2F32 to #3A3C40, readable at the edges. Where called for, paper or other light material is soft dim off-white #C9CBCF. Exactly one small matte blue #5DADFC accent, no glow. No text, letters, numerals, dates, logos, watermarks, people, hands or extra objects.
+
+One closed hardcover notebook lying flat, with a lifted matte graphite cover, subtle cloth grain and a narrow dim off-white page block. A thin flat blue ribbon bookmark tip peeks out by only a centimetre at the near bottom edge, the only blue. Blank cover. No elastic strap, stamp or embossing.
+
+Lay the notebook at the same modest clockwise rotation as the reference card, from the same elevated camera. Keep the notebook around 530 pixels wide and render the visible lower page edge in dim off-white.

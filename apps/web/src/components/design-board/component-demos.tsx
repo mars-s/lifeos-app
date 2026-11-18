@@ -333,6 +333,7 @@ export const HeroToday = () => {
               onRemainingChange={setRemaining}
               renderEmpty={(restore) => (
                 <EmptyState
+                  spot="today-clear"
                   title="Today is clear"
                   hint="Everything you planned is in the Logbook."
                   action={
@@ -394,10 +395,11 @@ export const TaskSpecimens = () => (
       className="md:col-span-3 xl:col-span-6"
     >
       <EmptyState
-        title="Nothing planned for today"
+        spot="inbox-empty"
+        title="The Inbox is empty"
         hint={
           <>
-            Press <Kbd>N</Kbd> to create a Task, or pull one in from the Inbox.
+            Press <Kbd>N</Kbd> to capture a thought. Sort it later.
           </>
         }
       />

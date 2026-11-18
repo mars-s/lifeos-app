@@ -14,8 +14,10 @@ export const DotRing = ({
   remaining,
   size = 30,
   dot = 1.6,
+  litClassName = "fill-brand",
   className,
 }: {
+  litClassName?: string;
   remaining: number;
   size?: number;
   dot?: number;
@@ -36,7 +38,7 @@ export const DotRing = ({
             r={dot}
             className={cn(
               "transition-[fill,opacity] duration-(--dur-slow) ease-out",
-              on ? "fill-brand" : "fill-foreground opacity-15",
+              on ? litClassName : "fill-current opacity-20",
             )}
           />
         );

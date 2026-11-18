@@ -1,0 +1,9 @@
+Generate one opaque PNG at exactly 1536 × 1024 pixels. Match the attached approved LifeOS dark illustration's centred, sparse product photography, matte surfaces, soft upper-left light and small scale. Use the reference for the shoot and lighting. The new subject is described below.
+
+Use a completely uniform flat sRGB fill of exactly #121314, RGB(18,19,20), across the empty background reaching every edge and all four corners. Treat the colour as a solid digital fill, exempt from any light, grain or shading. Every perimeter pixel is the same colour. The only interruption outside the subject is a faint, tight ambient contact shadow at the foot of the subject. No vignette, falloff, gradient, grain in the background, backdrop seam, halo or floor lighting.
+
+One compact centred arrangement at about 35% of the canvas width. Restrained low-key light, fine matte texture on the subject only. Dark material is lifted graphite #2E2F32 to #3A3C40, readable at the edges. Where called for, paper or other light material is soft dim off-white #C9CBCF. Exactly one small matte blue #5DADFC accent, no glow. No text, letters, numerals, dates, logos, watermarks, people, hands or extra objects.
+
+One small round matte graphite reception bell. Simple low round base and gently rising dome, with one very small flat-topped matte blue push button centred on top. The button is the sole accent. Keep the silhouette and junction of dome and base readable. No chrome or decorative trim. Elevated straight-on front camera.
+
+Both the entire dome and the entire base are dark graphite, resembling the lamp's outer body. Keep every visible part of the bell dark graphite except the single small matte blue push button. The dome is low and broad with only subdued graphite highlights. Place it centrally, around 470 to 500 pixels wide, with an elevated frontal view.

@@ -1,0 +1,7 @@
+Create one LifeOS spot illustration as an opaque 1536 by 1024 PNG, landscape 3:2. Use the attached approved LifeOS image as a reference for the same shoot: keep its soft top-left daylight, soft short contact shadow, matte grain on the subject, camera perspective, subdued contrast and generous negative space. Replace the reference subject with the subject described below. Position the whole new subject at the centre, its width about 35% of the canvas (roughly 535 pixels), photographed from the front and slightly above, with a level camera and visible top and near edge. Use precise, simple matte Braun or Muji industrial design. The subject palette is matte graphite #282521 and warm off-white #FEFCF9 with the one specified small blue #186BC5 accent.
+
+Technical priority: the seamless background must be a flat, opaque sRGB colour fill #F7F4EF (247, 244, 239). All pixels at the four edges and corners should be exactly that colour. Match the approved reference's warm paper look with no background grain, lighting falloff, gradients, horizon or vignette. Confine texture to the subject and the single faint contact shadow to its immediate footprint, feathering to the flat fill nearby.
+
+Show a neat low stack of exactly five blank warm off-white index cards lying flat. Fan them very slightly and show five individually countable sheet edges with tiny offsets. On the top card put one small blue printed dot near a corner. This is one compact stack. No other item or markings.
+
+No extra props, text, letters, numbers, logos, watermarks, people or hands.

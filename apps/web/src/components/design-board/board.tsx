@@ -3,7 +3,9 @@
 import { useEffect } from "react";
 import { Segmented } from "@/components/ui/segmented-control";
 import { Toaster } from "@/components/ui/toast-stack";
+import { LifeosMark } from "@/components/lifeos/mark";
 import { undoLast } from "@/components/lifeos/undo";
+import { ArtSpecimens } from "./art-demos";
 import { HeroToday, PlanningSpecimens, ReviewSpecimens, TaskSpecimens } from "./component-demos";
 import { ControlSpecimens } from "./control-demos";
 import { ColourSpecimens, SurfaceSpecimens, TypeSpecimens } from "./foundations";
@@ -20,6 +22,7 @@ const SECTIONS = [
   { id: "tasks", label: "Tasks" },
   { id: "planning", label: "Planning" },
   { id: "review", label: "Focus and review" },
+  { id: "art", label: "Art" },
 ];
 
 const PRINCIPLES = [
@@ -43,7 +46,8 @@ export const DesignBoard = () => {
     <ThemeContext value={theme}>
       <div className="mx-auto w-full max-w-[90rem] px-4 pb-32 sm:px-8 lg:px-12">
         <header className="sticky top-0 z-40 -mx-4 flex h-16 items-center gap-6 bg-background/85 px-4 backdrop-blur-md sm:-mx-8 sm:px-8 lg:-mx-12 lg:px-12">
-          <a href="#top" className="flex items-baseline gap-2 rounded-md">
+          <a href="#top" className="flex items-center gap-2 rounded-md">
+            <LifeosMark />
             <span className="text-heading font-semibold">LifeOS</span>
             <span className="text-small text-muted-foreground">Design system</span>
           </a>
@@ -148,6 +152,13 @@ export const DesignBoard = () => {
           lede="Where the personality lives. Time spent is drawn as dots you can read at a glance and brush with a finger."
         >
           <ReviewSpecimens />
+        </Section>
+        <Section
+          id="art"
+          title="Art"
+          lede="The few places the app gets richer than tone and dots: its icon, a still life on an empty screen, and the room behind a Focus Session."
+        >
+          <ArtSpecimens />
         </Section>
       </div>
       <Toaster />
