@@ -45,6 +45,12 @@ const linked = {
     ctx.db.query("checklistItems").withIndex("by_things_id", (q) => q.eq("things.id", uuid)).unique(),
 } satisfies Record<Linked, (ctx: QueryCtx, uuid: string) => Promise<unknown>>;
 
+const isBuried = async (ctx: QueryCtx, uuid: string) =>
+  (await ctx.db
+    .query("thingsTombstones")
+    .withIndex("by_things_id", (q) => q.eq("thingsId", uuid))
+    .first()) !== null;
+
 const withoutUndefined = <F extends object>(fields: F) =>
   Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)) as F;
 
@@ -121,6 +127,7 @@ export const importAreas = stage(vIncomingArea, async (ctx, record, { uuid, titl
   const link = { id: uuid, base: { title } };
   const existing = await linked.areas(ctx, uuid);
   if (existing) return mergeInto(ctx, record, "areas", existing, link);
+  if (await isBuried(ctx, uuid)) return "unchanged";
   await record.insert("areas", { title, colour, order: keyAfter(await lastOrder(ctx, "areas")), things: link });
   return "inserted";
 });
@@ -131,6 +138,7 @@ export const importLabels = stage(vIncomingLabel, async (ctx, record, { uuid, na
   if (existing && (existing.things === undefined || existing.things.id === uuid)) {
     return mergeInto(ctx, record, "labels", existing, link);
   }
+  if (await isBuried(ctx, uuid)) return "unchanged";
   await record.insert("labels", { name, colour: "slate", order: keyAfter(await lastOrder(ctx, "labels")), things: link });
   return "inserted";
 });
@@ -143,6 +151,7 @@ export const importProjects = stage(vIncomingProject, async (ctx, record, { uuid
   );
   const link = { id: uuid, base };
   if (existing) return mergeInto(ctx, record, "projects", existing, link);
+  if (await isBuried(ctx, uuid)) return "unchanged";
   const last = await ctx.db
     .query("projects")
     .withIndex("by_area_order", (q) => q.eq("areaId", areaId))
@@ -158,6 +167,7 @@ export const importHeadings = stage(vIncomingHeading, async (ctx, record, { uuid
   const link = { id: uuid, base: { title, projectId } };
   const existing = await linked.headings(ctx, uuid);
   if (existing) return mergeInto(ctx, record, "headings", existing, link);
+  if (await isBuried(ctx, uuid)) return "unchanged";
   const last = await ctx.db
     .query("headings")
     .withIndex("by_project_order", (q) => q.eq("projectId", projectId))
@@ -177,6 +187,7 @@ export const importTasks = stage(vIncomingTask, async (ctx, record, { uuid, toda
   );
   const link = { id: uuid, todayIndex, base };
   if (existing) return mergeInto(ctx, record, "tasks", existing, link);
+  if (await isBuried(ctx, uuid)) return "unchanged";
   await record.insert("tasks", { ...base, order: keyAfter(await lastTaskOrder(ctx, base.parent)), things: link });
   return "inserted";
 });
@@ -187,6 +198,7 @@ export const importChecklistItems = stage(vIncomingChecklistItem, async (ctx, re
   const link = { id: uuid, base: { title, done } };
   const existing = await linked.checklistItems(ctx, uuid);
   if (existing) return mergeInto(ctx, record, "checklistItems", existing, link);
+  if (await isBuried(ctx, uuid)) return "unchanged";
   const last = await ctx.db
     .query("checklistItems")
     .withIndex("by_task_order", (q) => q.eq("taskId", taskId))

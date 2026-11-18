@@ -67,3 +67,25 @@ test("a Label needs a name, a real colour, a real Task, and the owner", async ()
   await expect(stranger.query(api.planner.labels.list, {})).rejects.toThrow();
   await expect(stranger.mutation(api.planner.labels.setColour, { labelId, colour: "rose" })).rejects.toThrow();
 });
+
+test("a Label renames, refuses a name another Label holds, and undo puts the old name back", async () => {
+  const t = await newBackend();
+  const admin = unwrap(await t.mutation(api.planner.labels.create, { name: "Admin", colour: "slate" })).labelId;
+  unwrap(await t.mutation(api.planner.labels.create, { name: "Deep Work", colour: "violet" }));
+  expect(await t.mutation(api.planner.labels.rename, { labelId: admin, name: "deep work" })).toMatchObject({ ok: false, error: { kind: "name_taken" } });
+  const { activityId } = unwrap(await t.mutation(api.planner.labels.rename, { labelId: admin, name: " Paperwork " }));
+  expect((await t.query(api.planner.labels.list, {})).map((label) => label.name)).toEqual(["Paperwork", "Deep Work"]);
+  unwrap(await t.mutation(api.platform.undo.undo, { activityId: activityId! }));
+  expect((await t.query(api.planner.labels.list, {})).map((label) => label.name)).toEqual(["Admin", "Deep Work"]);
+});
+
+test("removing a Label takes it off open Tasks and is permanent", async () => {
+  const t = await newBackend();
+  const taskId = unwrap(await t.mutation(api.planner.tasks.create, { title: "File the return" })).taskId;
+  const admin = unwrap(await t.mutation(api.planner.labels.create, { name: "Admin", colour: "slate", taskId })).labelId;
+  const { activityId, stripped } = unwrap(await t.mutation(api.planner.labels.remove, { labelId: admin }));
+  expect(stripped).toBe(1);
+  expect(await t.query(api.planner.labels.list, {})).toEqual([]);
+  expect((await t.query(api.planner.tasks.card, { taskId }))?.labelIds).toEqual([]);
+  expect(await t.mutation(api.platform.undo.undo, { activityId: activityId! })).toMatchObject({ ok: false, error: { kind: "not_undoable" } });
+});

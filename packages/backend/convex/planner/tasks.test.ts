@@ -217,3 +217,15 @@ describe("Task mutations", () => {
 
 const firstActivity = (s: Setup) =>
   s.t.run(async (ctx) => (await ctx.db.query("activity").first())!._id);
+
+test("reorder moves a Task between its neighbours and refuses a malformed Order Key", async () => {
+  const t = await newBackend();
+  const ids = [];
+  for (const title of ["One", "Two", "Three"]) ids.push(unwrap(await t.mutation(api.planner.tasks.create, { title })).taskId);
+  const inbox = async () => (await t.query(api.planner.lists.inbox, {})).tasks;
+  const [first, second] = await inbox();
+  const { generateKeyBetween } = await import("fractional-indexing");
+  unwrap(await t.mutation(api.planner.tasks.reorder, { taskId: ids[2]!, order: generateKeyBetween(first!.order, second!.order) }));
+  expect((await inbox()).map((task) => task.title)).toEqual(["One", "Three", "Two"]);
+  expect(await t.mutation(api.planner.tasks.reorder, { taskId: ids[2]!, order: "" })).toMatchObject({ ok: false, error: { kind: "invalid_order" } });
+});

@@ -97,10 +97,12 @@ const thingsLink = <Base extends GenericValidator>(base: Base) => v.object({ id:
 export const plannerTables = {
   areas: defineTable({ ...areaFields, things: v.optional(thingsLink(vAreaBase)) })
     .index("by_things_id", ["things.id"])
-    .index("by_order", ["order"]),
+    .index("by_order", ["order"])
+    .index("by_trashed", ["trashedAt"]),
   projects: defineTable({ ...projectFields, things: v.optional(thingsLink(vProjectBase)) })
     .index("by_things_id", ["things.id"])
-    .index("by_area_order", ["areaId", "order"]),
+    .index("by_area_order", ["areaId", "order"])
+    .index("by_trashed", ["trashedAt"]),
   headings: defineTable({ ...headingFields, things: v.optional(thingsLink(vHeadingBase)) })
     .index("by_things_id", ["things.id"])
     .index("by_project_order", ["projectId", "order"]),
@@ -144,4 +146,5 @@ export const plannerTables = {
     }),
     retiredAt: v.optional(v.number()),
   }),
+  thingsTombstones: defineTable({ thingsId: v.string() }).index("by_things_id", ["thingsId"]),
 };

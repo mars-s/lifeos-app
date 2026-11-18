@@ -16,3 +16,5 @@ export type SomedayView = FunctionReturnType<typeof api.planner.lists.someday>;
 export type UpcomingView = Ok<FunctionReturnType<typeof api.planner.lists.upcoming>>;
 export type AreaView = NonNullable<FunctionReturnType<typeof api.planner.lists.area>>;
 export type ProjectView = NonNullable<FunctionReturnType<typeof api.planner.lists.project>>;
+export type TrashView = FunctionReturnType<typeof api.planner.trash.list>;
+export type TrashRow = TrashView["rows"][number];

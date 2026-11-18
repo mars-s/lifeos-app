@@ -189,15 +189,33 @@ The real screens live in `apps/web/src/components/app`. They read Convex and com
 | `TaskItem` | `task-item.tsx` | A row that opens in place into its card. Focus stays inside. Escape, Cmd+Enter or a click away closes it and saves what was typed |
 | `TaskCardBody` | `task-card-body.tsx` | The open card: title, notes with clickable links, Checklist, Work Blocks, Estimate, When, Labels and Deadline |
 | `useChange`, `useTaskActions` | `changes.ts`, `task-actions.ts` | Every edit: it shows at once (an optimistic update over every list that holds the Task), records Activity, and raises one undo toast per card |
-| Screens | `screens/` | Inbox, Today, Upcoming, Anytime, Someday, Logbook, Area, Project |
+| Screens | `screens/` | Inbox, Today, Upcoming, Anytime, Someday, Logbook, Trash, Area, Project |
+| `PanelBoundary` | `panel-boundary.tsx` | One failing query or render stays in its own part: the screen, the sidebar, the open card and the selection bar each show a calm notice with Try Again. Signed-out and not-owner errors pass through to their own screens. `useQuietView` reads a query without throwing, for the shell and the warm subscriptions |
+| `drafts` | `drafts.ts` | A new Task shows in the same frame as `N`. The draft row keeps its key when the saved Task arrives, so the caret and typed text stay |
+| `askToConfirm` | `confirm.tsx` | The one confirm dialog, for changes that cannot be undone (Delete Forever, Empty Trash, deleting a Label) |
 
 Selection: text never highlights in the chrome or the lists (fields and notes stay selectable). A click selects a Task, Cmd+click adds or removes one, Shift+click selects a range, a drag across rows or a lasso from empty space selects what it crosses, Shift+arrow extends, Cmd+A selects the list and Escape clears. A double-click or Enter opens the card. On a phone a tap opens, and a long-press opens the menu, where Select More starts a selection that taps then add to. Two or more selected Tasks show a count pill with Complete, Trash and More.
 
 Menus: one `AppMenu` (`components/app/menus.tsx`, built on the TuffUI action menu in `components/ui/action-menu.tsx`) replaces the browser menu everywhere except text fields. It reads `data-task-key`, `data-menu-area` and `data-menu-project` from what was clicked. Shift+F10 and the menu key open it for the focused row. `N` makes a Task, Cmd+K completes the selection and Backspace moves it to Trash.
 
-Keys: `1` to `6` (and Cmd+1 to Cmd+6 in the Mac app) switch lists. Arrow keys or `J` and `K` move through rows, or through the sidebar when it has focus. Enter or Space opens a row, Escape or Cmd+Enter closes it. Cmd+Z undoes the newest change, unless the caret is in a field with unsaved typing. A pointer switch slides the selection and fades the list in. A keyboard switch is instant.
+Rows: a Task row collapses out when it is completed or trashed and opens in when it is created or comes back by undo. In Inbox, an Area and a Project, drag a row to reorder it (Cmd+Up and Cmd+Down do the same for the focused row). There a lasso starts from empty space. Other lists keep drag-across-rows to select. In the sidebar, drag an Area or a Project, drop a Project on another Area to move it, or use Move Up and Move Down in the menu (Cmd+Up and Cmd+Down on the focused row).
 
-`apps/web/scripts/screens.sh <folder>` screenshots every list in light and dark at 1440 and 390 px with agent-browser. Set `SESSION` to a JSON file with `accessToken` and `refreshToken` to start signed in.
+Keys: `1` to `7` (and Cmd+1 to Cmd+7 in the Mac app) switch lists. Arrow keys or `J` and `K` move through rows, or through the sidebar when it has focus. Enter or Space opens a row, Escape or Cmd+Enter closes it. Cmd+Z undoes the newest change, unless the caret is in a field with unsaved typing. A pointer switch slides the selection and fades the list in. A keyboard switch is instant.
+
+Browser checks live in `apps/web/scripts` and run with agent-browser against a throwaway local backend:
+
+| Script | What it does |
+| --- | --- |
+| `local-backend.sh` | Copies the backend to a scratch folder, starts Convex's anonymous local backend there, seeds it and writes `session.json`. Never touches the real deployment link |
+| `signin.sh` | Signs the check browser in from `SESSION` |
+| `screens.sh <folder>` | Screenshots every list in light and dark at 1440 and 390 px |
+| `check-trash.sh <folder>` | Trash a Task and an Area, put back, undo, Delete Forever, Empty Trash |
+| `check-polish.sh <folder>` | New Task in the same frame, drag and keyboard reorder of Tasks, Projects and Areas, a row leaving |
+| `check-boundaries.sh <folder>` | Points one query at a missing function with `?__fail=<name>` (dev builds only) and checks the rest of the app still works |
+| `check-card.sh <folder>` | The open Task card and the Label editor at both sizes and themes |
+| `audit-guidelines.sh` | Greps every UI file for the mechanical Web Interface Guidelines rules |
+
+Run the web app with `WAKU_PUBLIC_CONVEX_URL=http://127.0.0.1:3210 npx waku dev --port 3990`. A session works in one browser only, so make a new one (`npx convex run scratch:signIn` in the scratch folder) for a second browser session.
 
 ## Building a new screen
 

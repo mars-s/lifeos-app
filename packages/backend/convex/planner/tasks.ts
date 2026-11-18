@@ -126,6 +126,12 @@ export const move = changeMutation({
     }),
 });
 
+export const reorder = changeMutation({
+  action: "task.reorder",
+  args: { taskId: v.id("tasks"), order: v.string() },
+  handler: (ctx, { taskId, order }, record) => edit(ctx, record, taskId, () => parseOrder(order).map((valid) => ({ order: valid }))),
+});
+
 export const complete = changeMutation({
   action: "task.complete",
   args: { taskId: v.id("tasks") },

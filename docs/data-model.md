@@ -122,18 +122,18 @@ No indexes: the guard reads the row by the id the session holds.
 | `by_things_id` (`things.id`) | Things Import lookup |
 | `by_trashed_status_when` (`trashedAt`, `status.kind`, `when.kind`, `when.date`) | Today (open, untrashed, scheduled on or before a date). Inbox, Anytime and Someday (one When kind each). Upcoming (scheduled after today, inside a window). The sidebar counts. |
 | `by_trashed_status_deadline` (`trashedAt`, `status.kind`, `deadline`) | Today (due on or before a date). Upcoming Deadlines (due after today, inside a window). |
-| `by_trashed_closed_at` (`trashedAt`, `status.at`) | The Logbook: completed and canceled Tasks, newest first, paginated, and narrowed to a range of moments. Open Tasks have no `status.at`, so a lower bound of 0 leaves them out. |
+| `by_trashed_closed_at` (`trashedAt`, `status.at`) | The Trash list (every Task with a `trashedAt`, newest first). The Logbook: completed and canceled Tasks, newest first, paginated, and narrowed to a range of moments. Open Tasks have no `status.at`, so a lower bound of 0 leaves them out. |
 | `by_project_order` (`parent.projectId`, `order`) | Project page. The last key when appending. |
 | `by_area_order` (`parent.areaId`, `order`) | Area page. The last key when appending. |
 | `by_parent_kind_order` (`parent.kind`, `order`) | Loose Tasks in order. The last key when appending. |
 
 ### `areas`
 
-`title`, `colour`, optional `icon`, `order`, optional `trashedAt`, optional `things { id, base? }`. Indexes: `by_things_id`, `by_order` (sidebar). A new Area from Things takes the colour at its Things position, cycling through the eight tokens.
+`title`, `colour`, optional `icon`, `order`, optional `trashedAt`, optional `things { id, base? }`. Indexes: `by_things_id`, `by_order` (sidebar), `by_trashed` (`trashedAt`, the Trash list). A new Area from Things takes the colour at its Things position, cycling through the eight tokens.
 
 ### `projects`
 
-`title`, `notes`, optional `areaId`, `when`, optional `deadline`, `labelIds`, `status`, optional `trashedAt`, `order`, optional `things { id, base? }`. Indexes: `by_things_id`, `by_area_order` (`areaId`, `order`) for the sidebar and Area page.
+`title`, `notes`, optional `areaId`, `when`, optional `deadline`, `labelIds`, `status`, optional `trashedAt`, `order`, optional `things { id, base? }`. Indexes: `by_things_id`, `by_area_order` (`areaId`, `order`) for the sidebar and Area page, `by_trashed` (`trashedAt`, the Trash list).
 
 ### `headings`
 
@@ -162,6 +162,10 @@ Apple Calendar write-back adds an optional `calendarEvent { calendarId, eventId 
 
 One row: `syncedAt`, the counts of the last Things Import per table, and `retiredAt` once Switch Day has run. Read by the "Synced from Things" note, which hides after Switch Day.
 
+### `thingsTombstones`
+
+`thingsId`. One row per Things id of a record that was deleted forever. Index: `by_things_id`. A Things Import skips a row whose id is here, so a record Avi deleted for good does not come back before Switch Day.
+
 ## Planner view queries
 
 Each screen reads one query that returns exactly what it draws. All go through `ownerQuery`.
@@ -179,14 +183,17 @@ Each screen reads one query that returns exactly what it draws. All go through `
 | `planner/lists:area` (`areaId`) | An Area page: its open Tasks and its Projects with progress | `tasks.by_area_order`, `projects.by_area_order` |
 | `planner/lists:project` (`projectId`) | A Project page: open Tasks under their Headings, and progress over every Task | `headings.by_project_order`, `tasks.by_project_order` |
 | `planner/labels:list` | The Label picker on a Task card | `labels.by_order` |
+| `planner/trash:list` | Trash: trashed Areas, Projects and Tasks, newest first. A record that went to Trash with its Area or Project is counted on that row, not listed again | `tasks.by_trashed_closed_at`, `projects.by_trashed`, `areas.by_trashed` |
 
 Every list row has the same shape (`enrich` in `planner/rows.ts`): the Task, plus its Area (title and colour), its Project, its Labels, its Checklist Items (with their Order Keys) and its Work Blocks that are not removed. A Task card opens from the row it already has, with no second read.
 
-The card writes through `planner/tasks` (`rename`, `setNotes`, `setWhen`, `setDeadline`, `setEstimate`, `setLabels`), `planner/checklist` (`add`, `edit`, `tick`, `reorder`, `remove`) and `planner/labels` (`create`, `setColour`). `labels:create` takes an optional `taskId` and adds the new Label to that Task in the same action, so one undo removes both. A Label name is used once, ignoring case: creating it again returns the Label that exists.
+The card writes through `planner/tasks` (`rename`, `setNotes`, `setWhen`, `setDeadline`, `setEstimate`, `setLabels`), `planner/checklist` (`add`, `edit`, `tick`, `reorder`, `remove`) and `planner/labels` (`create`, `setColour`, `rename`, `remove`). `tasks:reorder` sets one Task's Order Key, for drag to reorder. `labels:rename` refuses a name another Label holds (`name_taken`). `labels:remove` takes the Label off every open Task and deletes it. It cannot be undone, because undo cannot bring a record back under its old id. `labels:create` takes an optional `taskId` and adds the new Label to that Task in the same action, so one undo removes both. A Label name is used once, ignoring case: creating it again returns the Label that exists.
 
 A selection of Tasks changes through `planner/selection` (`setWhen`, `setDeadline`, `setEstimate`, `setLabel`, `move`, `complete`, `reopen`, `trash`, `restore`). Each takes `taskIds` (up to 500), validates the whole request first, and records one Activity row, so one undo reverts every Task. A missing Task or an invalid value changes nothing.
 
 Areas change through `planner/areas` (`create`, `rename`, `setColour`, `setIcon`, `reorder`, `trash`, `restore`) and Projects through `planner/projects` (`create`, `rename`, `setNotes`, `setWhen`, `setDeadline`, `move`, `complete`, `reopen`, `trash`, `restore`). A new Area takes the first colour no live Area uses. An icon is a kebab-case name from the web icon set. Trashing an Area or a Project also trashes its live Projects and Tasks with the same `trashedAt`, in the same Activity row. Restore (or undo) brings back only the records that share that moment, so a Task trashed earlier stays in Trash. Completing a Project completes its open Tasks with the Project's completion moment, and reopening it reopens only those.
+
+Trash changes through `planner/trash` (`restore`, `deleteForever`, `empty`). `restore` takes a mixed list of Tasks, Projects and Areas and records one Activity row. A Task put back while its Project or Area is still in Trash moves to the nearest live parent (the Project's Area, or no parent). `deleteForever` removes a trashed record with its Checklist Items, Work Blocks, Headings and links. What was trashed with a Project or Area goes with it, and anything put back since is kept and moved out. `empty` deletes one batch of 100 per call and returns `done`, so the client calls it until Trash is clear. Both refuse a record that is not in Trash (`not_trashed`), and undo refuses both (`not_undoable`, reason `permanent`).
 
 `planner/seed.test-utils.ts` builds a realistic planner (five Areas, six Projects, Headings, Deadlines, a Logbook). The list tests use it, and a scratch local backend can run it for visual checks.
 

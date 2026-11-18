@@ -14,6 +14,8 @@ export type PlannerError =
   | { readonly kind: "invalid_estimate"; readonly minutes: number }
   | { readonly kind: "invalid_order"; readonly order: string }
   | { readonly kind: "empty_title" }
+  | { readonly kind: "name_taken"; readonly name: string }
+  | { readonly kind: "not_trashed"; readonly table: PlannerTable; readonly id: string }
   | { readonly kind: "invalid_icon"; readonly icon: string }
   | { readonly kind: "selection_too_large"; readonly limit: number }
   | { readonly kind: "heading_outside_project"; readonly headingId: string }

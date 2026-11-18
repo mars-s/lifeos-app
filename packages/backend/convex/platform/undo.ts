@@ -9,7 +9,7 @@ import type { Actor, RecordRef, UndoTarget } from "./tables";
 
 export type UndoError =
   | { readonly kind: "not_found" }
-  | { readonly kind: "not_undoable"; readonly reason: "undo" | "things" }
+  | { readonly kind: "not_undoable"; readonly reason: "undo" | "things" | "permanent" }
   | { readonly kind: "already_undone" }
   | { readonly kind: "nothing_to_undo" }
   | { readonly kind: "run_active" }
@@ -18,6 +18,7 @@ export type UndoError =
 type Expected = { entity: RecordRef; fields: Map<string, unknown> | null; exact: boolean };
 
 const DEPENDENT_SCAN_LIMIT = 100;
+const PERMANENT_ACTIONS = new Set(["trash.delete", "trash.empty", "label.remove"]);
 
 const changesOf = (ctx: MutationCtx, activityId: Id<"activity">) =>
   ctx.db
@@ -132,6 +133,7 @@ const undoActivity = async (ctx: MutationCtx, actor: Actor, activityId: Id<"acti
   if (!activity) return err<never, UndoError>({ kind: "not_found" });
   if (activity.undoes) return err<never, UndoError>({ kind: "not_undoable", reason: "undo" });
   if (activity.actor.kind === "things") return err<never, UndoError>({ kind: "not_undoable", reason: "things" });
+  if (PERMANENT_ACTIONS.has(activity.action)) return err<never, UndoError>({ kind: "not_undoable", reason: "permanent" });
   if (await isUndone(ctx, activity)) return err<never, UndoError>({ kind: "already_undone" });
   return revert(ctx, actor, { kind: "activity", activityId }, await changesOf(ctx, activityId));
 };
