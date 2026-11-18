@@ -98,10 +98,10 @@ _Avoid_: admin, user (in code, `users` is only Convex Auth's table).
 
 ## Authority
 
-Things 3 is the boss for now (Avi, 18 November 2026). He keeps working in Things while LifeOS is built.
+LifeOS is the home of Avi's Tasks (Avi, 18 November 2026). They live in Convex. Things 3 stays connected while he keeps using it.
 
-- Things owns Tasks, Areas, Projects and Headings, and these fields: title, notes, When, Deadline, Area, Project, tags and status. When Things and LifeOS disagree on one of these, Things wins.
-- LifeOS owns the planning layer: Estimates, Work Blocks, Checklist Items, Focus Sessions, Day Plans, Recurrence Rules, Templates, Area and Label colours, and LifeOS order keys. These never go to Things, and a Things sync never erases them.
-- An edit made in LifeOS to a Things-owned field is queued, applied by the Mac, read back, and confirmed by the next snapshot. Until then the Task shows it is waiting for Things.
+- Every field is editable in LifeOS. The UI never locks a field as "Things owns this".
+- An edit made in LifeOS to a field Things also stores (title, notes, When, Deadline, Area, Project, tags, status) is queued and applied to Things by the Mac, then read back.
+- **LifeOS wins.** A Things snapshot never undoes a LifeOS edit. A change made in Things flows into LifeOS only when LifeOS has not changed that field since the last confirmed sync.
+- LifeOS alone holds the planning layer: Estimates, Work Blocks, Checklist Items, Focus Sessions, Day Plans, Recurrence Rules, Templates, Area and Label colours, and LifeOS order keys.
 - Apple Calendar owns the timing of External Commitments and, once written back, of Work Blocks.
-- Later, LifeOS may become the boss. That changes the conflict rule, not the schema.
