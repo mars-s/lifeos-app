@@ -5,6 +5,7 @@ import type { MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { Recorder } from "../platform/activity";
 import { changeMutation } from "../platform/change";
+import { endFocusOnClosedTask } from "./focus";
 import { keyAfter, lastTaskOrder, load, parseDeadline, parseEstimate, parseParent, parseWhen, type PlannerError } from "./model";
 import { vParent, vWhen, type Parent } from "./tables";
 
@@ -99,14 +100,16 @@ export const move = changeMutation({
 export const complete = changeMutation({
   action: "tasks.complete",
   args: { taskIds: vTaskIds },
-  handler: (ctx, { taskIds }, record) => {
+  handler: async (ctx, { taskIds }, record) => {
     const at = Date.now();
-    return applyToAll(
+    const result = await applyToAll(
       ctx,
       record,
       taskIds,
       ok((task) => (task.status.kind === "open" ? { status: { kind: "completed" as const, at } } : {})),
     );
+    await endFocusOnClosedTask(ctx, record, at);
+    return result;
   },
 });
 
@@ -125,14 +128,16 @@ export const reopen = changeMutation({
 export const trash = changeMutation({
   action: "tasks.trash",
   args: { taskIds: vTaskIds },
-  handler: (ctx, { taskIds }, record) => {
+  handler: async (ctx, { taskIds }, record) => {
     const at = Date.now();
-    return applyToAll(
+    const result = await applyToAll(
       ctx,
       record,
       taskIds,
       ok((task) => (task.trashedAt === undefined ? { trashedAt: at } : {})),
     );
+    await endFocusOnClosedTask(ctx, record, at);
+    return result;
   },
 });
 

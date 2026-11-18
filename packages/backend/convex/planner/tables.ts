@@ -24,6 +24,19 @@ export const colours = ["violet", "green", "orange", "teal", "rose", "olive", "p
 
 export const vColour = v.union(...colours.map((colour) => v.literal(colour)));
 
+export const vFocusState = v.union(
+  v.object({ kind: v.literal("running") }),
+  v.object({ kind: v.literal("paused"), at: v.number() }),
+  v.object({ kind: v.literal("ended"), at: v.number() }),
+);
+
+export const vPomodoro = v.object({ focusMinutes: v.number(), breakMinutes: v.number() });
+
+export const vFocusPlan = v.union(
+  v.object({ kind: v.literal("open") }),
+  v.object({ kind: v.literal("pomodoro"), ...vPomodoro.fields }),
+);
+
 export type When = Infer<typeof vWhen>;
 export type Status = Infer<typeof vStatus>;
 export type Parent = Infer<typeof vParent>;
@@ -134,6 +147,19 @@ export const plannerTables = {
   })
     .index("by_task_start", ["taskId", "start"])
     .index("by_removed_start", ["removedAt", "start"]),
+  focusSessions: defineTable({
+    taskId: v.id("tasks"),
+    kind: v.union(v.literal("focus"), v.literal("break")),
+    start: v.number(),
+    plannedMinutes: v.optional(v.number()),
+    pausedMs: v.number(),
+    state: vFocusState,
+    pomodoro: v.optional(vPomodoro),
+    removedAt: v.optional(v.number()),
+  })
+    .index("by_task_start", ["taskId", "start"])
+    .index("by_start", ["start"])
+    .index("by_state", ["state.kind"]),
   thingsSync: defineTable({
     syncedAt: v.number(),
     counts: v.object({

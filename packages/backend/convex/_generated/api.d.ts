@@ -21,6 +21,7 @@ import type * as mcp from "../mcp.js";
 import type * as planner_areas from "../planner/areas.js";
 import type * as planner_checklist from "../planner/checklist.js";
 import type * as planner_containers from "../planner/containers.js";
+import type * as planner_focus from "../planner/focus.js";
 import type * as planner_labels from "../planner/labels.js";
 import type * as planner_lists from "../planner/lists.js";
 import type * as planner_model from "../planner/model.js";
@@ -65,6 +66,7 @@ declare const fullApi: ApiFromModules<{
   "planner/areas": typeof planner_areas;
   "planner/checklist": typeof planner_checklist;
   "planner/containers": typeof planner_containers;
+  "planner/focus": typeof planner_focus;
   "planner/labels": typeof planner_labels;
   "planner/lists": typeof planner_lists;
   "planner/model": typeof planner_model;

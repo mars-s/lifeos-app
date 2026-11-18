@@ -212,13 +212,17 @@ const bury = async (ctx: MutationCtx, doc: { things?: { id: string } }) => {
 };
 
 const deleteTask = async (ctx: MutationCtx, record: Recorder, task: Doc<"tasks">) => {
-  const [items, blocks, from, to] = await Promise.all([
+  const [items, blocks, sessions, from, to] = await Promise.all([
     ctx.db
       .query("checklistItems")
       .withIndex("by_task_order", (q) => q.eq("taskId", task._id))
       .take(CHILD_LIMIT),
     ctx.db
       .query("workBlocks")
+      .withIndex("by_task_start", (q) => q.eq("taskId", task._id))
+      .take(CHILD_LIMIT),
+    ctx.db
+      .query("focusSessions")
       .withIndex("by_task_start", (q) => q.eq("taskId", task._id))
       .take(CHILD_LIMIT),
     ctx.db
@@ -235,6 +239,7 @@ const deleteTask = async (ctx: MutationCtx, record: Recorder, task: Doc<"tasks">
     await record.remove("checklistItems", item._id);
   }
   for (const block of blocks) await record.remove("workBlocks", block._id);
+  for (const session of sessions) await record.remove("focusSessions", session._id);
   for (const link of [...from, ...to]) await record.remove("entityLinks", link._id);
   await bury(ctx, task);
   await record.remove("tasks", task._id);

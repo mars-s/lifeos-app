@@ -19,6 +19,7 @@ import {
   parseWhen,
   type PlannerError,
 } from "./model";
+import { endFocusOnClosedTask } from "./focus";
 import { vParent, vWhen } from "./tables";
 
 const CARD_LIMIT = 500;
@@ -135,10 +136,14 @@ export const reorder = changeMutation({
 export const complete = changeMutation({
   action: "task.complete",
   args: { taskId: v.id("tasks") },
-  handler: (ctx, { taskId }, record) =>
-    edit(ctx, record, taskId, (task) =>
-      ok(task.status.kind === "completed" ? {} : { status: { kind: "completed" as const, at: Date.now() } }),
-    ),
+  handler: async (ctx, { taskId }, record) => {
+    const at = Date.now();
+    const result = await edit(ctx, record, taskId, (task) =>
+      ok(task.status.kind === "completed" ? {} : { status: { kind: "completed" as const, at } }),
+    );
+    await endFocusOnClosedTask(ctx, record, at);
+    return result;
+  },
 });
 
 export const uncomplete = changeMutation({
@@ -150,8 +155,12 @@ export const uncomplete = changeMutation({
 export const trash = changeMutation({
   action: "task.trash",
   args: { taskId: v.id("tasks") },
-  handler: (ctx, { taskId }, record) =>
-    edit(ctx, record, taskId, (task) => ok(task.trashedAt === undefined ? { trashedAt: Date.now() } : {})),
+  handler: async (ctx, { taskId }, record) => {
+    const at = Date.now();
+    const result = await edit(ctx, record, taskId, (task) => ok(task.trashedAt === undefined ? { trashedAt: at } : {}));
+    await endFocusOnClosedTask(ctx, record, at);
+    return result;
+  },
 });
 
 export const restore = changeMutation({

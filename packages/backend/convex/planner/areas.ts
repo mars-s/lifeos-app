@@ -5,6 +5,7 @@ import type { MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { Recorder } from "../platform/activity";
 import { changeMutation } from "../platform/change";
+import { endFocusOnClosedTask } from "./focus";
 import { isIcon, lastAreaOrder, nextAreaColour, restoreArea, trashArea } from "./containers";
 import { keyAfter, load, parseOrder, parseTitle, type PlannerError } from "./model";
 import { vColour } from "./tables";
@@ -71,7 +72,9 @@ export const trash = changeMutation({
   args: { areaId: v.id("areas") },
   handler: async (ctx, { areaId }, record) =>
     (await load(ctx, "areas", areaId)).asyncMap(async (area) => {
-      await trashArea(ctx, record, area, Date.now());
+      const at = Date.now();
+      await trashArea(ctx, record, area, at);
+      await endFocusOnClosedTask(ctx, record, at);
       return { changed: area.trashedAt === undefined };
     }),
 });

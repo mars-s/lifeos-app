@@ -16,6 +16,7 @@ type SeedTask = {
   labels?: Id<"labels">[];
   status?: Status;
   checklist?: [title: string, done: boolean][];
+  focus?: [minutesAgo: number, minutes: number][];
   thingsList?: "inbox" | "today" | "anytime" | "upcoming" | "someday";
   trashedAt?: number;
 };
@@ -138,10 +139,14 @@ export const seedPlanner = async (ctx: MutationCtx, today: IsoDate, now: number)
         ["Write one line per section", false],
         ["Send to Dr Lin", false],
       ],
+      focus: [
+        [190, 25],
+        [150, 18],
+      ],
       thingsList: "today",
     },
-    { title: "Reply to Harry about the October invoice", when: on(0), estimate: 15, parent: inArea(paperless), labels: [admin], thingsList: "today" },
-    { title: "Review the onboarding copy", when: on(-2), deadline: day(-1), estimate: 45, parent: inProject(onboarding), thingsList: "today" },
+    { title: "Reply to Harry about the October invoice", when: on(0), estimate: 15, parent: inArea(paperless), labels: [admin], focus: [[95, 21]], thingsList: "today" },
+    { title: "Review the onboarding copy", when: on(-2), deadline: day(-1), estimate: 45, parent: inProject(onboarding), focus: [[60, 30]], thingsList: "today" },
     { title: "Book a physio appointment", when: on(0), estimate: 10, parent: inArea(personal), labels: [errand], thingsList: "today" },
     { title: "Pick up the parcel from the post office", when: on(0), thingsList: "today" },
     { title: "Create Google Doc developer documentation for scanner.ai", when: anytime, deadline: day(0), estimate: 60, parent: inArea(chemwatch), thingsList: "today" },
@@ -242,6 +247,16 @@ export const seedPlanner = async (ctx: MutationCtx, today: IsoDate, now: number)
     const itemKeys = keys(task.checklist?.length ?? 0);
     for (const [itemIndex, [title, ticked]] of (task.checklist ?? []).entries()) {
       await ctx.db.insert("checklistItems", { taskId, title, done: ticked, order: itemKeys[itemIndex] ?? "a0" });
+    }
+    for (const [minutesAgo, minutes] of task.focus ?? []) {
+      const start = now - minutesAgo * 60_000;
+      await ctx.db.insert("focusSessions", {
+        taskId,
+        kind: "focus",
+        start,
+        pausedMs: 0,
+        state: { kind: "ended", at: start + minutes * 60_000 },
+      });
     }
   }
   await ctx.db.insert("thingsSync", { syncedAt: now - 40_000, counts: { areas: 5, projects: 6, headings: 0, tasks: open.length, checklistItems: 0, labels: 0 } });

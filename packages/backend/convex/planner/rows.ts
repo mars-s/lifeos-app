@@ -1,8 +1,11 @@
 import type { QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
+import { focusedMs } from "../../shared/focus";
 
 const CHECKLIST_LIMIT = 100;
 const WORK_BLOCK_LIMIT = 100;
+const FOCUS_LIMIT = 300;
+const FOCUS_HISTORY = 12;
 const CONTAINER_LIMIT = 200;
 const PROJECT_TASK_LIMIT = 1000;
 
@@ -15,6 +18,15 @@ const byId = <T extends { _id: string }>(docs: T[]) => new Map(docs.map((doc) =>
 export const areaSummary = ({ _id, title, colour, icon }: Doc<"areas">) => ({ _id, title, colour, icon });
 
 export const projectSummary = ({ _id, title }: Doc<"projects">) => ({ _id, title });
+
+const focusSummary = (sessions: Doc<"focusSessions">[]) => {
+  const done = sessions.flatMap(({ _id, kind, start, state, removedAt, ...clock }) =>
+    kind === "focus" && state.kind === "ended" && removedAt === undefined
+      ? [{ _id, start, end: state.at, ms: focusedMs({ ...clock, start, state }, state.at) }]
+      : [],
+  );
+  return { ms: done.reduce((sum, session) => sum + session.ms, 0), sessions: done.slice(0, FOCUS_HISTORY) };
+};
 
 export const isLive = (record: { trashedAt?: number }) => record.trashedAt === undefined;
 
@@ -29,7 +41,7 @@ export const enrich = async (ctx: QueryCtx, tasks: Doc<"tasks">[]) => {
   }
   const projects = byId(found(await Promise.all([...projectIds].map((id) => ctx.db.get("projects", id)))));
   for (const project of projects.values()) if (project.areaId) areaIds.add(project.areaId);
-  const [areaDocs, labelDocs, checklists, blocks] = await Promise.all([
+  const [areaDocs, labelDocs, checklists, blocks, sessions] = await Promise.all([
     Promise.all([...areaIds].map((id) => ctx.db.get("areas", id))),
     Promise.all([...labelIds].map((id) => ctx.db.get("labels", id))),
     Promise.all(
@@ -46,6 +58,15 @@ export const enrich = async (ctx: QueryCtx, tasks: Doc<"tasks">[]) => {
           .query("workBlocks")
           .withIndex("by_task_start", (q) => q.eq("taskId", task._id))
           .take(WORK_BLOCK_LIMIT),
+      ),
+    ),
+    Promise.all(
+      tasks.map((task) =>
+        ctx.db
+          .query("focusSessions")
+          .withIndex("by_task_start", (q) => q.eq("taskId", task._id))
+          .order("desc")
+          .take(FOCUS_LIMIT),
       ),
     ),
   ]);
@@ -68,6 +89,7 @@ export const enrich = async (ctx: QueryCtx, tasks: Doc<"tasks">[]) => {
       workBlocks: (blocks[index] ?? [])
         .filter((block) => block.removedAt === undefined)
         .map(({ _id, start, minutes, done }) => ({ _id, start, minutes, done })),
+      focus: focusSummary(sessions[index] ?? []),
     };
   });
 };

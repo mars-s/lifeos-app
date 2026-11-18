@@ -6,7 +6,7 @@ import { parseIsoDate } from "../../shared/date";
 import { MAX_ESTIMATE_MINUTES } from "../../shared/estimate";
 import type { Parent, When } from "./tables";
 
-type PlannerTable = "areas" | "projects" | "headings" | "labels" | "tasks" | "checklistItems" | "workBlocks";
+type PlannerTable = "areas" | "projects" | "headings" | "labels" | "tasks" | "checklistItems" | "workBlocks" | "focusSessions";
 
 export type PlannerError =
   | { readonly kind: "not_found"; readonly table: PlannerTable; readonly id: string }
@@ -19,7 +19,11 @@ export type PlannerError =
   | { readonly kind: "invalid_icon"; readonly icon: string }
   | { readonly kind: "selection_too_large"; readonly limit: number }
   | { readonly kind: "heading_outside_project"; readonly headingId: string }
-  | { readonly kind: "invalid_block"; readonly reason: "start" | "minutes" | "time_zone" };
+  | { readonly kind: "invalid_block"; readonly reason: "start" | "minutes" | "time_zone" }
+  | {
+      readonly kind: "invalid_focus";
+      readonly reason: "minutes" | "task_closed" | "not_active" | "not_ended" | "not_timed" | "not_pomodoro" | "on_break";
+    };
 
 export const load = async <T extends PlannerTable>(ctx: QueryCtx, table: T, id: Id<T>) => {
   const doc = await ctx.db.get(id);

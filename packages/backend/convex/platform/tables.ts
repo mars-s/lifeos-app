@@ -9,6 +9,7 @@ export const vEntityRef = v.union(
   v.object({ table: v.literal("labels"), id: v.id("labels") }),
   v.object({ table: v.literal("checklistItems"), id: v.id("checklistItems") }),
   v.object({ table: v.literal("workBlocks"), id: v.id("workBlocks") }),
+  v.object({ table: v.literal("focusSessions"), id: v.id("focusSessions") }),
 );
 
 export const vRecordRef = v.union(

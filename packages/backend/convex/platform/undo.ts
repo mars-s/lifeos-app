@@ -71,7 +71,7 @@ const dependentsOf = async (ctx: MutationCtx, entity: RecordRef) => {
       .take(DEPENDENT_SCAN_LIMIT)),
   ];
   if (entity.table !== "tasks") return links.map(({ _id }) => _id as string);
-  const [items, blocks] = await Promise.all([
+  const [items, blocks, sessions] = await Promise.all([
     ctx.db
       .query("checklistItems")
       .withIndex("by_task_order", (q) => q.eq("taskId", entity.id))
@@ -80,8 +80,12 @@ const dependentsOf = async (ctx: MutationCtx, entity: RecordRef) => {
       .query("workBlocks")
       .withIndex("by_task_start", (q) => q.eq("taskId", entity.id))
       .take(DEPENDENT_SCAN_LIMIT),
+    ctx.db
+      .query("focusSessions")
+      .withIndex("by_task_start", (q) => q.eq("taskId", entity.id))
+      .take(DEPENDENT_SCAN_LIMIT),
   ]);
-  return [...links, ...items, ...blocks].map(({ _id }) => _id as string);
+  return [...links, ...items, ...blocks, ...sessions].map(({ _id }) => _id as string);
 };
 
 const insertedIn = (changes: Doc<"activityChanges">[]) =>

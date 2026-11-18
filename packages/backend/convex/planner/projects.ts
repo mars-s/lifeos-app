@@ -6,6 +6,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { Recorder } from "../platform/activity";
 import { changeMutation } from "../platform/change";
 import { closeProjectTasks, lastProjectOrder, reopenProjectTasks, restoreProject, trashProject } from "./containers";
+import { endFocusOnClosedTask } from "./focus";
 import { keyAfter, load, parseDeadline, parseOrder, parseTitle, parseWhen, type PlannerError } from "./model";
 import { vWhen } from "./tables";
 
@@ -106,6 +107,7 @@ export const complete = changeMutation({
       const at = Date.now();
       await record.patch("projects", projectId, { status: { kind: "completed", at } });
       await closeProjectTasks(ctx, record, projectId, at);
+      await endFocusOnClosedTask(ctx, record, at);
       return { changed: true };
     }),
 });
@@ -127,7 +129,9 @@ export const trash = changeMutation({
   args: { projectId: v.id("projects") },
   handler: async (ctx, { projectId }, record) =>
     (await load(ctx, "projects", projectId)).asyncMap(async (project) => {
-      await trashProject(ctx, record, project, Date.now());
+      const at = Date.now();
+      await trashProject(ctx, record, project, at);
+      await endFocusOnClosedTask(ctx, record, at);
       return { changed: project.trashedAt === undefined };
     }),
 });
