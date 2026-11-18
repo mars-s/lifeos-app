@@ -46,57 +46,82 @@ export type Status = Infer<typeof vStatus>;
 export type Parent = Infer<typeof vParent>;
 export type Colour = Infer<typeof vColour>;
 
+const areaFields = {
+  title: v.string(),
+  colour: vColour,
+  icon: v.optional(v.string()),
+  order: v.string(),
+  trashedAt: v.optional(v.number()),
+};
+
+const projectFields = {
+  title: v.string(),
+  notes: v.string(),
+  areaId: v.optional(v.id("areas")),
+  when: vWhen,
+  deadline: v.optional(v.string()),
+  labelIds: v.array(v.id("labels")),
+  status: vStatus,
+  trashedAt: v.optional(v.number()),
+  order: v.string(),
+};
+
+const headingFields = {
+  projectId: v.id("projects"),
+  title: v.string(),
+  order: v.string(),
+};
+
+const labelFields = {
+  name: v.string(),
+  colour: vColour,
+  order: v.string(),
+};
+
+const taskFields = {
+  title: v.string(),
+  notes: v.string(),
+  when: vWhen,
+  deadline: v.optional(v.string()),
+  estimateMinutes: v.optional(v.number()),
+  parent: vParent,
+  labelIds: v.array(v.id("labels")),
+  status: vStatus,
+  trashedAt: v.optional(v.number()),
+  order: v.string(),
+};
+
+const checklistItemFields = {
+  taskId: v.id("tasks"),
+  title: v.string(),
+  done: v.boolean(),
+  order: v.string(),
+};
+
+export const vAreaBase = v.object(areaFields).pick("title");
+export const vLabelBase = v.object(labelFields).pick("name");
+export const vProjectBase = v
+  .object(projectFields)
+  .pick("title", "notes", "areaId", "when", "deadline", "labelIds", "status", "trashedAt");
+export const vHeadingBase = v.object(headingFields).pick("title", "projectId");
+export const vTaskBase = v
+  .object(taskFields)
+  .pick("title", "notes", "when", "deadline", "parent", "labelIds", "status", "trashedAt");
+export const vChecklistItemBase = v.object(checklistItemFields).pick("title", "done");
+
 export const plannerTables = {
-  areas: defineTable({
-    title: v.string(),
-    colour: vColour,
-    icon: v.optional(v.string()),
-    order: v.string(),
-    trashedAt: v.optional(v.number()),
-    things: v.optional(vThingsLink),
-  })
+  areas: defineTable({ ...areaFields, things: v.optional(vThingsLink) })
     .index("by_things_id", ["things.id"])
     .index("by_order", ["order"]),
-  projects: defineTable({
-    title: v.string(),
-    notes: v.string(),
-    areaId: v.optional(v.id("areas")),
-    when: vWhen,
-    deadline: v.optional(v.string()),
-    labelIds: v.array(v.id("labels")),
-    status: vStatus,
-    trashedAt: v.optional(v.number()),
-    order: v.string(),
-    things: v.optional(vThingsLink),
-  })
+  projects: defineTable({ ...projectFields, things: v.optional(vThingsLink) })
     .index("by_things_id", ["things.id"])
     .index("by_area_order", ["areaId", "order"]),
-  headings: defineTable({
-    projectId: v.id("projects"),
-    title: v.string(),
-    order: v.string(),
-    things: v.optional(v.object({ id: v.string() })),
-  }).index("by_project_order", ["projectId", "order"]),
-  labels: defineTable({
-    name: v.string(),
-    colour: vColour,
-    order: v.string(),
-  })
-    .index("by_name", ["name"])
-    .index("by_order", ["order"]),
-  tasks: defineTable({
-    title: v.string(),
-    notes: v.string(),
-    when: vWhen,
-    deadline: v.optional(v.string()),
-    estimateMinutes: v.optional(v.number()),
-    parent: vParent,
-    labelIds: v.array(v.id("labels")),
-    status: vStatus,
-    trashedAt: v.optional(v.number()),
-    order: v.string(),
-    things: v.optional(vTaskThingsLink),
-  })
+  headings: defineTable({ ...headingFields, things: v.optional(v.object({ id: v.string() })) }).index("by_project_order", [
+    "projectId",
+    "order",
+  ]),
+  labels: defineTable(labelFields).index("by_name", ["name"]).index("by_order", ["order"]),
+  tasks: defineTable({ ...taskFields, things: v.optional(vTaskThingsLink) })
     .index("by_things_id", ["things.id"])
     .index("by_trashed_status_when", ["trashedAt", "status.kind", "when.kind", "when.date"])
     .index("by_trashed_status_deadline", ["trashedAt", "status.kind", "deadline"])
@@ -104,12 +129,7 @@ export const plannerTables = {
     .index("by_project_order", ["parent.projectId", "order"])
     .index("by_area_order", ["parent.areaId", "order"])
     .index("by_parent_kind_order", ["parent.kind", "order"]),
-  checklistItems: defineTable({
-    taskId: v.id("tasks"),
-    title: v.string(),
-    done: v.boolean(),
-    order: v.string(),
-  }).index("by_task_order", ["taskId", "order"]),
+  checklistItems: defineTable(checklistItemFields).index("by_task_order", ["taskId", "order"]),
   workBlocks: defineTable({
     taskId: v.id("tasks"),
     start: v.number(),
