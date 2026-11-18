@@ -62,7 +62,7 @@ export const AreaScreen = ({ areaId }: { areaId: Id<"areas"> }) => {
       subtitle={`${plural(view.projects.length, "Project")}, ${plural(view.tasks.length + openInProjects, "Task")}`}
     >
       {view.tasks.length + view.projects.length === 0 ? (
-        <EmptyState title="Nothing open here" hint="Tasks and Projects you add to this Area in Things show here." className="py-12" />
+        <EmptyState title="Nothing open here" hint="Tasks and Projects you add to this Area show here." className="py-12" />
       ) : (
         <>
           <TaskItems tasks={view.tasks} show={{ star: true, when: true }} />
@@ -130,7 +130,7 @@ export const ProjectScreen = ({ projectId }: { projectId: Id<"projects"> }) => {
         <EmptyState
           spot="done"
           title={view.progress.total === 0 ? "No Tasks yet" : "Every Task is done"}
-          hint={view.progress.total === 0 ? "Add Tasks to this Project in Things." : "Complete the Project in Things to send it to the Logbook."}
+          hint={view.progress.total === 0 ? "Add Tasks to this Project." : "Complete the Project to send it to the Logbook."}
           className="py-12"
         />
       ) : (

@@ -6,7 +6,6 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { PlannerTask } from "@lifeos/backend/types";
 import { AreaDot } from "@/components/lifeos/area";
 import { DeadlineMarker, EstimateChip } from "@/components/lifeos/task-row";
-import { toast } from "@/components/ui/toast-stack";
 import { haptic } from "@/lib/haptics";
 import { instant, springLayout } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
@@ -14,6 +13,7 @@ import { clockTime, deadlineMark, isToday, localDate, shortDay, whenLabel } from
 import { useShell } from "./shell-context";
 import { Linkified, TitleLinks } from "./linkified";
 import { TaskCardBody, TitleField } from "./task-card-body";
+import { useTaskActions } from "./task-actions";
 
 const WHEN_ICON = {
   inbox: Tray,
@@ -33,14 +33,6 @@ const WhenGlyph = ({ task, today }: { task: PlannerTask; today: string }) => {
   ) : (
     <Star weight="fill" className={className} aria-hidden="true" />
   );
-};
-
-const explainReadOnly = () => {
-  haptic("error");
-  toast("Tick it off in Things", {
-    id: "things-owned",
-    description: "Things owns completion for now. LifeOS follows within a minute.",
-  });
 };
 
 const STATUS_BOX = "relative mt-[3px] grid size-[18px] shrink-0 place-items-center rounded-[6px]";
@@ -65,12 +57,18 @@ const StatusMark = ({ task }: { task: PlannerTask }) => (
   </>
 );
 
-const StatusBox = ({ task }: { task: PlannerTask }) =>
-  task.status.kind === "open" ? (
+const StatusBox = ({ task }: { task: PlannerTask }) => {
+  const { today } = useShell();
+  const { complete, reopen } = useTaskActions(task, today);
+  const open = task.status.kind === "open";
+  return (
     <button
       type="button"
-      aria-label={`Complete ${task.title} in Things`}
-      onClick={explainReadOnly}
+      aria-label={open ? `Complete ${task.title}` : `Reopen ${task.title}`}
+      onClick={() => {
+        haptic(open ? "complete" : "toggle");
+        void (open ? complete() : reopen());
+      }}
       className={cn(
         STATUS_BOX,
         "group/status outline-offset-4 transition-transform duration-(--dur-press) ease-out before:absolute before:-inset-2.5 active:scale-[0.9]",
@@ -78,11 +76,8 @@ const StatusBox = ({ task }: { task: PlannerTask }) =>
     >
       <StatusMark task={task} />
     </button>
-  ) : (
-    <span role="img" aria-label={task.status.kind === "completed" ? "Completed" : "Canceled"} className={STATUS_BOX}>
-      <StatusMark task={task} />
-    </span>
   );
+};
 
 const ChecklistCount = ({ items }: { items: PlannerTask["checklist"] }) => (
   <span className="inline-flex shrink-0 items-center gap-1 font-mono text-micro text-faint-foreground">

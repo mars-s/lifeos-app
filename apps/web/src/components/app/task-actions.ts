@@ -199,6 +199,26 @@ export const useTaskActions = (task: PlannerTask, today: string) => {
           slot,
         }),
 
+      complete: () =>
+        change({
+          title: `Completed ${quoted(task.title)}`,
+          mutation: api.planner.tasks.complete,
+          args: { taskId },
+          apply: onTask((current) => ({ ...current, status: { kind: "completed", at: Date.now() } })),
+          revert: onTask((current) => ({ ...current, status: task.status })),
+          slot,
+        }),
+
+      reopen: () =>
+        change({
+          title: `Reopened ${quoted(task.title)}`,
+          mutation: api.planner.tasks.uncomplete,
+          args: { taskId },
+          apply: onTask((current) => ({ ...current, status: { kind: "open" } })),
+          revert: onTask((current) => ({ ...current, status: task.status })),
+          slot,
+        }),
+
       setDeadline: (deadline: string | null) =>
         void change({
           title: deadline ? `Deadline set to ${shortDay(deadline)}` : "Deadline cleared",

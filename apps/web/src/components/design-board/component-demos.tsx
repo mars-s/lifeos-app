@@ -6,12 +6,11 @@ import {
   CalendarDots,
   FastForward,
   Notebook,
-  PencilSimple,
   Stack,
   Star,
   Tray,
 } from "@phosphor-icons/react";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/action-button";
 import { Kbd } from "@/components/ui/key-hint";
 import { MorphText } from "@/components/ui/morph-text";
@@ -27,7 +26,7 @@ import { formatMinutes, formatRange } from "@/components/lifeos/format";
 import { ProgressPie, ProgressRing } from "@/components/lifeos/progress-ring";
 import { EstimateActual, FocusHeatmap, ShutdownSummary } from "@/components/lifeos/review";
 import { SidebarItem } from "@/components/lifeos/sidebar-item";
-import { EmptyState, ThingsStatus } from "@/components/lifeos/states";
+import { EmptyState } from "@/components/lifeos/states";
 import { TaskCard } from "@/components/lifeos/task-card";
 import { TaskList } from "@/components/lifeos/task-list";
 import { TaskRow } from "@/components/lifeos/task-row";
@@ -260,47 +259,6 @@ const RingDemo = () => {
   );
 };
 
-const PendingDemo = () => {
-  const titles = ["Review the onboarding copy", "Review onboarding copy with Sam", "Review the launch copy"];
-  const [version, setVersion] = useState(0);
-  const [state, setState] = useState<"idle" | "waiting" | "confirmed">("idle");
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
-
-  useEffect(() => {
-    const pending = timers.current;
-    return () => pending.forEach((timer) => clearTimeout(timer));
-  }, []);
-
-  const rename = () => {
-    timers.current.forEach((timer) => clearTimeout(timer));
-    setVersion(version + 1);
-    setState("waiting");
-    timers.current = [setTimeout(() => setState("confirmed"), 2600), setTimeout(() => setState("idle"), 4400)];
-  };
-
-  return (
-    <>
-      <div className="w-full">
-        <TaskRow
-          task={{
-            id: "pending",
-            title: titles[version % titles.length] ?? "",
-            area: { name: "Korvant", colour: "teal" },
-            project: "Launch",
-            estimate: 45,
-          }}
-          completed={false}
-          onCompletedChange={() => {}}
-          status={state === "idle" ? undefined : <ThingsStatus state={state} />}
-        />
-      </div>
-      <Button icon={PencilSimple} onClick={rename}>
-        Rename it
-      </Button>
-    </>
-  );
-};
-
 export const HeroToday = () => {
   const [remaining, setRemaining] = useState(TODAY_TASKS.length);
   const session = useFocusSession(25 * 60, 24 * 60 + 58);
@@ -312,7 +270,7 @@ export const HeroToday = () => {
           <span className="font-medium">Today</span>
           <RollingNumber value={remaining} className="font-mono text-faint-foreground" />
           <span className="ml-auto text-faint-foreground">
-            Synced<span className="hidden sm:inline"> with Things a few seconds ago</span>
+            Saved<span className="hidden sm:inline"> a few seconds ago</span>
           </span>
         </div>
         <div className="min-h-[27rem] rounded-[1.375rem] bg-surface-inset p-4 pb-12 sm:p-6 sm:pb-14">
@@ -362,7 +320,7 @@ export const TaskSpecimens = () => (
   <>
     <Specimen
       name="Sidebar item"
-      note="The Things order: Inbox, Today with its count, then Areas with their Projects. Selection is a tone step, never a coloured bar."
+      note="Inbox, Today with its count, then Areas with their Projects. Selection is a tone step, never a coloured bar."
       className="md:col-span-2 xl:col-span-3"
     >
       <SidebarDemo />
@@ -405,14 +363,6 @@ export const TaskSpecimens = () => (
           </>
         }
       />
-    </Specimen>
-    <Specimen
-      name="Waiting for Things"
-      note="Things is the boss. An edit shows at once, then waits quietly until the Mac confirms it."
-      className="md:col-span-3 xl:col-span-6"
-      stage="gap-4 sm:px-4"
-    >
-      <PendingDemo />
     </Specimen>
   </>
 );

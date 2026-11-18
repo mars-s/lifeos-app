@@ -85,7 +85,7 @@ export const InboxScreen = () => {
       {!view ? (
         <ListSkeleton />
       ) : view.tasks.length === 0 ? (
-        <EmptyState spot="inbox-empty" title="The Inbox is empty" hint="New thoughts captured in Things land here, ready to sort." className="py-16" />
+        <EmptyState spot="inbox-empty" title="The Inbox is empty" hint="New thoughts land here, ready to sort." className="py-16" />
       ) : (
         <TaskItems tasks={view.tasks} />
       )}

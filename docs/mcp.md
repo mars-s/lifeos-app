@@ -48,4 +48,4 @@ Check what the Grok client supports when wiring it up. If it can send a custom `
 
 ## Writes
 
-Tools stay read-only until the Things and Calendar sync exists. A write tool must queue a change for the Mac sync companion to apply to Things 3, then read it back. It must never treat the Convex mirror as the source of truth.
+Tools are read-only for now. LifeOS in Convex is the home of Avi's Tasks, so a write tool calls the same change mutations as the app: each change records Activity and can be undone. Nothing is ever written to Things 3.

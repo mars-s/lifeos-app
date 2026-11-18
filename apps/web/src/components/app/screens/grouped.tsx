@@ -151,7 +151,7 @@ export const SomedayScreen = () => {
       {!view ? (
         <ListSkeleton />
       ) : view.groups.length + view.projects.length === 0 ? (
-        <EmptyState spot="someday" title="No someday ideas yet" hint="Park a Task here in Things when it is worth keeping but not worth planning." className="py-16" />
+        <EmptyState spot="someday" title="No someday ideas yet" hint="Park a Task here when it is worth keeping but not worth planning." className="py-16" />
       ) : (
         <>
           {view.groups.map((group) => (

@@ -121,7 +121,7 @@ const SCALE = [
     spec: "15 / 24  0  400",
   },
   { token: "small", sample: "University, Honours thesis", style: "text-small text-muted-foreground", spec: "13 / 20  0  400" },
-  { token: "micro", sample: "Synced with Things a few seconds ago", style: "text-micro text-faint-foreground", spec: "11 / 16  0  400" },
+  { token: "micro", sample: "Saved a few seconds ago", style: "text-micro text-faint-foreground", spec: "11 / 16  0  400" },
 ];
 
 export const TypeSpecimens = () => (

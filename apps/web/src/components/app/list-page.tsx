@@ -93,7 +93,7 @@ export const Missing = () => (
   <ListPage title="Nothing here">
     <EmptyState
       title="This page has gone"
-      hint="It was completed or removed in Things."
+      hint="It was moved, completed or removed."
       action={
         <RouteLink to={{ kind: "today" }} className="rounded-full bg-foreground/[0.06] px-3 py-1.5 text-small font-medium transition-[background-color,scale] duration-(--dur-press) ease-out hover:bg-foreground/[0.1] active:scale-[0.97]">
           Back to Today

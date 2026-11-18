@@ -95,7 +95,7 @@ export const ControlSpecimens = () => {
             Confirmed
           </StatusPill>
           <StatusPill tone="brand" icon={ArrowsClockwise} iconWeight="bold">
-            Waiting for Things
+            Saving
           </StatusPill>
           <StatusPill tone="warning" icon={Flag}>
             Due Friday

@@ -18,7 +18,7 @@ export const mcp: McpServer = new McpServer(components.mcp, {
   title: "LifeOS",
   version: "0.1.0",
   instructions:
-    "LifeOS is Avi's personal planner. Things 3 owns tasks and Apple Calendar owns time. Read before you suggest changes.",
+    "LifeOS is Avi's personal planner and the home of his Tasks. Apple Calendar owns time. Read before you suggest changes.",
   consentUrl: process.env.MCP_CONSENT_URL ?? `${siteUrl}/connect`,
   scopes: {
     "lifeos:read": "See your LifeOS tasks and plans",
@@ -27,7 +27,7 @@ export const mcp: McpServer = new McpServer(components.mcp, {
     today: tool({
       title: "Today",
       description:
-        "List Avi's Today tasks from Things 3 for one local date (YYYY-MM-DD): the Today list, anything starting on or before that date, and anything due by then. Each task has its project or area as context.",
+        "List Avi's Today tasks for one local date (YYYY-MM-DD): the Today list, anything starting on or before that date, and anything due by then. Each task has its project or area as context.",
       args: { date: v.string() },
       annotations: { readOnlyHint: true },
       scope: "lifeos:read",
