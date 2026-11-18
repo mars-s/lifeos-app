@@ -19,6 +19,7 @@ import { localIsoDate } from "../shared/date";
 import { activeSession } from "./planner/focus";
 import { seedPlanner } from "./planner/seed.test-utils";
 import { seedTimebox } from "./planner/planSeed.test-utils";
+import { seedSleep } from "./health/sleepSeed.test-utils";
 import { parseIsoDate } from "../shared/date";
 
 const SEEDED = [
@@ -37,6 +38,8 @@ const SEEDED = [
   "externalCommitments",
   "calendarSync",
   "workingHours",
+  "healthDays",
+  "ouraConnection",
 ] as const;
 
 export const seed = internalMutation({
@@ -46,6 +49,7 @@ export const seed = internalMutation({
     const today = parseIsoDate(args.today ?? "").unwrapOr(localIsoDate(new Date()));
     await seedPlanner(ctx, today, Date.now());
     await seedTimebox(ctx, today, args.timeZone ?? "Australia/Sydney");
+    await seedSleep(ctx, today, args.timeZone ?? "Australia/Sydney");
     return null;
   },
 });
@@ -81,6 +85,8 @@ npx convex env set LIFEOS_OWNER_GITHUB_ID "$OWNER_ID" >/dev/null
 npx convex env set SITE_URL "${BASE:-http://localhost:3990}" >/dev/null
 npx convex env set AUTH_GITHUB_CLIENT_ID local >/dev/null
 npx convex env set AUTH_GITHUB_CLIENT_SECRET local >/dev/null
+npx convex env set OURA_CLIENT_ID local >/dev/null
+npx convex env set OURA_CLIENT_SECRET local >/dev/null
 npx convex dev --once --typecheck disable
 SEED_ARGS="{\"today\":\"$(date +%F)\",\"timeZone\":\"$(node -e 'console.log(Intl.DateTimeFormat().resolvedOptions().timeZone)')\"}"
 npx convex run scratch:seed "$SEED_ARGS" >/dev/null

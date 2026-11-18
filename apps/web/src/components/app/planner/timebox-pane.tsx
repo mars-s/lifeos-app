@@ -14,9 +14,11 @@ import { cn } from "@/lib/utils";
 import { dayMonth, dayNumber, localDate, minuteOfDay, momentAt, monthYear, startOfWeek, weekdayShort } from "../dates";
 import { useNow } from "../hooks";
 import { useSelectionActions } from "../selection-actions";
+import { SleepButton } from "../sleep-setting";
 import type { PlanActions } from "./actions";
 import { useGhost } from "./drag";
 import { calContainer, useTimebox } from "./model";
+import { useSleep } from "./sleep";
 
 export type TimeboxMode = "day" | "week";
 export type TimeboxView = { mode: TimeboxMode; anchor: IsoDate };
@@ -61,6 +63,7 @@ export const TimeboxPane = ({
       : Array.from({ length: 7 }, (_, index) => addDays(startOfWeek(anchor), index));
   }, [mode, anchor, narrow]);
   const data = useTimebox(dates);
+  const sleep = useSleep(dates, today);
   const tasksDo = useSelectionActions(today);
   const held = useGhost();
   const now = useNow();
@@ -99,6 +102,7 @@ export const TimeboxPane = ({
         )}
         <IconButton icon={CaretLeft} iconWeight="bold" label={`Previous ${span}`} onClick={() => onView({ mode, anchor: addDays(anchor, -step) })} />
         <IconButton icon={CaretRight} iconWeight="bold" label={`Next ${span}`} onClick={() => onView({ mode, anchor: addDays(anchor, step) })} />
+        <SleepButton today={today} />
         <Segmented label="Timebox view" options={modes(narrow)} value={mode} onValueChange={(next) => onView({ mode: next, anchor })} className="ml-1" />
       </header>
       <Timebox
@@ -106,6 +110,7 @@ export const TimeboxPane = ({
         commitments={data.commitments}
         allDay={data.allDay}
         blocks={data.blocks}
+        sleep={sleep}
         ghost={ghost}
         workingHours={workingHours}
         now={now !== null && showsToday ? { day: dates.indexOf(today), minute: minuteOfDay(now) } : null}

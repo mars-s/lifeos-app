@@ -50,6 +50,20 @@ export type TimeboxBlock = {
   inert: boolean;
 };
 
+export type SleepEdge = { label: string; short: string; time: string };
+
+export type TimeboxSleep = {
+  id: string;
+  day: number;
+  start: number;
+  end: number;
+  kind: "slept" | "planned";
+  windowEnd: number | null;
+  top: SleepEdge | null;
+  bottom: SleepEdge | null;
+  title: string;
+};
+
 export type TimeboxGhost = { day: number; start: number; minutes: number; title: string; colour: AreaColour | undefined };
 
 type Span = { id: string; start: number; end: number };
@@ -84,6 +98,57 @@ const slotStyle = (day: number, days: number, place: Lane) => ({
 });
 
 const WHOLE: Lane = { lane: 0, lanes: 1 };
+
+const sleepTint = (kind: TimeboxSleep["kind"]) =>
+  kind === "slept"
+    ? { fill: 11, hatch: 26, edge: 55 }
+    : { fill: 5, hatch: 20, edge: 42 };
+
+const SleepLabel = ({ edge, tight }: { edge: SleepEdge; tight: boolean }) => (
+  <span className="flex min-w-0 items-baseline gap-1.5 text-micro leading-4">
+    <span className="truncate font-medium text-sleep-ink">{tight ? edge.short : edge.label}</span>
+    <span className="shrink-0 font-mono text-sleep-ink/75">{edge.time}</span>
+  </span>
+);
+
+const SleepBand = ({ band, days, tight }: { band: TimeboxSleep; days: number; tight: boolean }) => {
+  const height = toPx(band.end - band.start);
+  const opens = band.start > 0;
+  const closes = band.end < DAY_MINUTES;
+  const tint = sleepTint(band.kind);
+  const roomy = height >= (band.top && band.bottom ? 44 : 22);
+  const edges = [
+    opens && `inset 0 1.5px 0 color-mix(in oklab, var(--sleep) ${tint.edge}%, transparent)`,
+    closes && `inset 0 -1.5px 0 color-mix(in oklab, var(--sleep) ${tint.edge}%, transparent)`,
+  ].filter(Boolean);
+  return (
+    <div
+      title={band.title}
+      data-sleep={band.kind}
+      className={cn("absolute flex flex-col justify-between overflow-hidden px-2 py-0.5", opens && "rounded-t-lg", closes && "rounded-b-lg")}
+      style={{
+        left: `calc(${(band.day * 100) / days}% + 2px)`,
+        width: `calc(${100 / days}% - 4px)`,
+        top: toPx(band.start),
+        height,
+        backgroundColor: `color-mix(in oklab, var(--sleep) ${tint.fill}%, var(--surface-inset))`,
+        backgroundImage: `repeating-linear-gradient(-45deg, transparent 0 5px, color-mix(in oklab, var(--sleep) ${tint.hatch}%, transparent) 5px 6px)`,
+        boxShadow: edges.join(", ") || undefined,
+      }}
+    >
+      {band.windowEnd !== null && band.windowEnd > band.start && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 bg-sleep/[0.07]"
+          style={{ height: toPx(Math.min(band.windowEnd, band.end) - band.start) }}
+        />
+      )}
+      <span className="sr-only">{band.title}</span>
+      <span aria-hidden="true" className="relative">{roomy && band.top && <SleepLabel edge={band.top} tight={tight} />}</span>
+      <span aria-hidden="true" className="relative">{roomy && band.bottom && <SleepLabel edge={band.bottom} tight={tight} />}</span>
+    </div>
+  );
+};
 
 const Readout = ({ day, days, start, minutes, note }: { day: number; days: number; start: number; minutes: number; note?: string | undefined }) => (
   <div
@@ -126,6 +191,7 @@ export const Timebox = ({
   commitments,
   allDay,
   blocks,
+  sleep = [],
   ghost,
   workingHours,
   now,
@@ -142,6 +208,7 @@ export const Timebox = ({
   commitments: readonly TimeboxCommitment[];
   allDay: readonly TimeboxAllDay[];
   blocks: readonly TimeboxBlock[];
+  sleep?: readonly TimeboxSleep[];
   ghost: TimeboxGhost | null;
   workingHours: { startMinute: number; endMinute: number };
   now: { day: number; minute: number } | null;
@@ -367,6 +434,9 @@ export const Timebox = ({
               </div>
             ))}
           </div>
+          {sleep.map((band) => (
+            <SleepBand key={band.id} band={band} days={count} tight={tight} />
+          ))}
           {commitments.map((commitment) => {
             const height = toPx(commitment.end - commitment.start) - 2;
             return (

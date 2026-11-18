@@ -59,6 +59,9 @@
   --area-plum: light-dark(oklch(0.56 0.15 335), oklch(0.74 0.12 335));
   --area-slate: light-dark(oklch(0.55 0.03 250), oklch(0.72 0.03 250));
 
+  --sleep: light-dark(oklch(0.5 0.15 282), oklch(0.72 0.12 284));
+  --sleep-ink: light-dark(oklch(0.44 0.12 282), oklch(0.8 0.08 284));
+
   --button: linear-gradient(0deg, light-dark(#262422, #fff) 0%, light-dark(#4a4743, #ababab) 100%);
   --button-hover: linear-gradient(0deg, light-dark(#302e2b, #fff) 0%, light-dark(#56534e, #c2c2c2) 100%);
   --button-foreground: light-dark(#f7f5f0, #111111);
@@ -184,6 +187,8 @@ li[data-selected]:has(+ li[data-selected]) .task-selected {
   --color-area-olive: var(--area-olive);
   --color-area-plum: var(--area-plum);
   --color-area-slate: var(--area-slate);
+  --color-sleep: var(--sleep);
+  --color-sleep-ink: var(--sleep-ink);
 
   --radius-sm: calc(var(--radius) - 6px);
   --radius-md: calc(var(--radius) - 4px);
