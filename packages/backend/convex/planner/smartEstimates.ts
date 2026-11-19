@@ -5,7 +5,9 @@ import { internalAction, internalMutation, internalQuery, type MutationCtx, type
 import type { Doc, Id } from "../_generated/dataModel";
 import { focusedMs, MINUTE_MS } from "../../shared/focus";
 import { ownerMutation, ownerQuery } from "../platform/access";
-import { featureReady, featureState } from "../platform/features";
+import { featureReady, featureState, featureUses } from "../platform/features";
+import { roundTripMinutes } from "../places/model";
+import { chosenTrip } from "../places/trips";
 import { workingHoursOf } from "../calendar/workingHours";
 import { revealSecret } from "../platform/secrets";
 import { sha256Hex } from "../platform/workers";
@@ -30,6 +32,9 @@ import {
   type Guess,
   type PastTask,
   type TaskSignal,
+  type TripTime,
+  TRAVEL_ADDED,
+  withTrip,
 } from "./smartEstimateModel";
 import { vSuggestionOutcome, type SmartEstimateError, type SuggestionOutcome } from "./tables";
 
@@ -76,13 +81,19 @@ export type EstimateView =
   | { kind: "guesses"; guesses: Guess[]; likely: number; reason: string; dayMinutes: number }
   | { kind: "fallback"; why: "untitled" | "vague" | "failed"; error?: SmartEstimateError["kind"] };
 
-const viewOf = (task: Doc<"tasks">, row: Doc<"estimateSuggestions"> | null, dayMinutes: number) => {
+const tripTime = async (ctx: QueryCtx, taskId: Id<"tasks">) => {
+  if (!(await featureUses(ctx, "smartEstimates", "places"))) return null;
+  const trip = await chosenTrip(ctx, taskId);
+  return trip ? ({ name: trip.name, minutes: roundTripMinutes(trip.seconds) } satisfies TripTime) : null;
+};
+
+const viewOf = (task: Doc<"tasks">, row: Doc<"estimateSuggestions"> | null, dayMinutes: number, trip: TripTime | null) => {
   const { outcome } = row ?? { outcome: null };
   if (outcome?.kind === "suggested") {
     const pending = task.estimateMinutes === undefined && row !== null && row.requestedAt > (row.answeredAt ?? 0);
     return pending
       ? ({ kind: "thinking" } satisfies EstimateView)
-      : ({ kind: "guesses", guesses: outcome.guesses, likely: outcome.minutes, reason: outcome.reason, dayMinutes } satisfies EstimateView);
+      : ({ kind: "guesses", ...withTrip({ guesses: outcome.guesses, likely: outcome.minutes, reason: outcome.reason }, trip), dayMinutes } satisfies EstimateView);
   }
   if (task.estimateMinutes !== undefined) return { kind: "presets" } satisfies EstimateView;
   if (isPlaceholderTitle(task.title)) return { kind: "fallback", why: "untitled" } satisfies EstimateView;
@@ -97,15 +108,16 @@ export const forTask = ownerQuery({
   handler: async (ctx, { taskId }) => {
     const task = await ctx.db.get("tasks", taskId);
     if (!task || !(await smartEstimatesOn(ctx))) return { kind: "presets" } satisfies EstimateView;
-    const [row, hours] = await Promise.all([suggestionRow(ctx, taskId), workingHoursOf(ctx)]);
-    return viewOf(task, row, workingDayMinutes(hours));
+    const [row, hours, trip] = await Promise.all([suggestionRow(ctx, taskId), workingHoursOf(ctx), tripTime(ctx, taskId)]);
+    return viewOf(task, row, workingDayMinutes(hours), trip);
   },
 });
 
 export const guessesFor = async (ctx: QueryCtx, tasks: readonly Doc<"tasks">[]) => {
   if (!(await smartEstimatesOn(ctx))) return [];
   const rows = await Promise.all(tasks.filter((task) => task.estimateMinutes === undefined).map((task) => suggestionRow(ctx, task._id)));
-  return rows.flatMap((row) => (row?.outcome.kind === "suggested" ? [{ taskId: row.taskId, minutes: row.outcome.minutes }] : []));
+  const guessed = rows.flatMap((row) => (row?.outcome.kind === "suggested" ? [{ taskId: row.taskId, minutes: row.outcome.minutes }] : []));
+  return Promise.all(guessed.map(async (guess) => ({ ...guess, minutes: guess.minutes + ((await tripTime(ctx, guess.taskId))?.minutes ?? 0) })));
 };
 
 type Lookups = {
@@ -214,7 +226,8 @@ export const planFor = internalQuery({
         .take(CHECKLIST_LIMIT),
       historyFor(ctx, lookups, taskId),
     ]);
-    const taskSignal = { ...signal, checklistItems: checklist.length };
+    const travelAdded = await featureUses(ctx, "smartEstimates", "places");
+    const taskSignal = { ...signal, checklistItems: checklist.length, ...(travelAdded ? { travel: TRAVEL_ADDED } : {}) };
     const examples = nearestExamples({ ...taskSignal, ...(projectKey ? { projectKey } : {}) }, history);
     return {
       kind: "ask",

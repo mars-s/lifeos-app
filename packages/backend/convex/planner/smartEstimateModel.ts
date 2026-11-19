@@ -62,6 +62,7 @@ export type TaskSignal = {
   area?: string;
   project?: string;
   labels: string[];
+  travel?: string;
 };
 
 export type PastTask = TaskSignal & { projectKey?: string; estimateMinutes?: number; actualMinutes?: number };
@@ -187,7 +188,7 @@ export const trimNotes = (notes: string) => {
   return trimmed.length > NOTES_LIMIT ? `${trimmed.slice(0, NOTES_LIMIT - 1)}…` : trimmed;
 };
 
-const clock = (minutes: number) => `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
+export const clock = (minutes: number) => `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
 
 const INSTRUCTIONS =
   "You estimate how long one person's Task will take as focused work, from its title and description. Similar past Tasks from their own history follow as JSON when there are any: actualMinutes is the focused time they really spent and estimateMinutes is what they planned. When a similar Task has actualMinutes, trust it over estimateMinutes.";
@@ -202,6 +203,7 @@ export const taskText = (task: TaskSignal) =>
     ...line("Area", task.area),
     ...line("Project", task.project),
     ...line("Labels", task.labels.join(", ")),
+    ...line("Travel", task.travel),
   ].join("\n");
 
 export const decisionRequest = (signal: EstimateSignal, buckets: readonly Bucket[]) => ({
@@ -297,3 +299,17 @@ export const canonicalJson = (value: unknown) =>
       ? Object.fromEntries(Object.entries(inner).toSorted(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
       : inner,
   );
+
+export const TRAVEL_ADDED = "Not part of this Estimate. If the Task means going somewhere, estimate only the time spent there. LifeOS adds the trip there and back.";
+
+export type TripTime = { name: string; minutes: number };
+
+export const withTrip = <View extends { guesses: Guess[]; likely: number; reason: string }>(view: View, trip: TripTime | null) =>
+  trip
+    ? {
+        ...view,
+        guesses: view.guesses.map((guess) => ({ ...guess, minutes: guess.minutes + trip.minutes })),
+        likely: view.likely + trip.minutes,
+        reason: `${clock(view.likely)} at ${trip.name} plus ${clock(trip.minutes)} there and back. ${view.reason}`,
+      }
+    : view;

@@ -437,3 +437,49 @@ describe("the estimate model", () => {
     ).toEqual({ pick: 90, confidence: 0.6, probabilities: [{ minutes: 90, probability: 0.6 }], vague: 0, model: "gpt-6-luna" });
   });
 });
+
+describe("Smart Estimates with Places", () => {
+  const officeworks = { key: "node/1", name: "Officeworks", suburb: "Ultimo", position: { lat: -33.88, lon: 151.2 }, straightMetres: 900, travel: { seconds: 290, metres: 1900 } };
+
+  const placesReadyWithTrip = (t: Backend, taskId: Id<"tasks">) =>
+    t.run(async (ctx) => {
+      await ctx.db.insert("features", { feature: "places", enabled: true, settings: { travelMode: "drive" } });
+      await ctx.db.insert("savedPlaces", { label: "home", address: "1 Example St", position: { lat: -33.879, lon: 151.204 }, found: "Example St", savedAt: 1 });
+      const outcome = { kind: "found" as const, query: "officeworks", mode: "drive" as const, from: { lat: -33.879, lon: 151.204 }, places: [officeworks], inputsHash: "seeded", at: 1 };
+      await ctx.db.insert("taskTrips", { taskId, requestedAt: 1, outcome, choice: { kind: "nearest" } });
+    });
+
+  test("a known Trip adds the time there and back to every guess and says so, and dismissing it takes it away", async () => {
+    const t = await newBackend();
+    choosing("10 minutes", { runnerUp: "30 minutes" });
+    const { taskId } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Get moleskine notebooks from officeworks" }));
+    await settle(t);
+    const before = await viewFor(t, taskId);
+    if (before.kind !== "guesses") throw new Error(`expected guesses, got ${before.kind}`);
+
+    await placesReadyWithTrip(t, taskId);
+    const after = await viewFor(t, taskId);
+    if (after.kind !== "guesses") throw new Error(`expected guesses, got ${after.kind}`);
+    expect(after.likely).toBe(before.likely + 10);
+    expect(after.guesses.map(({ minutes }) => minutes)).toEqual(before.guesses.map(({ minutes }) => minutes + 10));
+    expect(after.reason).toBe(`0:10 at Officeworks plus 0:10 there and back. ${before.reason}`);
+
+    unwrap(await t.mutation(api.places.trips.dismiss, { taskId }));
+    expect(await viewFor(t, taskId)).toEqual(before);
+  });
+
+  test("with Places ready the model is told travel is added separately, and without it nothing is said", async () => {
+    const t = await newBackend();
+    const asked = choosing("10 minutes");
+    const estimateAsks = () => asked.filter(({ body }) => JSON.stringify(body.questions).includes('"estimate"')).map(({ body }) => JSON.stringify(body.input));
+    const { taskId } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Buy printer paper" }));
+    await settle(t);
+    expect(estimateAsks().at(-1)).not.toContain("Travel:");
+
+    await placesReadyWithTrip(t, taskId);
+    unwrap(await t.mutation(api.planner.tasks.create, { title: "Pick up prints at Officeworks" }));
+    await settle(t);
+    expect(estimateAsks().at(-1)).toContain("Travel: Not part of this Estimate.");
+    expect(estimateAsks().at(-1)).not.toContain("Example St");
+  });
+});
