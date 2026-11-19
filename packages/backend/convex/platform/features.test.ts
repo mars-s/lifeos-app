@@ -19,6 +19,7 @@ describe("the Feature registry", () => {
       { feature: "ai", enabled: false, settings: { routes: {} }, status: { kind: "off" } },
       { feature: "places", enabled: false, settings: { travelMode: "drive" }, status: { kind: "off" } },
       { feature: "templates", enabled: true, settings: {}, status: { kind: "ready" } },
+      { feature: "smartBlocks", enabled: true, settings: { areaOrder: [] }, status: { kind: "ready" } },
     ]);
     expect(await t.run(async (ctx) => ctx.db.query("features").collect())).toEqual([]);
   });

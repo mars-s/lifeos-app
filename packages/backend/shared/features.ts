@@ -9,8 +9,9 @@ export type PlaceLabel = Infer<typeof vPlaceLabel>;
 
 export const vPlacesSettings = v.object({ travelMode: vTravelMode });
 export const vTemplatesSettings = v.object({});
+export const vSmartBlocksSettings = v.object({ areaOrder: v.array(v.id("areas")) });
 
-export type FeatureIcon = "sparkle" | "mapPin" | "stamp";
+export type FeatureIcon = "sparkle" | "mapPin" | "stamp" | "frame";
 export type FeatureSecret = ProviderSecret;
 export type FeatureSetup = "home";
 
@@ -64,15 +65,28 @@ export const FEATURES = {
     defaultSettings: {},
     uses: [],
   },
+  smartBlocks: {
+    title: "Smart Blocks",
+    summary: "Reserve a stretch of time, such as Focus from 4 to 6, and fill it with the Tasks that fit, most important first.",
+    icon: "frame",
+    enabledByDefault: true,
+    keys: [],
+    requires: [],
+    setup: [],
+    settings: vSmartBlocksSettings,
+    defaultSettings: { areaOrder: [] },
+    uses: ["ai"],
+  },
 } as const satisfies {
   ai: FeatureSpec<AiSettings>;
   places: FeatureSpec<Infer<typeof vPlacesSettings>>;
   templates: FeatureSpec<Infer<typeof vTemplatesSettings>>;
+  smartBlocks: FeatureSpec<Infer<typeof vSmartBlocksSettings>>;
 };
 
 export type FeatureId = keyof typeof FEATURES;
 export const FEATURE_IDS = Object.keys(FEATURES) as FeatureId[];
-export const vFeatureId = v.union(v.literal("ai"), v.literal("places"), v.literal("templates"));
+export const vFeatureId = v.union(v.literal("ai"), v.literal("places"), v.literal("templates"), v.literal("smartBlocks"));
 
 export type FeatureSettings = { [K in FeatureId]: Infer<(typeof FEATURES)[K]["settings"]> };
 export type FeatureUses<F extends FeatureId> = (typeof FEATURES)[F]["uses"][number];
@@ -81,12 +95,14 @@ export const vFeatureRow = v.union(
   v.object({ feature: v.literal("ai"), enabled: v.boolean(), settings: vAiSettings }),
   v.object({ feature: v.literal("places"), enabled: v.boolean(), settings: vPlacesSettings }),
   v.object({ feature: v.literal("templates"), enabled: v.boolean(), settings: vTemplatesSettings }),
+  v.object({ feature: v.literal("smartBlocks"), enabled: v.boolean(), settings: vSmartBlocksSettings }),
 );
 
 export const vFeatureChoice = v.union(
   v.object({ feature: v.literal("ai"), settings: vAiSettings }),
   v.object({ feature: v.literal("places"), settings: vPlacesSettings }),
   v.object({ feature: v.literal("templates"), settings: vTemplatesSettings }),
+  v.object({ feature: v.literal("smartBlocks"), settings: vSmartBlocksSettings }),
 );
 
 export type FeatureStatus =

@@ -17,7 +17,8 @@ export type PlannerTable =
   | "workBlocks"
   | "focusSessions"
   | "templates"
-  | "recurrenceRules";
+  | "recurrenceRules"
+  | "smartBlocks";
 
 export type PlannerError =
   | { readonly kind: "not_found"; readonly table: PlannerTable; readonly id: string }
@@ -36,6 +37,11 @@ export type PlannerError =
   | { readonly kind: "stale_occurrence"; readonly ruleId: string; readonly date: string }
   | { readonly kind: "invalid_template"; readonly reason: "checklist" | "deadline_offset" }
   | { readonly kind: "feature_off"; readonly feature: "templates" }
+  | {
+      readonly kind: "invalid_smart_block";
+      readonly reason: "window" | "time_zone" | "occurrence" | "outside" | "overlap" | "release" | "too_many";
+    }
+  | { readonly kind: "feature_off"; readonly feature: "smartBlocks" }
   | {
       readonly kind: "invalid_focus";
       readonly reason: "minutes" | "task_closed" | "not_active" | "not_ended" | "not_timed" | "not_pomodoro" | "on_break";

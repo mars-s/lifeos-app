@@ -4,6 +4,7 @@ import { components, internal } from "./_generated/api";
 import { MCP_SCOPES, mcpOwnerUserId } from "./platform/access";
 import { platformTools } from "./platform/agentTools";
 import { plannerReadTools } from "./planner/agentReads";
+import { smartBlockTools } from "./planner/agentSmartBlocks";
 import { plannerWriteTools } from "./planner/agentWrites";
 
 type RunsQueries = {
@@ -29,7 +30,7 @@ export const mcp: McpServer = new McpServer(components.mcp, {
     [MCP_SCOPES.read]: "See your Tasks, Projects, Areas, plans, calendar and sleep",
     [MCP_SCOPES.write]: "Create and change Tasks and plans, and undo those changes",
   },
-  tools: { ...plannerReadTools, ...plannerWriteTools, ...platformTools },
+  tools: { ...plannerReadTools, ...plannerWriteTools, ...smartBlockTools, ...platformTools },
 });
 
 export const { getAuthRequest, findAuthRequest, authorize, listConnections, revokeConnection, createApiKey } = mcp.api({

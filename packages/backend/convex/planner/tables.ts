@@ -74,12 +74,16 @@ export const vMonthDay = v.union(
   v.object({ kind: v.literal("weekday"), nth: v.union(...([1, 2, 3, 4, -1] as const).map((nth) => v.literal(nth))), weekday: vWeekday }),
 );
 
-export const vSchedule = v.union(
+export const vCalendarSchedule = v.union(
   v.object({ kind: v.literal("days"), every: v.number() }),
   v.object({ kind: v.literal("weekdays") }),
   v.object({ kind: v.literal("weeks"), every: v.number(), days: v.array(vWeekday) }),
   v.object({ kind: v.literal("months"), every: v.number(), on: vMonthDay }),
   v.object({ kind: v.literal("years"), every: v.number(), month: v.number(), day: v.number() }),
+);
+
+export const vSchedule = v.union(
+  ...vCalendarSchedule.members,
   v.object({
     kind: v.literal("afterCompletion"),
     every: v.number(),
@@ -109,6 +113,16 @@ export const vTaskShape = v.object({
   deadlineOffsetDays: v.optional(v.number()),
 });
 
+export const vSmartBlockFilter = v.object({
+  areaIds: v.array(v.id("areas")),
+  projectIds: v.array(v.id("projects")),
+  labelIds: v.array(v.id("labels")),
+});
+
+export const vSmartBlockRepeat = v.object({ schedule: vCalendarSchedule, skipped: v.array(v.string()) });
+
+export const vSmartBlockLink = v.object({ blockId: v.id("smartBlocks"), date: v.string() });
+
 export type When = Infer<typeof vWhen>;
 export type Status = Infer<typeof vStatus>;
 export type Parent = Infer<typeof vParent>;
@@ -121,6 +135,9 @@ export type Schedule = Infer<typeof vSchedule>;
 export type RepeatEnd = Infer<typeof vRepeatEnd>;
 export type RepeatNext = Infer<typeof vRepeatNext>;
 export type TaskShape = Infer<typeof vTaskShape>;
+export type CalendarSchedule = Infer<typeof vCalendarSchedule>;
+export type SmartBlockFilter = Infer<typeof vSmartBlockFilter>;
+export type SmartBlockRepeat = Infer<typeof vSmartBlockRepeat>;
 
 const areaFields = {
   title: v.string(),
@@ -240,9 +257,23 @@ export const plannerTables = {
     timeZone: v.string(),
     done: v.boolean(),
     removedAt: v.optional(v.number()),
+    smartBlock: v.optional(vSmartBlockLink),
   })
     .index("by_task_start", ["taskId", "start"])
     .index("by_removed_start", ["removedAt", "start"]),
+  smartBlocks: defineTable({
+    title: v.string(),
+    colour: vColour,
+    date: v.string(),
+    until: v.string(),
+    startMinute: v.number(),
+    endMinute: v.number(),
+    timeZone: v.string(),
+    filter: vSmartBlockFilter,
+    repeat: v.optional(vSmartBlockRepeat),
+    detachedFrom: v.optional(vSmartBlockLink),
+    removedAt: v.optional(v.number()),
+  }).index("by_removed_until", ["removedAt", "until"]),
   focusSessions: defineTable({
     taskId: v.id("tasks"),
     kind: v.union(v.literal("focus"), v.literal("break")),

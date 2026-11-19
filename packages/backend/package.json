@@ -14,6 +14,7 @@
     "./focus": "./shared/focus.ts",
     "./plan": "./shared/plan.ts",
     "./spread": "./shared/spread.ts",
+    "./smartBlocks": "./shared/smartBlocks.ts",
     "./features": "./shared/features.ts",
     "./ai": "./shared/ai.ts",
     "./recurrence": "./shared/recurrence.ts",

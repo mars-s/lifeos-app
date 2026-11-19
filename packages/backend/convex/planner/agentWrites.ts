@@ -40,6 +40,14 @@ const refusals: Record<string, (error: Record<string, unknown>) => string> = {
     error.reason === "goal" ? "A Goal is a whole number of minutes from 0 to 1440, or null to reset it." : "That Day Plan change is not valid.",
   invalid_schedule: (error) => `That repeat schedule is not valid (${String(error.reason)}).`,
   invalid_template: (error) => `That Template is not valid (${String(error.reason)}).`,
+  invalid_smart_block: (error) =>
+    ({
+      window: "A Smart Block runs at least 15 minutes and ends by midnight.",
+      occurrence: "That Smart Block does not happen on that date. Check list_smart_blocks.",
+      outside: "Every Work Block of a fill must sit inside its Smart Block.",
+      overlap: "That fill would overlap another Work Block. Preview it again with preview_smart_block_fill.",
+    })[String(error.reason)] ?? `That Smart Block change is not valid (${String(error.reason)}).`,
+  feature_off: () => "Smart Blocks is switched off in Settings. Ask Avi to switch it on.",
   invalid_focus: (error) =>
     error.reason === "task_closed" ? "Only an open Task can start a Focus Session." : `That Focus Session change is not valid (${String(error.reason)}).`,
 };
@@ -50,7 +58,7 @@ const refusalMessage = (error: unknown) => {
   return explain ? explain(shaped) : `LifeOS refused that change: ${JSON.stringify(error)}.`;
 };
 
-const writer = async (ctx: MutationCtx, run: () => Promise<AgentRunActor>) => {
+export const writer = async (ctx: MutationCtx, run: () => Promise<AgentRunActor>) => {
   const actor = await run();
   const activityIds: string[] = [];
   const change = async <Args extends DefaultFunctionArgs, T extends { activityId: Id<"activity"> | null }, E>(
@@ -66,7 +74,7 @@ const writer = async (ctx: MutationCtx, run: () => Promise<AgentRunActor>) => {
   return { change, receipt };
 };
 
-const vReceipt = { runId: v.string(), activityIds: v.array(v.string()) };
+export const vReceipt = { runId: v.string(), activityIds: v.array(v.string()) };
 
 const vTaskReceipt = v.object({ ...vReceipt, task: vTaskDetail });
 
@@ -351,7 +359,7 @@ export const createTaskFromTemplate = agentMutation({
 const whenArg = v.optional(v.string());
 const timeZoneArg = v.optional(v.string());
 
-const write = (destructive: boolean, idempotent = false) => ({
+export const write = (destructive: boolean, idempotent = false) => ({
   annotations: { readOnlyHint: false, destructiveHint: destructive, idempotentHint: idempotent, openWorldHint: false },
   scope: MCP_SCOPES.write,
 });

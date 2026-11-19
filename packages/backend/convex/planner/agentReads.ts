@@ -120,7 +120,7 @@ export const agentDate = (given: string | undefined, timeZone: string) => {
   return parsed.value;
 };
 
-export const agentId = <T extends "tasks" | "projects" | "areas" | "templates" | "checklistItems" | "workBlocks" | "recurrenceRules">(
+export const agentId = <T extends "tasks" | "projects" | "areas" | "templates" | "checklistItems" | "workBlocks" | "recurrenceRules" | "smartBlocks">(
   ctx: QueryCtx,
   table: T,
   id: string,
@@ -139,6 +139,7 @@ const lookupHint = {
   checklistItems: "Find Checklist Item ids with get_task.",
   workBlocks: "Find Work Block ids with get_task or get_day_plan.",
   recurrenceRules: "Find Recurrence Rule ids with get_task or list_repeats_and_templates.",
+  smartBlocks: "Find Smart Block ids with list_smart_blocks.",
 } as const;
 
 export const unwrapRead = <T, E>(result: SerialisedResult<T, E>) => {

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { newBackend, unwrap, type Backend } from "./backend.test-utils";
-import { zonedDate } from "./calendar/model";
+import { zonedDate, zonedIso, zonedMoment } from "./calendar/model";
 import { addDays } from "../shared/date";
 import { mcp } from "./mcp";
 import { MCP_RUN_IDLE_MS } from "./platform/agentRuns";
@@ -78,7 +78,17 @@ describe("the server", () => {
     const reader = await connect(t, { scopes: ["lifeos:read"] });
     const listed = await rpc(t, reader, "tools/list", {});
     const names = (listed.body.result.tools as { name: string }[]).map((each) => each.name).toSorted();
-    expect(names).toEqual(["get_day_plan", "get_task", "list_areas", "list_repeats_and_templates", "list_tasks", "recent_activity", "search"]);
+    expect(names).toEqual([
+      "get_day_plan",
+      "get_task",
+      "list_areas",
+      "list_repeats_and_templates",
+      "list_smart_blocks",
+      "list_tasks",
+      "preview_smart_block_fill",
+      "recent_activity",
+      "search",
+    ]);
     const { status } = await callTool(t, reader, "create_task", { title: "Sneaky" });
     expect(status).toBe(403);
   });
@@ -114,6 +124,10 @@ const sampleArgs: Record<string, Record<string, unknown>> = {
   set_repeat: { taskId: "nothing", schedule: null },
   create_task_from_template: { templateId: "nothing" },
   undo: { currentRun: true },
+  list_smart_blocks: {},
+  create_smart_block: { title: "Stolen", start: "16:00", end: "18:00" },
+  preview_smart_block_fill: { blockId: "nothing" },
+  accept_smart_block_fill: { blockId: "nothing" },
 };
 
 describe("owner refusal", () => {
@@ -408,6 +422,56 @@ describe("writes", () => {
     expect(made.task).toMatchObject({ title: "Weekly review", when: today() });
     expect(made.task.checklistItems.map((item) => item.title)).toEqual(["Inbox zero"]);
     expect(made.task.checklistItems[0]?.id).not.toBe(task.checklistItems[0]?.id);
+  });
+});
+
+describe("Smart Blocks", () => {
+  type Plan = { add: { taskId: string; title: string; start: string; end: string; reason: string; sizedBy: string }[]; skipped: { title: string; why: string }[] };
+
+  test("create, list, preview and accept a fill, each write undoable as part of the run", async () => {
+    const { t, key, areaId } = await setup();
+    const date = addDays(today(), 1);
+    await ok(t, key, "create_task", { title: "Read chapter", when: "anytime", estimateMinutes: 50, parent: { areaId } });
+    await ok(t, key, "create_task", { title: "Plan essay", when: "anytime", estimateMinutes: 25, deadline: addDays(date, 1) });
+    await ok(t, key, "create_task", { title: "Write thesis", when: "anytime", estimateMinutes: 300 });
+    const weekday = ((new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7) + 1;
+    const created = await ok<Receipt & { blockId: string }>(t, key, "create_smart_block", {
+      title: "Focus",
+      date,
+      start: "16:00",
+      end: "18:00",
+      repeat: { schedule: { kind: "weeks", every: 2, days: [weekday] } },
+      timeZone: ZONE,
+    });
+    const listed = await ok<{ smartBlocks: { blockId: string; date: string; repeats?: string; filledWorkBlocks: number }[] }>(t, key, "list_smart_blocks", {
+      date,
+      days: 14,
+      timeZone: ZONE,
+    });
+    expect(listed.smartBlocks.map((each) => each.date)).toEqual([date]);
+    expect(listed.smartBlocks[0]?.repeats).toMatch(/^Every 2 weeks on /);
+    expect(await refused(t, key, "preview_smart_block_fill", { blockId: created.blockId, date: addDays(date, 7), timeZone: ZONE })).toMatch(/does not happen on/);
+    const preview = await ok<Plan>(t, key, "preview_smart_block_fill", { blockId: created.blockId, date, timeZone: ZONE });
+    expect(preview.add.map((each) => [each.title, each.reason])).toEqual([
+      ["Plan essay", "Deadline tomorrow"],
+      ["Read chapter", "University"],
+    ]);
+    expect(preview.add[0]?.start).toBe(zonedIso(zonedMoment(date, 16 * 60, ZONE), ZONE));
+    expect(preview.skipped).toEqual([{ title: "Write thesis", minutes: 300, why: "Too long for this block", taskId: expect.any(String) }]);
+    const accepted = await ok<Receipt & { plan: Plan }>(t, key, "accept_smart_block_fill", { blockId: created.blockId, date, timeZone: ZONE });
+    expect(accepted.runId).toBe(created.runId);
+    const day = await ok<{ workBlocks: { title: string }[] }>(t, key, "get_day_plan", { date, timeZone: ZONE });
+    expect(day.workBlocks.map((block) => block.title).toSorted()).toEqual(["Plan essay", "Read chapter"]);
+    expect(await refused(t, key, "accept_smart_block_fill", { blockId: created.blockId, date, timeZone: ZONE })).toMatch(/Nothing new fits/);
+    await ok(t, key, "undo", { activityId: accepted.activityIds[0] });
+    expect((await ok<{ workBlocks: unknown[] }>(t, key, "get_day_plan", { date, timeZone: ZONE })).workBlocks).toEqual([]);
+  });
+
+  test("the tools refuse while Smart Blocks is switched off", async () => {
+    const { t, key } = await setup();
+    unwrap(await t.mutation(api.platform.features.setEnabled, { feature: "smartBlocks", enabled: false }));
+    expect(await refused(t, key, "list_smart_blocks", {})).toMatch(/switched off/);
+    expect(await refused(t, key, "create_smart_block", { title: "Focus", start: "16:00", end: "18:00" })).toMatch(/switched off/);
   });
 });
 

@@ -23,6 +23,7 @@ export const vRecordRef = v.union(
   v.object({ table: v.literal("taskTrips"), id: v.id("taskTrips") }),
   v.object({ table: v.literal("templates"), id: v.id("templates") }),
   v.object({ table: v.literal("recurrenceRules"), id: v.id("recurrenceRules") }),
+  v.object({ table: v.literal("smartBlocks"), id: v.id("smartBlocks") }),
 );
 
 export const vActor = v.union(
