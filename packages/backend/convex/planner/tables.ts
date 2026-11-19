@@ -46,11 +46,14 @@ export const vSmartEstimateError = v.union(
   v.object({ kind: v.literal("refused") }),
 );
 
+export const vGuess = v.object({ minutes: v.number(), probability: v.number() });
+
 export const vSuggestionOutcome = v.union(
   v.object({ kind: v.literal("waiting") }),
   v.object({
     kind: v.literal("suggested"),
     minutes: v.number(),
+    guesses: v.array(vGuess),
     modelMinutes: v.number(),
     reason: v.string(),
     confidence: v.number(),
@@ -192,6 +195,7 @@ export const plannerTables = {
   estimateSuggestions: defineTable({
     taskId: v.id("tasks"),
     requestedAt: v.number(),
+    answeredAt: v.optional(v.number()),
     outcome: vSuggestionOutcome,
   }).index("by_task", ["taskId"]),
   thingsSync: defineTable({

@@ -67,16 +67,39 @@ export const rewindFocus = internalMutation({
 });
 
 export const suggestEstimate = internalMutation({
-  args: { title: v.string(), minutes: v.number(), reason: v.string(), confidence: v.optional(v.number()) },
-  handler: async (ctx, { title, minutes, reason, confidence }) => {
+  args: {
+    title: v.string(),
+    guesses: v.optional(v.array(v.object({ minutes: v.number(), probability: v.number() }))),
+    reason: v.optional(v.string()),
+    state: v.optional(v.union(v.literal("thinking"), v.literal("vague"))),
+  },
+  handler: async (ctx, { title, guesses = [], reason = "", state }) => {
     const task = (await ctx.db.query("tasks").collect()).find((row) => row.title === title);
     if (!task) throw new Error(`No Task called ${title}`);
     await ctx.db.patch("tasks", task._id, { estimateMinutes: undefined });
     const at = Date.now();
-    const outcome = { kind: "suggested" as const, minutes, modelMinutes: minutes, reason, confidence: confidence ?? 0.8, probabilities: [], model: "gpt-6-luna", inputsHash: "seeded", at };
+    const best = guesses.toSorted((a, b) => b.probability - a.probability)[0] ?? { minutes: 30, probability: 0 };
+    const outcome =
+      state === "thinking"
+        ? { kind: "waiting" as const }
+        : state === "vague"
+          ? { kind: "unclear" as const, vague: 0.9, inputsHash: "seeded", at }
+          : {
+              kind: "suggested" as const,
+              minutes: best.minutes,
+              guesses: guesses.toSorted((a, b) => a.minutes - b.minutes),
+              modelMinutes: best.minutes,
+              reason,
+              confidence: best.probability,
+              probabilities: guesses,
+              model: "gpt-6-luna",
+              inputsHash: "seeded",
+              at,
+            };
+    const fields = { requestedAt: at, outcome, ...(state === "thinking" ? {} : { answeredAt: at }) };
     const row = await ctx.db.query("estimateSuggestions").withIndex("by_task", (q) => q.eq("taskId", task._id)).unique();
-    if (row) await ctx.db.patch("estimateSuggestions", row._id, { requestedAt: at, outcome });
-    else await ctx.db.insert("estimateSuggestions", { taskId: task._id, requestedAt: at, outcome });
+    if (row) await ctx.db.replace("estimateSuggestions", row._id, { taskId: task._id, ...fields });
+    else await ctx.db.insert("estimateSuggestions", { taskId: task._id, ...fields });
     return task._id;
   },
 });

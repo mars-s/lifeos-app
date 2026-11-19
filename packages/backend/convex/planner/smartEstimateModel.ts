@@ -7,7 +7,9 @@ export const QUESTION_NAME = "estimate";
 export const VAGUE_QUESTION = "too_vague";
 export const PROMPT_CACHE_KEY = "lifeos-smart-estimate";
 export const VAGUE_THRESHOLD = 0.7;
-export const SHOW_CONFIDENCE = 0.3;
+export const GUESS_FLOOR = 0.03;
+export const GUESS_LIMIT = 3;
+const PLACEHOLDER_TITLES = new Set(["new task", "untitled", "task", "todo", "to do", "to-do"]);
 const MIN_SIMILAR_PAIRS = 2;
 const NUDGE_BAND = 0.15;
 export const NOTES_LIMIT = 600;
@@ -17,16 +19,18 @@ const MIN_COUNTED_ACTUAL_MINUTES = 5;
 const TITLE_SHOWN = 40;
 
 export const ESTIMATE_CHOICES = [
-  { minutes: 5, description: "0:05. A two minute job, such as a quick reply." },
-  { minutes: 10, description: "0:10. A quick message, call or errand." },
-  { minutes: 15, description: "0:15. A short admin step or a small fix." },
-  { minutes: 30, description: "0:30. A small piece of focused work." },
-  { minutes: 45, description: "0:45. A modest piece of work with a few steps." },
-  { minutes: 60, description: "1:00. A solid hour of focused work." },
-  { minutes: 90, description: "1:30. A substantial piece of work." },
-  { minutes: 120, description: "2:00. A long session, such as a first draft or a study block." },
-  { minutes: 180, description: "3:00. Half a day of deep work." },
-  { minutes: 240, description: "4:00. A very large piece of work." },
+  { minutes: 5, value: "5 minutes", description: "One tiny action: a quick reply, a payment, or a booking already decided." },
+  { minutes: 10, value: "10 minutes", description: "A quick errand or message that needs a little thought, such as a short email, a phone call or a simple purchase." },
+  { minutes: 15, value: "15 minutes", description: "A short admin job with a couple of steps: fill in a form, tidy a document, arrange a time." },
+  { minutes: 20, value: "20 minutes", description: "A small task with a few steps, or one short reading." },
+  { minutes: 30, value: "30 minutes", description: "A small piece of focused work: a short write-up, a small fix, reading one article closely." },
+  { minutes: 45, value: "45 minutes", description: "A modest piece of work with several steps or some research." },
+  { minutes: 60, value: "1 hour", description: "About an hour of focused work: a draft section, one assignment question, a meeting with preparation." },
+  { minutes: 90, value: "1.5 hours", description: "A substantial session: a full short draft, several papers, a tricky bug." },
+  { minutes: 120, value: "2 hours", description: "A long deep-work block: a chapter section, a study session, building a feature." },
+  { minutes: 180, value: "3 hours", description: "Half a day on one piece of work: a large assignment part, a workshop, a complex build." },
+  { minutes: 240, value: "4 hours", description: "Most of a working day on one piece of work." },
+  { minutes: 360, value: "6 hours", description: "A full day or more: a whole milestone that could be split into smaller Tasks." },
 ] as const;
 
 export type TaskSignal = {
@@ -57,6 +61,8 @@ export type Probability = { minutes: number; probability: number };
 
 export type Decision = { pick: number; confidence: number; probabilities: Probability[]; vague: number; model: string };
 
+export type Guess = { minutes: number; probability: number };
+
 const STOP_WORDS = new Set(["the", "and", "for", "with", "from", "into", "onto", "this", "that", "about", "your", "my", "our", "a", "an", "to", "of", "on", "in", "at", "by", "or"]);
 
 export const titleWords = (title: string) =>
@@ -66,6 +72,9 @@ export const titleWords = (title: string) =>
       .split(/[^\p{L}\p{N}]+/u)
       .filter((word) => word.length >= 3 && !STOP_WORDS.has(word)),
   );
+
+export const isPlaceholderTitle = (title: string) =>
+  PLACEHOLDER_TITLES.has(title.trim().toLowerCase()) || titleWords(title).size === 0;
 
 const overlap = (a: ReadonlySet<string>, b: ReadonlySet<string>) => {
   const shared = [...a].filter((word) => b.has(word)).length;
@@ -130,6 +139,23 @@ const nearestChoice = (minutes: number) =>
 export const nudged = (pick: number, calibration: Calibration | undefined) =>
   calibration && Math.abs(calibration.ratio - 1) > NUDGE_BAND ? nearestChoice(pick * calibration.ratio) : pick;
 
+const rounded = (probability: number) => Math.round(probability * 1000) / 1000;
+
+export const guessesFrom = (decision: Pick<Decision, "pick" | "confidence" | "probabilities">, calibration: Calibration | undefined) => {
+  const merged = new Map<number, number>();
+  for (const { minutes, probability } of decision.probabilities) {
+    const bucket = nudged(minutes, calibration);
+    merged.set(bucket, (merged.get(bucket) ?? 0) + probability);
+  }
+  const ranked = [...merged]
+    .map(([minutes, probability]) => ({ minutes, probability: rounded(probability) }) satisfies Guess)
+    .filter(({ probability }) => probability >= GUESS_FLOOR)
+    .toSorted((a, b) => b.probability - a.probability)
+    .slice(0, GUESS_LIMIT);
+  const guesses = ranked.length > 0 ? ranked : [{ minutes: nudged(decision.pick, calibration), probability: rounded(decision.confidence) }];
+  return { guesses: guesses.toSorted((a, b) => a.minutes - b.minutes), likely: guesses[0]?.minutes ?? decision.pick };
+};
+
 export const trimNotes = (notes: string) => {
   const trimmed = notes.trim().replace(/\s+/g, " ");
   return trimmed.length > NOTES_LIMIT ? `${trimmed.slice(0, NOTES_LIMIT - 1)}…` : trimmed;
@@ -138,21 +164,39 @@ export const trimNotes = (notes: string) => {
 const clock = (minutes: number) => `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
 
 const INSTRUCTIONS =
-  "Estimate how long one person's Task will take as focused work. The JSON holds the Task and the most similar Tasks from their history. actualMinutes is focused time they really spent; estimateMinutes is what they planned. When a similar Task has actualMinutes, trust it over estimateMinutes.";
+  "You estimate how long one person's Task will take as focused work, from its title and description. Similar past Tasks from their own history follow as JSON when there are any: actualMinutes is the focused time they really spent and estimateMinutes is what they planned. When a similar Task has actualMinutes, trust it over estimateMinutes.";
+
+const line = (label: string, value: string | undefined) => (value ? [`${label}: ${value}`] : []);
+
+export const taskText = (task: TaskSignal) =>
+  [
+    ...line("Task", task.title),
+    ...line("Description", task.notes),
+    ...line("Checklist", task.checklistItems > 0 ? `${task.checklistItems} steps` : undefined),
+    ...line("Area", task.area),
+    ...line("Project", task.project),
+    ...line("Labels", task.labels.join(", ")),
+  ].join("\n");
 
 export const decisionRequest = (signal: EstimateSignal) => ({
   model: DECISIONS_MODEL,
   prompt_cache_key: PROMPT_CACHE_KEY,
   input: [
     { role: "developer", content: INSTRUCTIONS },
-    { role: "user", content: [{ type: "input_json", data: signal }] },
+    {
+      role: "user",
+      content: [
+        { type: "input_text", text: taskText(signal.task) },
+        ...(signal.examples.length > 0 ? [{ type: "input_json", data: { similarPastTasks: signal.examples } }] : []),
+      ],
+    },
   ],
   questions: [
     {
       type: "choice",
       name: QUESTION_NAME,
-      instructions: "How long will this Task take, as focused work?",
-      choices: ESTIMATE_CHOICES.map(({ minutes, description }) => ({ value: String(minutes), description })),
+      instructions: "How long will this Task take as focused work?",
+      choices: ESTIMATE_CHOICES.map(({ value, description }) => ({ value, description })),
     },
     {
       type: "predicate",
@@ -164,10 +208,7 @@ export const decisionRequest = (signal: EstimateSignal) => ({
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 
-const offeredMinutes = (value: unknown) => {
-  const minutes = typeof value === "string" ? Number(value) : Number.NaN;
-  return ESTIMATE_CHOICES.some((choice) => choice.minutes === minutes) ? minutes : undefined;
-};
+const offeredMinutes = (value: unknown) => ESTIMATE_CHOICES.find((choice) => choice.value === value)?.minutes;
 
 const probabilitiesOf = (value: unknown) =>
   (Array.isArray(value) ? value : []).flatMap((entry: unknown) => {

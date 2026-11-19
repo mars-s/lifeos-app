@@ -11,19 +11,20 @@ import { sha256Hex } from "../platform/workers";
 import {
   calibrationOf,
   canonicalJson,
+  guessesFrom,
+  isPlaceholderTitle,
   DECISIONS_MODEL,
   DECISIONS_URL,
   decisionRequest,
   nearestExamples,
-  nudged,
   parseDecision,
   reasonFor,
-  SHOW_CONFIDENCE,
   trimNotes,
   VAGUE_THRESHOLD,
   type Calibration,
   type Decision,
   type EstimateSignal,
+  type Guess,
   type PastTask,
   type TaskSignal,
 } from "./smartEstimateModel";
@@ -36,7 +37,7 @@ const CONTAINER_LIMIT = 500;
 const CHECKLIST_LIMIT = 100;
 
 const wantsSuggestion = (task: Doc<"tasks">) =>
-  task.estimateMinutes === undefined && task.status.kind === "open" && task.trashedAt === undefined;
+  task.estimateMinutes === undefined && task.status.kind === "open" && task.trashedAt === undefined && !isPlaceholderTitle(task.title);
 
 const suggestionRow = (ctx: QueryCtx, taskId: Id<"tasks">) =>
   ctx.db
@@ -62,15 +63,37 @@ export const request = ownerMutation({
   handler: async (ctx, { taskId }) => ({ requested: await requestSuggestion(ctx, taskId, { onlyFirst: true }) }),
 });
 
+const smartEstimatesOn = async (ctx: QueryCtx) =>
+  (await preferencesOf(ctx)).smartEstimates && (await secretAvailable(ctx, "openai"));
+
+export type EstimateView =
+  | { kind: "presets" }
+  | { kind: "thinking" }
+  | { kind: "guesses"; guesses: Guess[]; likely: number; reason: string }
+  | { kind: "fallback"; why: "untitled" | "vague" | "failed"; error?: SmartEstimateError["kind"] };
+
+const viewOf = (task: Doc<"tasks">, row: Doc<"estimateSuggestions"> | null) => {
+  const { outcome } = row ?? { outcome: null };
+  if (outcome?.kind === "suggested") {
+    const pending = task.estimateMinutes === undefined && row !== null && row.requestedAt > (row.answeredAt ?? 0);
+    return pending
+      ? ({ kind: "thinking" } satisfies EstimateView)
+      : ({ kind: "guesses", guesses: outcome.guesses, likely: outcome.minutes, reason: outcome.reason } satisfies EstimateView);
+  }
+  if (task.estimateMinutes !== undefined) return { kind: "presets" } satisfies EstimateView;
+  if (isPlaceholderTitle(task.title)) return { kind: "fallback", why: "untitled" } satisfies EstimateView;
+  if (!row || row.requestedAt > (row.answeredAt ?? 0) || outcome?.kind === "waiting") return { kind: "thinking" } satisfies EstimateView;
+  if (outcome?.kind === "unclear") return { kind: "fallback", why: "vague" } satisfies EstimateView;
+  if (outcome?.kind === "failed") return { kind: "fallback", why: "failed", error: outcome.error.kind } satisfies EstimateView;
+  return { kind: "presets" } satisfies EstimateView;
+};
+
 export const forTask = ownerQuery({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, { taskId }) => {
-    if (!(await preferencesOf(ctx)).smartEstimates) return null;
     const task = await ctx.db.get("tasks", taskId);
-    const row = await suggestionRow(ctx, taskId);
-    if (!task || task.estimateMinutes !== undefined || row?.outcome.kind !== "suggested") return null;
-    if (row.outcome.confidence < SHOW_CONFIDENCE) return null;
-    return { minutes: row.outcome.minutes, reason: row.outcome.reason };
+    if (!task || !(await smartEstimatesOn(ctx))) return { kind: "presets" } satisfies EstimateView;
+    return viewOf(task, await suggestionRow(ctx, taskId));
   },
 });
 
@@ -163,6 +186,7 @@ const historyFor = async (ctx: QueryCtx, lookups: Lookups, taskId: Id<"tasks">) 
 
 export type SuggestionPlan =
   | { kind: "skip" }
+  | { kind: "settle" }
   | { kind: "gone" }
   | { kind: "ask"; signal: EstimateSignal; calibration: Calibration | null; cachedHash: string | null };
 
@@ -174,7 +198,7 @@ export const planFor = internalQuery({
     if (!row || row.requestedAt !== requestedAt) return skip;
     const task = await ctx.db.get("tasks", taskId);
     if (!task) return { kind: "gone" } satisfies SuggestionPlan;
-    if (!wantsSuggestion(task) || !(await preferencesOf(ctx)).smartEstimates) return skip;
+    if (!wantsSuggestion(task) || !(await preferencesOf(ctx)).smartEstimates) return { kind: "settle" } satisfies SuggestionPlan;
     const lookups = await lookupsFor(ctx);
     const [{ signal, projectKey }, checklist, history] = await Promise.all([
       contextOf(ctx, lookups, task),
@@ -196,11 +220,12 @@ export const planFor = internalQuery({
 });
 
 export const record = internalMutation({
-  args: { taskId: v.id("tasks"), requestedAt: v.number(), outcome: vSuggestionOutcome },
+  args: { taskId: v.id("tasks"), requestedAt: v.number(), outcome: v.optional(vSuggestionOutcome) },
   returns: v.null(),
   handler: async (ctx, { taskId, requestedAt, outcome }) => {
     const row = await suggestionRow(ctx, taskId);
-    if (row?.requestedAt === requestedAt) await ctx.db.patch("estimateSuggestions", row._id, { outcome });
+    if (row?.requestedAt !== requestedAt) return null;
+    await ctx.db.patch("estimateSuggestions", row._id, { answeredAt: requestedAt, ...(outcome ? { outcome } : {}) });
     return null;
   },
 });
@@ -247,19 +272,24 @@ export const suggest = internalAction({
   handler: async (ctx, args) => {
     const plan: SuggestionPlan = await ctx.runQuery(internal.planner.smartEstimates.planFor, args);
     if (plan.kind === "gone") await ctx.runMutation(internal.planner.smartEstimates.forget, { taskId: args.taskId });
+    if (plan.kind === "settle") await ctx.runMutation(internal.planner.smartEstimates.record, args);
     if (plan.kind !== "ask") return null;
     const { signal, calibration } = plan;
     const inputsHash = await sha256Hex(canonicalJson({ model: DECISIONS_MODEL, signal, calibration }));
-    if (plan.cachedHash === inputsHash) return null;
+    if (plan.cachedHash === inputsHash) {
+      await ctx.runMutation(internal.planner.smartEstimates.record, args);
+      return null;
+    }
     const result: Result<Decision, SmartEstimateError> = await askDecisions(await revealSecret(ctx, "openai"), signal);
     const at = Date.now();
     const outcome: SuggestionOutcome = result.match(
       ({ pick, confidence, probabilities, vague, model }) => {
         if (vague >= VAGUE_THRESHOLD) return { kind: "unclear" as const, vague, inputsHash, at };
-        const minutes = nudged(pick, calibration ?? undefined);
+        const { guesses, likely: minutes } = guessesFrom({ pick, confidence, probabilities }, calibration ?? undefined);
         return {
           kind: "suggested" as const,
           minutes,
+          guesses,
           modelMinutes: pick,
           reason: reasonFor(signal, calibration ?? undefined, pick, minutes),
           confidence,

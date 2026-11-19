@@ -10,37 +10,73 @@ import { formatMinutes } from "./format";
 
 const ESTIMATE_CHIPS = [10, 15, 30, 60, 120] as const;
 
-const isChip = (minutes: number | undefined) => ESTIMATE_CHIPS.some((chip) => chip === minutes);
+export type EstimateGuess = { minutes: number; probability: number };
 
-export type EstimateSuggestion = { minutes: number; reason: string };
+export type SmartEstimate =
+  | { kind: "thinking" }
+  | { kind: "guesses"; guesses: readonly EstimateGuess[]; likely: number; reason: string }
+  | { kind: "note"; note: string };
+
+const percent = new Intl.NumberFormat("en-AU", { style: "percent", maximumFractionDigits: 0 });
+
+const GHOSTS = [0, 160, 320] as const;
 
 const CHIP =
   "relative h-7 rounded-md px-2 font-mono text-small transition-[background-color,color,scale,opacity] duration-(--dur-press) ease-out before:absolute before:-inset-x-0.5 before:-inset-y-2 active:scale-[0.94]";
 
-const SUGGESTED =
-  "outline-1 outline-dashed -outline-offset-1 outline-brand/55 text-foreground starting:opacity-0 motion-safe:duration-(--dur-fast) focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring";
+const LIKELY =
+  "outline-1 outline-dashed -outline-offset-1 outline-brand/55 text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring";
+
+const GUESS = "pb-1 starting:opacity-0 motion-safe:duration-(--dur-fast)";
+
+const Odds = ({ probability, selected }: { probability: number; selected: boolean }) => (
+  <span aria-hidden="true" className={cn("pointer-events-none absolute inset-x-2 bottom-[3px] h-0.5 overflow-hidden rounded-full", selected ? "bg-brand-foreground/25" : "bg-foreground/10")}>
+    <span
+      className={cn("block h-full rounded-full", selected ? "bg-brand-foreground/80" : "bg-brand/70")}
+      style={{ width: `${Math.max(6, Math.round(probability * 100))}%` }}
+    />
+  </span>
+);
+
+const Ghosts = () => (
+  <>
+    {GHOSTS.map((delay) => (
+      <span
+        key={delay}
+        aria-hidden="true"
+        style={{ animationDelay: `${delay}ms` }}
+        className="h-7 w-[3.25rem] rounded-md bg-foreground/[0.06] motion-safe:animate-pending"
+      />
+    ))}
+    <span role="status" className="sr-only">
+      Guessing an Estimate…
+    </span>
+  </>
+);
 
 const Spark = () => (
   <Sparkle weight="fill" aria-hidden="true" className="pointer-events-none absolute -top-1 -right-1 size-2.5 text-brand" />
 );
 
+const chipsFor = (smart: SmartEstimate | undefined) =>
+  smart?.kind === "guesses" ? smart.guesses : smart?.kind === "thinking" ? [] : ESTIMATE_CHIPS.map((minutes) => ({ minutes, probability: undefined }));
+
 export const EstimateField = ({
   minutes,
-  suggestion,
+  smart,
   onChange,
   className,
 }: {
   minutes: number | undefined;
-  suggestion?: EstimateSuggestion | undefined;
+  smart?: SmartEstimate | undefined;
   onChange: (minutes: number | null) => void;
   className?: string;
 }) => {
   const [draft, setDraft] = useState<string | null>(null);
   const [refused, setRefused] = useState(false);
-  const custom = minutes !== undefined && !isChip(minutes);
-  const suggested = minutes === undefined ? suggestion : undefined;
-  const extra = suggested && !isChip(suggested.minutes) ? suggested.minutes : undefined;
-  const chips = extra === undefined ? ESTIMATE_CHIPS : [...ESTIMATE_CHIPS, extra].toSorted((a, b) => a - b);
+  const chips: readonly { minutes: number; probability: number | undefined }[] = chipsFor(smart);
+  const custom = minutes !== undefined && !chips.some((chip) => chip.minutes === minutes);
+  const guessed = smart?.kind === "guesses" ? smart : undefined;
 
   const commit = () => {
     if (draft === null) return;
@@ -63,15 +99,17 @@ export const EstimateField = ({
   return (
     <div role="group" aria-label="Estimate" className={cn("flex flex-wrap items-center gap-1 @md:gap-1.5", className)}>
       <span className="hidden w-[3.75rem] text-small text-muted-foreground @md:inline">Estimate</span>
-      {chips.map((chip) => {
+      {smart?.kind === "thinking" && <Ghosts />}
+      {chips.map(({ minutes: chip, probability }) => {
         const selected = minutes === chip;
-        const hint = suggested?.minutes === chip ? suggested : undefined;
+        const likely = guessed !== undefined && guessed.likely === chip;
+        const odds = probability === undefined ? undefined : percent.format(probability);
         const button = (
           <button
             key={chip}
             type="button"
             aria-pressed={selected}
-            aria-label={hint ? `${formatMinutes(chip)}, suggested` : undefined}
+            aria-label={odds ? `${formatMinutes(chip)}, ${odds} likely${likely ? ", the best guess" : ""}` : undefined}
             onClick={(event) => {
               if (event.detail > 0) haptic("toggle");
               setDraft(null);
@@ -81,15 +119,17 @@ export const EstimateField = ({
             className={cn(
               CHIP,
               selected ? "bg-brand text-brand-foreground" : "bg-foreground/[0.06] text-foreground/80 hover:bg-foreground/[0.1]",
-              hint && SUGGESTED,
+              probability !== undefined && GUESS,
+              likely && !selected && LIKELY,
             )}
           >
             {formatMinutes(chip)}
-            {hint && <Spark />}
+            {probability !== undefined && <Odds probability={probability} selected={selected} />}
+            {likely && <Spark />}
           </button>
         );
-        return hint ? (
-          <Tooltip key={chip} content={hint.reason} side="top" align="start">
+        return guessed && odds ? (
+          <Tooltip key={chip} content={likely ? `${odds} likely. ${guessed.reason}` : `${odds} likely`} side="top" align="start">
             {button}
           </Tooltip>
         ) : (
@@ -137,6 +177,11 @@ export const EstimateField = ({
       <span role="status" className={cn("text-micro text-negative", !refused && "sr-only")}>
         {refused ? "Try 45, 1h30 or 1:30" : ""}
       </span>
+      {smart?.kind === "note" && (
+        <p role="status" className="basis-full text-micro text-pretty text-faint-foreground @md:pl-[4.125rem]">
+          {smart.note}
+        </p>
+      )}
     </div>
   );
 };
