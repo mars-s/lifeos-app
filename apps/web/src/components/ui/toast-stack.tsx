@@ -10,7 +10,6 @@ import {
   useSyncExternalStore,
 } from "react";
 import { Button, IconButton } from "@/components/ui/action-button";
-import { MorphText } from "@/components/ui/morph-text";
 import { haptic } from "@/lib/haptics";
 import { CSS_EASE_OUT } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
@@ -28,6 +27,8 @@ export type ToastData = {
   dismissing?: boolean;
   /** Bumped on every update, so an updated toast restarts its countdown. */
   revision?: number;
+  /** Runs once when the toast starts to leave, however it was closed. */
+  onClose?: () => void;
 };
 
 type ToastOptions = Partial<Omit<ToastData, "title" | "tone" | "dismissing" | "revision">>;
@@ -51,6 +52,7 @@ function upsert(title: React.ReactNode, tone: ToastTone, options: ToastOptions =
 }
 
 function dismiss(id: string) {
+  toasts.find((t) => t.id === id && !t.dismissing)?.onClose?.();
   toasts = toasts.map((t) => (t.id === id ? { ...t, dismissing: true } : t));
   emit();
   // Remove after the exit transition.
@@ -102,6 +104,14 @@ const tones: Record<ToastTone, { icon: typeof Info; className: string }> = {
 
 const GAP = 8;
 
+const OVERLAYS = "[data-radix-popper-content-wrapper] > *, [data-covers-toasts]";
+
+const within = (home: DOMRect, overlay: DOMRect) =>
+  home.left - GAP < overlay.right &&
+  overlay.left < home.right + GAP &&
+  home.top - GAP < overlay.bottom &&
+  overlay.top < home.bottom + GAP;
+
 export type ToasterProps = {
   /** Toasts visible in the collapsed stack; older ones wait behind. */
   visible?: number;
@@ -126,6 +136,8 @@ export function Toaster({
   const [expanded, setExpanded] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [heights, setHeights] = useState<Record<string, number>>({});
+  const [covered, setCovered] = useState(false);
+  const stack = useRef<HTMLOListElement>(null);
 
   // Timers pause while the tab is in the background.
   useEffect(() => {
@@ -136,6 +148,24 @@ export function Toaster({
 
   const live = items.filter((t) => !t.dismissing);
   const frontHeight = heights[live[0]?.id ?? ""] ?? 0;
+  const watching = live.length > 0;
+  const away = covered && watching;
+  const fanned = expanded && !away;
+
+  useEffect(() => {
+    if (!watching) return;
+    let frame = requestAnimationFrame(function look() {
+      const home = stack.current?.getBoundingClientRect();
+      setCovered(
+        !!home &&
+          [...document.querySelectorAll(OVERLAYS)].some((overlay) =>
+            within(home, overlay.getBoundingClientRect()),
+          ),
+      );
+      frame = requestAnimationFrame(look);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [watching]);
 
   return (
     <section
@@ -148,7 +178,9 @@ export function Toaster({
       )}
     >
       <ol
-        className="pointer-events-auto relative"
+        ref={stack}
+        inert={away}
+        className={cn("relative", !away && "pointer-events-auto")}
         style={{ height: frontHeight }}
         onPointerEnter={() => setExpanded(true)}
         onPointerLeave={() => setExpanded(false)}
@@ -168,10 +200,13 @@ export function Toaster({
               key={item.id}
               item={item}
               index={index}
-              expanded={expanded}
+              expanded={fanned}
               offset={offset}
+              height={heights[item.id]}
+              frontHeight={frontHeight}
               hiddenBehind={index >= visible}
-              paused={expanded || hidden}
+              away={away}
+              paused={fanned || hidden || away}
               onHeight={(h) =>
                 setHeights((current) =>
                   current[item.id] === h ? current : { ...current, [item.id]: h },
@@ -195,7 +230,10 @@ function ToastItem({
   index,
   expanded,
   offset,
+  height,
+  frontHeight,
   hiddenBehind,
+  away,
   paused,
   onHeight,
 }: {
@@ -203,12 +241,15 @@ function ToastItem({
   index: number;
   expanded: boolean;
   offset: number;
+  height: number | undefined;
+  frontHeight: number;
   hiddenBehind: boolean;
+  away: boolean;
   paused: boolean;
   onHeight: (height: number) => void;
 }) {
   const reduce = useReducedMotion();
-  const ref = useRef<HTMLLIElement>(null);
+  const content = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
   const [drag, setDrag] = useState<{ y: number; startY: number; at: number } | null>(
     null,
@@ -217,7 +258,7 @@ function ToastItem({
 
   // Measure for the expanded layout.
   useLayoutEffect(() => {
-    const node = ref.current;
+    const node = content.current;
     if (!node) return;
     const observer = new ResizeObserver(() => onHeight(node.offsetHeight));
     observer.observe(node);
@@ -253,24 +294,23 @@ function ToastItem({
       ? -offset + dragY
       : -Math.max(index, 0) * 10 + dragY;
   const scale = expanded || item.dismissing ? 1 : 1 - Math.max(index, 0) * 0.05;
-  const shown = mounted && !item.dismissing && !hiddenBehind;
+  const here = mounted && !item.dismissing && !away;
+  const shown = here && !hiddenBehind;
+  const tucked = !front && !expanded;
   const { icon: ToneIcon, className: toneClass } = tones[item.tone];
 
   return (
     <li
-      ref={ref}
       aria-live={item.tone === "error" ? "assertive" : "polite"}
       className="absolute inset-x-0 bottom-0 touch-none select-none"
       style={{
-        zIndex: 100 - Math.max(index, 0),
+        zIndex: index < 0 ? 0 : 100 - index,
         opacity: shown ? 1 : 0,
-        transform: reduce
-          ? undefined
-          : `translateY(${shown || item.dismissing ? y : 0}px) translateY(${mounted && !item.dismissing ? "0%" : "100%"}) scale(${scale})`,
+        transform: `translateY(${shown || item.dismissing ? y : 0}px) translateY(${here || reduce ? "0%" : "100%"}) scale(${scale})`,
         transformOrigin: "50% 100%",
         transition: drag
           ? "none"
-          : `transform 400ms ${CSS_EASE_OUT}, opacity ${item.dismissing ? 150 : 250}ms ${CSS_EASE_OUT}`,
+          : `${reduce ? "" : `transform 400ms ${CSS_EASE_OUT}, `}opacity ${here ? 250 : 150}ms ${CSS_EASE_OUT}`,
         pointerEvents: hiddenBehind ? "none" : undefined,
       }}
       onPointerDown={(event) => {
@@ -293,45 +333,54 @@ function ToastItem({
       }}
     >
       <div
-        className={cn(
-          "group flex items-start gap-3 rounded-2xl bg-popover p-3 text-foreground shadow-float",
-          !front && !expanded && "[&>*]:opacity-0",
-        )}
+        className="group overflow-hidden rounded-2xl bg-popover text-foreground shadow-float"
+        style={{
+          height: tucked ? frontHeight : height,
+          transition: reduce ? undefined : `height 400ms ${CSS_EASE_OUT}`,
+        }}
       >
-        <ToneIcon
-          weight={item.tone === "loading" ? "bold" : "fill"}
-          aria-hidden="true"
-          className={cn("mt-0.5 size-4 shrink-0", toneClass)}
-        />
-        <div className="min-w-0 flex-1 transition-opacity duration-150">
-          <p className="text-sm font-medium">
-            {typeof item.title === "string" ? <MorphText>{item.title}</MorphText> : item.title}
-          </p>
-          {item.description && (
-            <p className="mt-0.5 text-[0.8125rem] text-muted-foreground">
-              {item.description}
+        <div
+          ref={content}
+          className={cn("flex items-start gap-3 p-3", tucked && "[&>*]:opacity-0")}
+        >
+          <ToneIcon
+            weight={item.tone === "loading" ? "bold" : "fill"}
+            aria-hidden="true"
+            className={cn("mt-0.5 size-4 shrink-0", toneClass)}
+          />
+          <div className="min-w-0 flex-1 transition-opacity duration-150">
+            <p
+              key={typeof item.title === "string" ? item.title : undefined}
+              className="animate-fade-in text-sm font-medium text-balance wrap-anywhere motion-reduce:animate-none"
+            >
+              {item.title}
             </p>
+            {item.description && (
+              <p className="mt-0.5 text-[0.8125rem] text-pretty wrap-anywhere text-muted-foreground">
+                {item.description}
+              </p>
+            )}
+          </div>
+          {item.action && (
+            <Button
+              size="sm"
+              className="-my-1 h-7 px-3"
+              onClick={() => {
+                item.action?.onClick();
+                dismiss(item.id);
+              }}
+            >
+              {item.action.label}
+            </Button>
           )}
+          <IconButton
+            icon={X}
+            iconWeight="bold"
+            label="Dismiss"
+            className="-my-1.5 -mr-1.5 size-7 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
+            onClick={() => dismiss(item.id)}
+          />
         </div>
-        {item.action && (
-          <Button
-            size="sm"
-            className="-my-1 h-7 px-3"
-            onClick={() => {
-              item.action?.onClick();
-              dismiss(item.id);
-            }}
-          >
-            {item.action.label}
-          </Button>
-        )}
-        <IconButton
-          icon={X}
-          iconWeight="bold"
-          label="Dismiss"
-          className="-my-1.5 -mr-1.5 size-7 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
-          onClick={() => dismiss(item.id)}
-        />
       </div>
     </li>
   );

@@ -23,8 +23,14 @@ export const showUndo = (title: string, undo: () => void, slot?: string) => {
   const id = `undo-${count}`;
   const toastId = slot ?? id;
   stack = [...stack, { id, toastId, undo }];
-  setTimeout(() => take(id), UNDO_WINDOW_MS);
-  toast(title, { id: toastId, duration: UNDO_WINDOW_MS, action: { label: "Undo", onClick: () => take(id)?.undo() } });
+  toast(title, {
+    id: toastId,
+    duration: UNDO_WINDOW_MS,
+    action: { label: "Undo", onClick: () => take(id)?.undo() },
+    onClose: () => {
+      stack = stack.filter((entry) => entry.toastId !== toastId);
+    },
+  });
   return () => void drop(id);
 };
 

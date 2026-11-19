@@ -218,6 +218,7 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
         />
         <aside
           ref={aside}
+          data-covers-toasts={drawer ? "" : undefined}
           className={cn(
             "fixed inset-y-0 left-0 z-50 w-[17rem] bg-surface transition-[translate,visibility,box-shadow] duration-300 ease-drawer motion-reduce:transition-none md:static md:z-auto md:w-60 md:shrink-0 md:translate-x-0 md:shadow-none lg:w-64",
             drawer ? "translate-x-0 shadow-float" : "max-md:invisible max-md:-translate-x-full",

@@ -1,7 +1,9 @@
 """The undo toast keeps its words beside its buttons, and stands aside for an open picker.
 
-A long title wraps beside Undo and Dismiss (#61). A toast under an open picker or menu steps
-aside, holds its countdown, and comes back with a working Undo when the picker closes (#63).
+A long title wraps beside Undo and Dismiss (#61). A toast under an open picker, menu or the
+phone sidebar steps aside, holds its countdown, and comes back with a working Undo when that
+closes (#63). A toast held past its five seconds, by the pointer or a picker, still undoes.
+Toasts of different heights stack with the same small step.
 
 Needs the throwaway backend from local-backend.sh and the web app running:
 
@@ -66,7 +68,7 @@ COVERED_ROWS = """() => {
 
 TOAST_IN_THE_WAY = """() => {
   const picker = document.querySelector('[data-radix-popper-content-wrapper]')?.firstElementChild?.getBoundingClientRect();
-  const toast = document.querySelector('[data-toaster] li')?.getBoundingClientRect();
+  const toast = document.querySelector('[data-toaster] ol')?.getBoundingClientRect();
   return !!picker && !!toast && toast.left < picker.right && picker.left < toast.right && toast.top < picker.bottom && picker.top < toast.bottom;
 }"""
 
@@ -116,6 +118,26 @@ def check_long_title(page, button, name, lines):
     page.wait_for_timeout(400)
 
 
+def check_stack(page):
+    page.goto(f"{BASE}/design")
+    page.wait_for_load_state("networkidle")
+    for button in ["Trash a long Project", "Reschedule"]:
+        page.locator("#controls").get_by_role("button", name=button, exact=True).click()
+        page.wait_for_timeout(300)
+    page.mouse.move(10, 10)
+    page.wait_for_timeout(800)
+    shot(page, "stack")
+    tops = toaster(page).locator("li > div").evaluate_all("(cards) => cards.map((card) => card.getBoundingClientRect().top)")
+    expect("a two-line toast behind a one-line toast peeks out by one small step", 0 < tops[0] - tops[1] <= 12, True)
+    box = toaster(page).locator("li").first.bounding_box()
+    page.mouse.move(box["x"] + 30, box["y"] + box["height"] / 2)
+    page.wait_for_timeout(800)
+    cards = toaster(page).locator("li > div").evaluate_all("(cards) => cards.map((card) => { const r = card.getBoundingClientRect(); return [r.top, r.bottom]; })")
+    expect("under the pointer the stack fans out, each toast clear of the next", cards[1][1] <= cards[0][0], True)
+    page.mouse.move(10, 10)
+    page.wait_for_timeout(UNDO_WINDOW_MS + 800)
+
+
 def open_when_low_on_the_screen(page, title):
     page.goto(f"{BASE}/inbox")
     page.locator("#main [data-task-key]").first.wait_for()
@@ -147,13 +169,10 @@ def check_picker(page):
         expect("so the toast stays where it is", toaster(page).locator("li").first.evaluate("(node) => getComputedStyle(node).opacity"), "1")
     page.wait_for_timeout(UNDO_WINDOW_MS + 800)
     page.get_by_role("button", name="Someday", exact=True).click()
-    page.get_by_role("button", name="When: Someday").wait_for()
-    page.keyboard.press("Escape")
-    page.wait_for_timeout(700)
+    page.wait_for_timeout(1200)
     shot(page, "picker-closed")
-    if WIDTH <= 640:
-        expect("Someday could be tapped under where the toast was", len(task_titled("Low thought")), 1)
-        expect("the toast comes back once the picker closes", undo_button(page).count() > 0 and undo_button(page).first.is_visible(), True)
+    expect("Someday, the lowest row, takes the tap", [task["when"]["kind"] for task in task_titled("Low thought")], ["someday"])
+    expect("a toast is up once the picker closes", toaster(page).locator("li").first.evaluate("(node) => getComputedStyle(node).opacity"), "1")
 
 
 def check_undo_after_waiting(page):
@@ -168,6 +187,44 @@ def check_undo_after_waiting(page):
     undo_button(page).first.click()
     page.wait_for_timeout(1500)
     expect("Undo still works after the picker held the toast back", len(task_titled("Held thought")), 0)
+
+
+def new_inbox_task(page, title):
+    page.goto(f"{BASE}/inbox")
+    page.locator("#main [data-task-key]").first.wait_for()
+    page.wait_for_timeout(600)
+    box = page.locator("#main [data-task-key]").first.bounding_box()
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    page.keyboard.press("n")
+    page.get_by_role("textbox", name="Title", exact=True).wait_for()
+    page.keyboard.type(title)
+    page.keyboard.press("Enter")
+    undo_button(page).wait_for()
+
+
+def check_hovered_undo(page):
+    new_inbox_task(page, "Read thought")
+    page.wait_for_timeout(700)
+    box = toaster(page).locator("li").first.bounding_box()
+    page.mouse.move(box["x"] + 30, box["y"] + box["height"] / 2)
+    page.wait_for_timeout(UNDO_WINDOW_MS + 1500)
+    expect("a toast under the pointer stays up past its five seconds", undo_button(page).count(), 1)
+    undo_button(page).first.click()
+    page.wait_for_timeout(1500)
+    expect("and its Undo still undoes", len(task_titled("Read thought")), 0)
+
+
+def check_drawer(page):
+    new_inbox_task(page, "Drawer thought")
+    page.keyboard.press("Escape")
+    page.get_by_role("button", name="Open the sidebar").click()
+    page.wait_for_timeout(700)
+    shot(page, "drawer-open")
+    front = toaster(page).locator("li").first
+    expect("the toast is out of sight while the sidebar is over it", front.evaluate("(node) => getComputedStyle(node).opacity"), "0")
+    page.get_by_role("button", name="Close the sidebar").click(position={"x": WIDTH - 20, "y": 200})
+    page.wait_for_timeout(900)
+    expect("and comes back when the sidebar closes", front.evaluate("(node) => getComputedStyle(node).opacity"), "1")
 
 
 def main():
@@ -188,8 +245,13 @@ def main():
         check_long_title(page, "Complete a Task", "long-title", {1, 2})
         check_long_title(page, "Trash a long Project", "longest-title", {2})
         check_long_title(page, "Reschedule", "short-title", {1})
+        check_stack(page)
         check_picker(page)
         check_undo_after_waiting(page)
+        if WIDTH <= 640:
+            check_drawer(page)
+        else:
+            check_hovered_undo(page)
         browser.close()
     print(f"{len(failed)} failed" if failed else "all ok")
     sys.exit(1 if failed else 0)
