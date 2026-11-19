@@ -37,7 +37,7 @@ const withDeadline = (deadline: string | undefined) => (task: PlannerTask) => {
 
 const withLabels = (labels: Label[]) => (task: PlannerTask) => ({ ...task, labels, labelIds: labels.map((label) => label._id) });
 
-const quoted = (title: string) => (title.length > 28 ? `${title.slice(0, 27)}…` : title);
+export const quoted = (title: string) => (title.length > 28 ? `${title.slice(0, 27)}…` : title);
 
 export const useTaskActions = (task: PlannerTask, today: string) => {
   const change = useChange();

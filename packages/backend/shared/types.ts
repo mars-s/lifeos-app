@@ -28,3 +28,6 @@ export type PlanWeekView = Ok<FunctionReturnType<typeof api.planner.plan.week>>;
 export type WorkBlockRow = Ok<FunctionReturnType<typeof api.planner.workBlocks.range>>[number];
 export type SleepNight = Ok<FunctionReturnType<typeof api.health.sleep.nights>>[number];
 export type SleepStatus = FunctionReturnType<typeof api.health.sleep.status>;
+export type TaskRepeat = NonNullable<PlannerTask["repeat"]>;
+export type RecurringOccurrence = Ok<FunctionReturnType<typeof api.planner.recurrence.upcoming>>[number];
+export type TemplateRow = FunctionReturnType<typeof api.planner.templates.list>[number];

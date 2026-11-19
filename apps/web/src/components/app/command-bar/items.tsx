@@ -19,31 +19,37 @@ import {
   Lightning,
   Pause,
   Play,
+  Repeat,
   Shapes,
+  SkipForward,
+  Stamp,
   Stop,
   Timer,
   Trash,
   Tray,
+  XCircle,
 } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { parseDatePhrase, parseWhenPhrase } from "@lifeos/backend/capture";
 import { addDays, type IsoDate } from "@lifeos/backend/date";
 import { parseEstimateText } from "@lifeos/backend/estimate";
-import type { PlannerTask, SidebarView } from "@lifeos/backend/types";
+import type { PlannerTask, SidebarView, TemplateRow } from "@lifeos/backend/types";
 import { areaVar } from "@/components/lifeos/area";
 import { AreaGlyph } from "@/components/lifeos/area-icon";
 import { formatMinutes } from "@/components/lifeos/format";
 import { ProgressPie } from "@/components/lifeos/progress-ring";
+import { NEVER, baseDate, repeatDay, repeatLabel, repeatPresets, sameSchedule } from "@/components/lifeos/repeat";
 import { isDraftId } from "../container-actions";
 import { shortDay, weekdayLong, whenLabel } from "../dates";
 import type { ActiveFocus } from "../focus";
 import { LISTS, type Route } from "../route";
+import type { repeatActions } from "../repeat-actions";
 import type { MoveTarget, SelectionActions } from "../selection-actions";
 import { LIST_META, PLANNER_META, SETTINGS_META } from "../sidebar";
 import { WhenGlyph } from "./capture-chips";
 import type { Recent } from "./recents";
 
-export type Page = "root" | "when" | "deadline" | "estimate" | "move";
+export type Page = "root" | "when" | "deadline" | "estimate" | "move" | "repeat";
 
 export type BarItem = {
   id: string;
@@ -185,6 +191,67 @@ export const moveItems = (tasks: readonly PlannerTask[], sidebar: SidebarView | 
   ];
 };
 
+const repeatGlyph = (current: boolean) => (
+  <Repeat weight={current ? "bold" : "regular"} aria-hidden="true" className={`${ICON} ${current ? "text-brand" : "text-muted-foreground"}`} />
+);
+
+export const repeatItems = (task: PlannerTask, today: IsoDate, act: ReturnType<typeof repeatActions>) => {
+  const repeat = task.repeat?.active ? task.repeat : undefined;
+  const end = repeat?.end ?? NEVER;
+  const presets = repeatPresets(baseDate(task.when, today)).map((schedule, index) => {
+    const label = repeatLabel(schedule, end);
+    const current = sameSchedule(schedule, repeat?.schedule);
+    return {
+      id: `repeat:${index}`,
+      group: "Repeat",
+      label,
+      text: lower(label, "repeat recurring"),
+      leading: repeatGlyph(current),
+      ...(current ? { detail: "Now" } : {}),
+      run: () => act.set(schedule, end),
+    } satisfies BarItem;
+  });
+  if (!repeat) return presets;
+  return [
+    ...(repeat.next.kind === "due"
+      ? [
+          {
+            id: "repeat:skip",
+            group: "Repeat",
+            label: "Skip Next",
+            text: "skip next repeat occurrence",
+            leading: <SkipForward weight="fill" aria-hidden="true" className={MUTED} />,
+            detail: repeatDay(repeat.next.date),
+            run: act.skip,
+          } satisfies BarItem,
+        ]
+      : []),
+    ...presets,
+    {
+      id: "repeat:stop",
+      group: "Repeat",
+      label: "Does not repeat",
+      text: "does not repeat stop repeating",
+      leading: <XCircle weight="fill" aria-hidden="true" className={MUTED} />,
+      run: act.stop,
+    } satisfies BarItem,
+  ];
+};
+
+export const templateItems = (templates: readonly TemplateRow[], create: (template: TemplateRow) => void) =>
+  templates.map(
+    (template) =>
+      ({
+        id: `create:template:${template._id}`,
+        group: "Create",
+        label: `New Task from ${template.title}`,
+        text: lower("new task from template", template.title),
+        leading: <Stamp weight="fill" aria-hidden="true" className={MUTED} />,
+        detail: "Template",
+        run: () => create(template),
+      }) satisfies BarItem,
+  );
+
 export const targetLabel = (tasks: readonly PlannerTask[]) => (tasks.length === 1 ? (tasks[0]?.title ?? "1 Task") : `${tasks.length} Tasks`);
 
 export const targetItems = (
@@ -194,6 +261,8 @@ export const targetItems = (
     focus: ActiveFocus | null;
     startFocus: (task: PlannerTask) => void;
     open: (task: PlannerTask) => void;
+    canRepeat: boolean;
+    saveTemplate: (task: PlannerTask) => void;
   },
 ) => {
   if (tasks.length === 0) return [];
@@ -215,6 +284,15 @@ export const targetItems = (
     item("deadline", "Deadline…", <Flag weight="fill" aria-hidden="true" className={muted} />, { page: "deadline", text: "deadline due" }),
     item("estimate", "Estimate…", <Hourglass weight="fill" aria-hidden="true" className={muted} />, { page: "estimate", text: "estimate allocated time" }),
     item("move", "Move to…", <ArrowBendUpRight weight="fill" aria-hidden="true" className={muted} />, { page: "move", text: "move to area project" }),
+    ...(one && deps.canRepeat
+      ? [
+          item("repeat", one.repeat?.active ? `Repeat: ${repeatLabel(one.repeat.schedule, one.repeat.end)}` : "Repeat…", <Repeat weight="bold" aria-hidden="true" className={muted} />, {
+            page: "repeat",
+            text: "repeat recurring every daily weekly monthly",
+          }),
+        ]
+      : []),
+    ...(one ? [item("template", "Save as Template", <Stamp weight="fill" aria-hidden="true" className={muted} />, { run: () => deps.saveTemplate(one), text: "save as template" })] : []),
     ...(one && one.status.kind === "open" && deps.focus?.taskId !== one._id
       ? [item("focus", "Start Focus Session", <Timer weight="fill" aria-hidden="true" className={muted} />, { keys: "f", run: () => deps.startFocus(one) })]
       : []),
@@ -264,7 +342,15 @@ export const goItems = (go: (route: Route) => void) => {
       run: () => go({ kind: "settings", feature }),
     } satisfies BarItem;
   });
-  return [...lists, settings, ...features];
+  const templates = {
+    id: "go:templates",
+    group: "Go to",
+    label: "Templates",
+    text: "templates go to",
+    leading: <Stamp weight="fill" aria-hidden="true" className={`${ICON} text-muted-foreground`} />,
+    run: () => go({ kind: "templates" }),
+  } satisfies BarItem;
+  return [...lists, templates, settings, ...features];
 };
 
 export const createItems = (deps: {

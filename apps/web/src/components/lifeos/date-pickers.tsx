@@ -1,7 +1,7 @@
 "use client";
 
 import { Archive, CalendarDots, CaretLeft, CaretRight, Flag, Moon, Stack, Star, Tray, type Icon } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Popover, PopoverClose } from "@/components/ui/popover-panel";
 import { cn } from "@/lib/utils";
 import { MenuRow, ToolButton } from "./tool-button";
@@ -32,19 +32,24 @@ const daysIn = (month: string) => {
   return { blanks, dates: Array.from({ length: count }, (_, day) => `${month}-${pad(day + 1)}`) };
 };
 
+const StayOpen = ({ children }: { asChild: true; children: ReactNode }) => children;
+
 const ARROW_STEPS: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
 
 export const MonthGrid = ({
   value,
   today,
   tone,
+  closeOnPick = true,
   onPick,
 }: {
   value: string | undefined;
   today: string;
   tone: "brand" | "deadline";
+  closeOnPick?: boolean;
   onPick: (date: string) => void;
 }) => {
+  const Close = closeOnPick ? PopoverClose : StayOpen;
   const [month, setMonth] = useState(monthOf(value && value >= today ? value : today));
   const { blanks, dates } = daysIn(month);
   const firstMonth = monthOf(today);
@@ -94,7 +99,7 @@ export const MonthGrid = ({
           <span key={index} aria-hidden="true" />
         ))}
         {dates.map((date) => (
-          <PopoverClose key={date} asChild>
+          <Close key={date} asChild>
             <button
               type="button"
               disabled={date < today}
@@ -113,7 +118,7 @@ export const MonthGrid = ({
             >
               {Number(date.slice(8))}
             </button>
-          </PopoverClose>
+          </Close>
         ))}
       </div>
     </div>

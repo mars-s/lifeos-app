@@ -251,6 +251,9 @@ const REASONS: Record<string, string> = {
   invalid_block: "A Work Block needs a real time and length.",
   invalid_plan: "That day could not be planned.",
   selection_too_large: "That is too many Tasks at once. Try 500 or fewer.",
+  invalid_schedule: "That repeat cannot happen. Check its days and when it ends.",
+  stale_occurrence: "That repeat has already moved on.",
+  invalid_template: "That Template is not valid.",
 };
 
 export const reasonFor = (kind: string | undefined) => (kind && REASONS[kind]) || "LifeOS could not save it. Try again.";

@@ -216,6 +216,35 @@ describe("guessing an Estimate", () => {
     expect(await viewFor(t, taskId)).toMatchObject({ kind: "guesses", likely: 15 });
   });
 
+  test("a Task made from a Template or a Recurrence Rule asks for a guess like a new Task", async () => {
+    const t = await newBackend();
+    choosing("30 minutes");
+    const { taskId } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Water the garden" }));
+    await settle(t);
+    const { templateId } = unwrap(await t.mutation(api.planner.templates.saveFromTask, { taskId, today: "2026-11-20" }));
+    const made = unwrap(
+      await t.mutation(api.planner.templates.createTask, { templateId, when: { kind: "anytime" }, today: "2026-11-20" }),
+    );
+    const asked = (id: Id<"tasks">) =>
+      t.run(async (ctx) => (await ctx.db.query("estimateSuggestions").withIndex("by_task", (q) => q.eq("taskId", id)).first()) !== null);
+    expect(await asked(made.taskId)).toBe(true);
+    unwrap(
+      await t.mutation(api.planner.recurrence.setRepeat, {
+        taskId,
+        schedule: { kind: "days", every: 1 },
+        end: { kind: "never" },
+        timeZone: "Australia/Melbourne",
+      }),
+    );
+    vi.setSystemTime(Date.now() + 2 * 86_400_000);
+    await t.mutation(internal.planner.recurrence.generate, {});
+    const generated = await t.run(async (ctx) =>
+      (await ctx.db.query("tasks").collect()).find((task) => task._id !== taskId && task._id !== made.taskId),
+    );
+    expect(generated).toBeDefined();
+    expect(await asked(generated!._id)).toBe(true);
+  });
+
   test("a Task created with an Estimate is never sent and keeps the presets", async () => {
     const t = await newBackend();
     const asked = choosing("30 minutes");

@@ -35,16 +35,19 @@ export const enrich = async (ctx: QueryCtx, tasks: Doc<"tasks">[]) => {
   const projectIds = new Set<Id<"projects">>();
   const areaIds = new Set<Id<"areas">>();
   const labelIds = new Set<Id<"labels">>();
+  const ruleIds = new Set<Id<"recurrenceRules">>();
   for (const task of tasks) {
+    if (task.repeat) ruleIds.add(task.repeat.ruleId);
     if (task.parent.kind === "project") projectIds.add(task.parent.projectId);
     if (task.parent.kind === "area") areaIds.add(task.parent.areaId);
     for (const labelId of task.labelIds) labelIds.add(labelId);
   }
   const projects = byId(found(await Promise.all([...projectIds].map((id) => ctx.db.get("projects", id)))));
   for (const project of projects.values()) if (project.areaId) areaIds.add(project.areaId);
-  const [areaDocs, labelDocs, checklists, blocks, sessions] = await Promise.all([
+  const [areaDocs, labelDocs, ruleDocs, checklists, blocks, sessions] = await Promise.all([
     Promise.all([...areaIds].map((id) => ctx.db.get("areas", id))),
     Promise.all([...labelIds].map((id) => ctx.db.get("labels", id))),
+    Promise.all([...ruleIds].map((id) => ctx.db.get("recurrenceRules", id))),
     Promise.all(
       tasks.map((task) =>
         ctx.db
@@ -73,8 +76,10 @@ export const enrich = async (ctx: QueryCtx, tasks: Doc<"tasks">[]) => {
   ]);
   const areas = byId(found(areaDocs));
   const labels = byId(found(labelDocs));
-  return tasks.map(({ things: _link, ...task }, index) => {
+  const rules = byId(found(ruleDocs));
+  return tasks.map(({ things: _link, repeat, ...task }, index) => {
     const project = task.parent.kind === "project" ? projects.get(task.parent.projectId) : undefined;
+    const rule = repeat ? rules.get(repeat.ruleId) : undefined;
     const areaId = task.parent.kind === "area" ? task.parent.areaId : project?.areaId;
     const area = areaId ? areas.get(areaId) : undefined;
     return {
@@ -91,6 +96,9 @@ export const enrich = async (ctx: QueryCtx, tasks: Doc<"tasks">[]) => {
         .filter((block) => block.removedAt === undefined)
         .map(({ _id, start, minutes, done }) => ({ _id, start, minutes, done })),
       focus: focusSummary(sessions[index] ?? []),
+      ...(repeat && rule
+        ? { repeat: { ...repeat, active: rule.next.kind !== "ended", schedule: rule.schedule, end: rule.end, next: rule.next } }
+        : {}),
     };
   });
 };

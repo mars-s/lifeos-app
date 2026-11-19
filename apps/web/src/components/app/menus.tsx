@@ -28,21 +28,30 @@ import {
   ArrowUp,
   ArrowUUpLeft,
   CalendarPlus,
+  Check,
+  Repeat,
+  SkipForward,
+  XCircle,
+  Stamp,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Popover as PopoverPrimitive } from "radix-ui";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "@lifeos/backend/api";
 import { addDays } from "@lifeos/backend/date";
-import type { PlannerTask, SidebarView } from "@lifeos/backend/types";
+import type { PlannerTask, RecurringOccurrence, SidebarView } from "@lifeos/backend/types";
 import { AREA_COLOURS, AreaDot, areaVar, type AreaColour } from "@/components/lifeos/area";
 import { AREA_ICONS, AreaGlyph, type AreaIconName } from "@/components/lifeos/area-icon";
 import { MonthGrid } from "@/components/lifeos/date-pickers";
 import { formatMinutes } from "@/components/lifeos/format";
 import { ProgressPie } from "@/components/lifeos/progress-ring";
+import { NEVER, baseDate, isPreset, repeatDay, repeatLabel, repeatPresets, sameSchedule, scheduleParts, type RepeatEnd, type RepeatMode, type Schedule } from "@/components/lifeos/repeat";
+import { RepeatCustom } from "@/components/lifeos/repeat-picker";
 import { ContextMenu, type MenuGroup, type MenuItem } from "@/components/ui/action-menu";
 import { haptic } from "@/lib/haptics";
 import { EASE_OUT, instant } from "@/lib/motion-tokens";
+import { useChange } from "./changes";
+import { UPCOMING_DAYS } from "./dates";
 import {
   areaStepKey,
   isDraftId,
@@ -51,13 +60,17 @@ import {
   type SidebarArea,
   type SidebarProject,
 } from "./container-actions";
+import { isDraftTask } from "./drafts";
 import { useActiveFocus, useFocusActions } from "./focus";
-import { useQuietView } from "./hooks";
+import { useQuietView, valueOf } from "./hooks";
 import { useNewTask } from "./new-task";
+import { repeatActions, useOccurrenceActions } from "./repeat-actions";
 import { selection, useRegisteredTasks, useSelectionSize } from "./selection";
 import { useSelectionActions, type MoveTarget } from "./selection-actions";
 import { planCommands } from "./planner/commands";
 import { useShell } from "./shell-context";
+import { isOptimistic } from "./task-actions";
+import { useTemplateActions } from "./template-actions";
 import { useTrashActions } from "./trash-actions";
 
 type Target =
@@ -65,9 +78,10 @@ type Target =
   | { kind: "area"; id: string }
   | { kind: "project"; id: string }
   | { kind: "trash"; id: string }
+  | { kind: "occurrence"; ruleId: string; date: string }
   | { kind: "empty" };
 
-type DatePick = { x: number; y: number; tone: "brand" | "deadline"; label: string; value?: string; pick: (date: string) => void };
+type PointPick = { x: number; y: number; label: string; body: ReactNode };
 
 const ESTIMATES = [15, 30, 45, 60, 90, 120, 180];
 const MENU_CLOSE_MS = 140;
@@ -78,6 +92,10 @@ const isTyping = (target: EventTarget | null) =>
 const targetOf: (element: Element) => Target = (element) => {
   const row = element.closest<HTMLElement>("[data-task-key]");
   if (row?.dataset.taskKey) return { kind: "tasks", key: row.dataset.taskKey };
+  const occurrence = element.closest<HTMLElement>("[data-menu-occurrence]");
+  if (occurrence?.dataset.menuOccurrence) {
+    return { kind: "occurrence", ruleId: occurrence.dataset.menuOccurrence, date: occurrence.dataset.occurrenceDate ?? "" };
+  }
   const trashed = element.closest<HTMLElement>("[data-menu-trash]");
   if (trashed?.dataset.menuTrash) return { kind: "trash", id: trashed.dataset.menuTrash.split(":")[1] ?? "" };
   const area = element.closest<HTMLElement>("[data-menu-area]");
@@ -105,7 +123,7 @@ const stepItems: (up: string | null, down: string | null, move: (order: string) 
   { id: "move-down", label: "Move Down", icon: ArrowDown, shortcut: "⌘↓", disabled: down === null, onSelect: () => down && move(down) },
 ];
 
-const DatePopover = ({ pick, today, onClose }: { pick: DatePick | null; today: string; onClose: () => void }) => {
+const PointPopover = ({ pick, onClose }: { pick: PointPick | null; onClose: () => void }) => {
   const reduce = useReducedMotion();
   const x = pick?.x ?? 0;
   const y = pick?.y ?? 0;
@@ -131,10 +149,10 @@ const DatePopover = ({ pick, today, onClose }: { pick: DatePick | null; today: s
                 animate={{ opacity: 1, scale: 1, transition: reduce ? instant : { duration: 0.16, ease: EASE_OUT } }}
                 exit={{ opacity: 0, scale: reduce ? 1 : 0.98, transition: reduce ? instant : { duration: 0.1, ease: EASE_OUT } }}
                 style={{ transformOrigin: "var(--radix-popover-content-transform-origin)" }}
-                className="z-50 w-[17rem] rounded-[1.25rem] bg-popover p-1.5 text-foreground shadow-float outline-none"
+                className="z-50 max-h-(--radix-popover-content-available-height) w-[17.5rem] overflow-y-auto overscroll-contain rounded-[1.25rem] bg-popover p-1.5 text-foreground shadow-float outline-none"
               >
                 <p className="px-2.5 pt-1.5 text-micro font-medium text-faint-foreground">{pick.label}</p>
-                <MonthGrid value={pick.value} today={today} tone={pick.tone} onPick={pick.pick} />
+                {pick.body}
               </motion.div>
             </PopoverPrimitive.Content>
           </PopoverPrimitive.Portal>
@@ -144,6 +162,8 @@ const DatePopover = ({ pick, today, onClose }: { pick: DatePick | null; today: s
   );
 };
 
+const mark = (on: boolean) => <Check weight="bold" className={on ? "size-3.5 text-brand" : "invisible size-3.5"} />;
+
 const shared = <T,>(tasks: readonly PlannerTask[], read: (task: PlannerTask) => T) => {
   const first = tasks[0] ? JSON.stringify(read(tasks[0])) : undefined;
   return tasks.every((task) => JSON.stringify(read(task)) === first) && tasks[0] ? read(tasks[0]) : undefined;
@@ -151,7 +171,8 @@ const shared = <T,>(tasks: readonly PlannerTask[], read: (task: PlannerTask) => 
 
 export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefined; children: ReactNode }) => {
   const shell = useShell();
-  const { today, route, setOpenCard, setRenaming, setDraft } = shell;
+  const { today, route, navigate, setOpenCard, setRenaming, setDraft } = shell;
+  const change = useChange();
   const tasksDo = useSelectionActions(today);
   const focusDo = useFocusActions();
   const focusNow = useActiveFocus();
@@ -163,7 +184,11 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
   const [target, setTarget] = useState<Target>({ kind: "empty" });
   const [point, setPoint] = useState({ x: 0, y: 0 });
   const [viaKeyboard, setViaKeyboard] = useState(false);
-  const [datePick, setDatePick] = useState<DatePick | null>(null);
+  const [pointPick, setPointPick] = useState<PointPick | null>(null);
+  const occurrences = valueOf(useQuietView(api.planner.recurrence.upcoming, route.kind === "upcoming" ? { date: today, days: UPCOMING_DAYS } : "skip"));
+  const occurrenceDo = useOccurrenceActions();
+  const templates = useQuietView(api.planner.templates.list, {}) ?? [];
+  const templateDo = useTemplateActions();
   useRegisteredTasks();
   useSelectionSize();
 
@@ -220,8 +245,81 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
   const areas = sidebar?.areas ?? [];
   const looseProjects = sidebar?.projects ?? [];
 
-  const pickDate = (label: string, tone: DatePick["tone"], value: string | undefined, pick: (date: string) => void) =>
-    setTimeout(() => setDatePick({ ...point, label, tone, value, pick }), MENU_CLOSE_MS);
+  const openAtPoint = (label: string, body: ReactNode) => setTimeout(() => setPointPick({ ...point, label, body }), MENU_CLOSE_MS);
+
+  const pickDate = (label: string, tone: "brand" | "deadline", value: string | undefined, pick: (date: string) => void) =>
+    openAtPoint(label, <MonthGrid value={value} today={today} tone={tone} onPick={pick} />);
+
+  const repeatGroups: (task: PlannerTask) => MenuGroup[] = (task) => {
+    const actions = repeatActions(change, task, today);
+    const repeat = task.repeat?.active ? task.repeat : undefined;
+    const base = baseDate(task.when, today);
+    const end: RepeatEnd = repeat?.end ?? NEVER;
+    const custom = (mode: RepeatMode) => () =>
+      openAtPoint(
+        "Repeat",
+        <RepeatCustom
+          schedule={repeat?.schedule}
+          end={end}
+          base={base}
+          today={today}
+          mode={mode}
+          cancelLabel="Cancel"
+          onCancel={() => setPointPick(null)}
+          onCommit={(schedule, chosen) => {
+            setPointPick(null);
+            actions.set(schedule, chosen);
+          }}
+        />,
+      );
+    const choice = (schedule: Schedule) => {
+      const parts = scheduleParts(schedule);
+      const on = sameSchedule(schedule, repeat?.schedule);
+      return {
+        id: JSON.stringify(schedule),
+        label: (
+          <>
+            {parts.lead}
+            {parts.qualifier && <span className="text-faint-foreground"> ({parts.qualifier})</span>}
+          </>
+        ),
+        leading: mark(on),
+        onSelect: () => on || actions.set(schedule, end),
+      } satisfies MenuItem;
+    };
+    const odd = repeat && repeat.schedule.kind !== "afterCompletion" && !isPreset(repeat.schedule, base) ? repeat.schedule : undefined;
+    return [
+      {
+        items: [
+          { id: "none", label: "Does not repeat", leading: mark(!repeat), onSelect: actions.stop },
+          ...repeatPresets(base).map(choice),
+        ],
+      },
+      {
+        items: [
+          ...(odd ? [{ id: "odd", label: repeatLabel(odd, NEVER), leading: mark(true), onSelect: custom("calendar") } satisfies MenuItem] : []),
+          {
+            id: "after",
+            label: repeat?.schedule.kind === "afterCompletion" ? repeatLabel(repeat.schedule, NEVER) : "After I finish it…",
+            leading: mark(repeat?.schedule.kind === "afterCompletion"),
+            onSelect: custom("afterCompletion"),
+          },
+          { id: "custom", label: "Custom…", leading: mark(false), onSelect: custom("calendar") },
+        ],
+      },
+      {
+        items:
+          repeat?.next.kind === "due"
+            ? [{ id: "skip", label: `Skip ${repeatDay(repeat.next.date)}`, icon: SkipForward, onSelect: actions.skip } satisfies MenuItem]
+            : [],
+      },
+    ];
+  };
+
+  const occurrenceGroups: (row: RecurringOccurrence) => MenuGroup[] = (row) => [
+    { items: [{ id: "skip", label: "Skip This One", icon: SkipForward, onSelect: () => occurrenceDo.skip(row) }] },
+    { items: [{ id: "stop", label: "Stop Repeating", icon: XCircle, disabled: !row.taskId, onSelect: () => occurrenceDo.stop(row) }] },
+  ];
 
   const whenItems: (
     current: PlannerTask["when"] | undefined,
@@ -365,6 +463,7 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
                 } satisfies MenuItem,
               ]
             : []),
+          ...(one ? [{ id: "template", label: "Save as Template", icon: Stamp, onSelect: () => templateDo.save(one, today) } satisfies MenuItem] : []),
           ...(touch && one
             ? [{ id: "select", label: "Select More", icon: SelectionAll, onSelect: () => selection.only(key) } satisfies MenuItem]
             : []),
@@ -432,6 +531,9 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
             }),
           },
           { id: "move", type: "submenu", label: "Move to", icon: ArrowBendUpRight, items: [], groups: moveGroups(tasks) },
+          ...(one && one.status.kind === "open" && !isDraftTask(one._id)
+            ? [{ id: "repeat", type: "submenu", label: "Repeat", icon: Repeat, items: [], groups: repeatGroups(one) } satisfies MenuItem]
+            : []),
         ],
       },
       {
@@ -576,6 +678,20 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
       items: [
         { id: "new-task", label: "New Task", icon: CheckSquare, shortcut: "N", onSelect: () => newTask(false) },
         {
+          id: "from-template",
+          type: "submenu",
+          label: "New Task from Template",
+          icon: Stamp,
+          disabled: templates.length === 0,
+          items: templates.map((template) => ({
+            id: template._id,
+            label: template.title,
+            leading: template.area ? <AreaDot colour={template.area.colour} className="size-2" /> : undefined,
+            disabled: isOptimistic(template._id),
+            onSelect: () => newTask(false, undefined, template),
+          })),
+        },
+        {
           id: "new-project",
           label: "New Project",
           icon: Circle,
@@ -584,11 +700,16 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
         { id: "new-area", label: "New Area", icon: Shapes, onSelect: () => setDraft({ kind: "area" }) },
       ],
     },
+    { items: [{ id: "templates", label: "Templates", icon: Stamp, onSelect: () => navigate({ kind: "templates" }, viaKeyboard ? "keyboard" : "pointer") }] },
   ];
 
   const groupsFor: () => MenuGroup[] = () => {
     if (target.kind === "tasks") return taskGroups(target.key);
     if (target.kind === "trash") return trashGroups(target.id);
+    if (target.kind === "occurrence") {
+      const row = occurrences?.find((entry) => entry.ruleId === target.ruleId && entry.date === target.date);
+      return row ? occurrenceGroups(row) : [];
+    }
     if (target.kind === "area") {
       const area = areas.find((entry) => entry._id === target.id);
       return area && !isDraftId(area._id) ? areaGroups(area) : emptyGroups();
@@ -637,7 +758,7 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
           {children}
         </div>
       </ContextMenu>
-      <DatePopover pick={datePick} today={today} onClose={() => setDatePick(null)} />
+      <PointPopover pick={pointPick} onClose={() => setPointPick(null)} />
     </>
   );
 };

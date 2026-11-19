@@ -25,3 +25,8 @@ const DAY_MS = 86_400_000;
 
 export const addDays = (date: IsoDate, days: number) =>
   new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10) as IsoDate;
+
+export const daysBetween = (from: IsoDate, to: IsoDate) =>
+  Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS);
+
+export const laterOf = (a: IsoDate, b: IsoDate) => (a > b ? a : b);

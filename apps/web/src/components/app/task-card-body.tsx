@@ -1,14 +1,17 @@
 "use client";
 
-import { ListChecks } from "@phosphor-icons/react";
+import { ListChecks, Stamp } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "@lifeos/backend/api";
+import type { IsoDate } from "@lifeos/backend/date";
 import type { PlannerTask } from "@lifeos/backend/types";
 import { AreaDot } from "@/components/lifeos/area";
 import { ChecklistEditor } from "@/components/lifeos/checklist-editor";
 import { DeadlinePicker, WhenPicker } from "@/components/lifeos/date-pickers";
 import { LabelPicker } from "@/components/lifeos/label-picker";
+import { baseDate } from "@/components/lifeos/repeat";
+import { RepeatPicker } from "@/components/lifeos/repeat-picker";
 import { ToolButton } from "@/components/lifeos/tool-button";
 import { WorkBlockList } from "@/components/lifeos/work-blocks";
 import { instant, springLayout } from "@/lib/motion-tokens";
@@ -16,8 +19,10 @@ import { deadlineMark, localDate, relativeDay, shortDay, whenLabel } from "./dat
 import { FocusSection, FocusTool } from "./focus";
 import { useQuietView } from "./hooks";
 import { Linkified, TitleLinks } from "./linkified";
+import { useRepeatActions } from "./repeat-actions";
 import { TaskEstimateField } from "./smart-estimate";
 import { isOptimistic, useTaskActions } from "./task-actions";
+import { useTemplateActions } from "./template-actions";
 import { TaskTrip } from "./trip";
 
 type KnownKeys = ReadonlyMap<string, { key: string; order: string }>;
@@ -128,6 +133,9 @@ export const NotesField = ({ notes, onSave }: { notes: string; onSave: (notes: s
 export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string }) => {
   const reduce = useReducedMotion();
   const actions = useTaskActions(task, today);
+  const repeatDo = useRepeatActions(task, today);
+  const templateDo = useTemplateActions();
+  const repeat = task.repeat?.active ? task.repeat : undefined;
   const labels = useQuietView(api.planner.labels.list, {}) ?? task.labels;
   const items = useStableKeys(task.checklist);
   const [composing, setComposing] = useState(false);
@@ -192,7 +200,7 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
             {label.name}
           </Chip>
         ))}
-        <span className="ml-auto flex items-center gap-0.5">
+        <span className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-0.5">
           <FocusTool task={task} />
           <LabelPicker
             labels={labels.map((label) => ({ id: label._id, name: label.name, colour: label.colour }))}
@@ -216,6 +224,15 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
             }}
           />
           {!hasChecklist && <ToolButton icon={ListChecks} label="Checklist" onClick={() => setComposing(true)} />}
+          <RepeatPicker
+            repeat={repeat && { schedule: repeat.schedule, end: repeat.end, next: repeat.next, settled: !isOptimistic(repeat.ruleId) }}
+            base={baseDate(task.when, today as IsoDate)}
+            today={today}
+            onSet={repeatDo.set}
+            onStop={repeatDo.stop}
+            onSkip={repeatDo.skip}
+          />
+          <ToolButton icon={Stamp} label="Save as Template" onClick={() => templateDo.save(task, today)} />
           <DeadlinePicker
             deadline={task.deadline}
             label={deadline?.label}

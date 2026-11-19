@@ -18,7 +18,8 @@ import { useLocalDate, useQuietView, useViewState, valueOf } from "./hooks";
 import { AppMenu } from "./menus";
 import { PanelBoundary, PanelNotice } from "./panel-boundary";
 import { LISTS, parseRoute, routeHref, screenKey, type Route, type Via } from "./route";
-import { Screen, UPCOMING_DAYS } from "./screens";
+import { UPCOMING_DAYS } from "./dates";
+import { Screen } from "./screens";
 import { SelectionBar } from "./selection-bar";
 import { Onboarding } from "./settings/onboarding";
 import { useSelectionGestures } from "./selection-gestures";
@@ -51,6 +52,7 @@ const WarmLists = ({ today }: { today: IsoDate }) => {
   useQuietView(api.planner.lists.anytime, { date: today });
   useQuietView(api.planner.lists.someday, {});
   useQuietView(api.planner.labels.list, {});
+  useQuietView(api.planner.templates.list, {});
   return null;
 };
 

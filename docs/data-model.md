@@ -24,7 +24,7 @@ One row per action: one mutation call, one undo, or one batch of a Things Import
 
 | Field | Type |
 | --- | --- |
-| `actor` | `{ kind: "avi" }`, `{ kind: "agentRun", jobId }` or `{ kind: "things" }` |
+| `actor` | `{ kind: "avi" }`, `{ kind: "agentRun", jobId }`, `{ kind: "things" }` or `{ kind: "recurrence" }` (the Recurrence Rule generator) |
 | `action` | Action name, such as `task.rename` or `things.import` |
 | `at` | Moment |
 | `undoes` | Optional. `{ kind: "activity", activityId }` or `{ kind: "run", jobId }` on an undo |
@@ -43,7 +43,7 @@ The changes inside one Activity row, in order. Each holds enough to invert itsel
 | --- | --- |
 | `activityId` | `Id<"activity">` |
 | `seq` | Position inside the action |
-| `entity` | Record reference (any Entity Reference, an `entityLinks` row, or a setting row: `calendars`, `workingHours`, `dayPlans`, `features`, `taskTrips`) |
+| `entity` | Record reference (any Entity Reference, an `entityLinks` row, or a setting row: `calendars`, `workingHours`, `dayPlans`, `features`, `taskTrips`), a `templates` row or a `recurrenceRules` row |
 | `change` | `insert { after }`, `patch { before, after }` or `delete { before }`. `before` and `after` hold only the changed fields. |
 
 | Index | Serves |
@@ -150,6 +150,7 @@ No indexes: the guard reads the row by the id the session holds.
 | `trashedAt` | Optional moment | LifeOS |
 | `order` | Order Key inside its parent | LifeOS |
 | `plan` | Optional `{ date, order }`: the Task's place in one day's **Day Plan**. It only counts while `date` is the day the Task is planned on, so an order made for Thursday never leaks into Friday | LifeOS |
+| `repeat` | Optional `{ ruleId, date }`: the Recurrence Rule this Task is an occurrence of, and the occurrence date | LifeOS |
 | `things` | Optional `{ id, todayIndex, base? }`: the Things id, its position in Things' Today, and the imported fields as Things last had them | Things Import |
 
 | Index | Serves |
@@ -161,6 +162,7 @@ No indexes: the guard reads the row by the id the session holds.
 | `by_project_order` (`parent.projectId`, `order`) | Project page. The last key when appending. |
 | `by_area_order` (`parent.areaId`, `order`) | Area page. The last key when appending. |
 | `by_parent_kind_order` (`parent.kind`, `order`) | Loose Tasks in order. The last key when appending. |
+| `by_repeat` (`repeat.ruleId`, `repeat.date`) | The idempotency key for generation: one Task per rule per occurrence date. The current instance of an after-completion rule. |
 
 ### `areas`
 
@@ -243,6 +245,35 @@ Index: `by_task` (the card's query and every request).
 ### `dayPlans`
 
 One row per date that has a **Goal**: `date` (local date), optional `goalMinutes` (0 to 1440). Index: `by_date`. A date with no row, or a row without `goalMinutes`, takes its Capacity as the Goal. `planner/plan:setGoal` (`date`, `minutes` or `null` to reset) records `plan.goal` Activity and can be undone. Resetting keeps the row and removes `goalMinutes`. The Shutdown ritual adds its fields to this row later.
+### `recurrenceRules`
+
+A schedule that creates a fresh Task each time it comes due. `shared/recurrence.ts` holds the date logic as pure functions, shared with the web app as `@lifeos/backend/recurrence`.
+
+| Field | Type |
+| --- | --- |
+| `schedule` | `days { every }`, `weekdays`, `weeks { every, days }`, `months { every, on }`, `years { every, month, day }` or `afterCompletion { every, unit }`. Weekdays are ISO numbers, 1 for Monday to 7 for Sunday. `on` is `day { day }` or `weekday { nth, weekday }`, where `nth` is 1 to 4, or -1 for the last |
+| `end` | `never`, `on { date }` or `after { count }` |
+| `task` | The Task shape each occurrence starts from (see below) |
+| `evening` | Whether occurrences land in This Evening |
+| `timeZone` | The IANA zone the client sent. The rule's "today" is the date in this zone |
+| `anchor` | Local date that `every` counts from: the day, week, month or year of the anchor is the first in the cycle |
+| `next` | `due { date }`, `waiting` or `ended` |
+| `lastDate` | Date of the newest occurrence. The Task with this `repeat.date` is the current instance |
+| `count` | Occurrences created so far, for `end: after` |
+
+| Index | Serves |
+| --- | --- |
+| `by_next` (`next.kind`, `next.date`) | The generator (due on or before a date). Upcoming (due inside a window) |
+
+A month day past the end of a month falls on its last day, so the 31st gives 30 April and 28 or 29 February. A yearly 29 February falls on 28 February in common years. Bounds: `every` is 1 to 99 days, 52 weeks, 24 months, 10 years or 99 after completion. `weeks.days` is not empty and is stored sorted without repeats. `after.count` is 1 to 999.
+
+`waiting` belongs to an after-completion rule whose current Task is still open. `ended` covers a rule that reached its end and one Avi stopped.
+
+The Task shape (`vTaskShape`, shared with `templates`) is `title`, `notes`, optional `estimateMinutes`, `labelIds`, `parent`, `checklist` (up to 100 titles) and optional `deadlineOffsetDays` (0 to 365). An occurrence's Deadline is its date plus the offset.
+
+### `templates`
+
+The Task shape plus `order` (Order Key). Index: `by_order`. A Template is deleted outright, because nothing points at it, and undo puts it back as a new row.
 
 ### `thingsSync`
 
@@ -271,9 +302,11 @@ Each screen reads one query that returns exactly what it draws. All go through `
 | `planner/labels:list` | The Label picker on a Task card | `labels.by_order` |
 | `planner/plan:week` (`from`, `days` up to 31, `timeZone`) | The Planner's day columns: each day's open Tasks in Day Plan order, its **Day Load** (`plannedMinutes`, `guessedMinutes`, `unestimated`), its **Goal** (`goalMinutes`, `goalSet`) and its **Capacity**. `guesses` lists the Smart Estimates it counted, so the client can recount after an optimistic change. Tasks scheduled before `from` roll into the first day | `tasks.by_trashed_status_when`, `workBlocks.by_removed_start`, `dayPlans.by_date`, `estimateSuggestions.by_task`, and the Capacity reads |
 | `planner/workBlocks:range` (`from`, `to`, moments, up to 100 days) | The Timebox calendar: live Work Blocks with their Task rows. Blocks of completed Tasks stay (they show as done), blocks of trashed Tasks are left out | `workBlocks.by_removed_start` |
+| `planner/recurrence:upcoming` (`date`, `days`) | The next occurrence of each Recurrence Rule after `date`, up to 366 days, with its title, Estimate, Area, Project, schedule, end and the rule's latest Task (so Upcoming can stop the rule from the row). One row per rule | `recurrenceRules.by_next`, `tasks.by_repeat` |
+| `planner/templates:list` | Templates in order, with their Labels, Area, Project and Checklist count | `templates.by_order` |
 | `planner/trash:list` | Trash: trashed Areas, Projects and Tasks, newest first. A record that went to Trash with its Area or Project is counted on that row, not listed again | `tasks.by_trashed_closed_at`, `projects.by_trashed`, `areas.by_trashed` |
 
-Every list row has the same shape (`enrich` in `planner/rows.ts`): the Task, plus its Area (title and colour), its Project, its Labels, its Checklist Items (with their Order Keys), its Work Blocks that are not removed, and `focus`: its Actual Time in milliseconds and its 12 newest Focus Sessions. A session shorter than a minute is left out of both. A Task card opens from the row it already has, with no second read.
+Every list row has the same shape (`enrich` in `planner/rows.ts`): the Task, plus its Area (title and colour), its Project, its Labels, its Checklist Items (with their Order Keys), its Work Blocks that are not removed, and `focus`: its Actual Time in milliseconds and its 12 newest Focus Sessions. A session shorter than a minute is left out of both. A Task with a Recurrence Rule also carries `repeat { ruleId, date, active, schedule, end, next }`, where `active` is false once the rule has ended. A Task card opens from the row it already has, with no second read.
 
 The card writes through `planner/tasks` (`rename`, `setNotes`, `setWhen`, `setDeadline`, `setEstimate`, `setLabels`), `planner/checklist` (`add`, `edit`, `tick`, `reorder`, `remove`) and `planner/labels` (`create`, `setColour`, `rename`, `remove`). `tasks:reorder` sets one Task's Order Key, for drag to reorder. `labels:rename` refuses a name another Label holds (`name_taken`). `labels:remove` takes the Label off every open Task and deletes it. It cannot be undone, because undo cannot bring a record back under its old id. `labels:create` takes an optional `taskId` and adds the new Label to that Task in the same action, so one undo removes both. A Label name is used once, ignoring case: creating it again returns the Label that exists.
 
@@ -290,6 +323,12 @@ A selection of Tasks changes through `planner/selection` (`setWhen`, `setDeadlin
 Areas change through `planner/areas` (`create`, `rename`, `setColour`, `setIcon`, `reorder`, `trash`, `restore`) and Projects through `planner/projects` (`create`, `rename`, `setNotes`, `setWhen`, `setDeadline`, `move`, `complete`, `reopen`, `trash`, `restore`). A new Area takes the first colour no live Area uses. An icon is a kebab-case name from the web icon set. Trashing an Area or a Project also trashes its live Projects and Tasks with the same `trashedAt`, in the same Activity row. Restore (or undo) brings back only the records that share that moment, so a Task trashed earlier stays in Trash. Completing a Project completes its open Tasks with the Project's completion moment, and reopening it reopens only those.
 
 Trash changes through `planner/trash` (`restore`, `deleteForever`, `empty`). `restore` takes a mixed list of Tasks, Projects and Areas and records one Activity row. A Task put back while its Project or Area is still in Trash moves to the nearest live parent (the Project's Area, or no parent). `deleteForever` removes a trashed record with its Checklist Items, Work Blocks, Headings and links. What was trashed with a Project or Area goes with it, and anything put back since is kept and moved out. `empty` deletes one batch of 100 per call and returns `done`, so the client calls it until Trash is clear. Both refuse a record that is not in Trash (`not_trashed`), and undo refuses both (`not_undoable`, reason `permanent`).
+
+Recurrence Rules change through `planner/recurrence`. `setRepeat` (`taskId`, `schedule`, `end`, `timeZone`) starts a rule for a Task, or edits the rule it already has. A new rule takes a snapshot of the Task as its shape, and the Task becomes the first occurrence: a calendar schedule moves it to the first matching date on or after today (or its own later date), and an after-completion schedule leaves its When alone and waits for it. An end that comes before the first occurrence is refused (`invalid_schedule`, reason `end`). An edit replaces the schedule, end and shape and works out `next` again from the day after the newest occurrence, or today if that is later. Tasks already created keep their fields. When the schedule itself is unchanged, the anchor stays, so a fortnightly rule keeps its rhythm through an edit to its end. `stopRepeat` (`taskId`) ends the rule and keeps every Task. `skip` (`ruleId`, `date`) moves past the due occurrence without creating it, and refuses any date but the one due (`stale_occurrence`). If any of these leaves an occurrence due today, it is created in the same Activity row.
+
+`internal.planner.recurrence.generate` runs every five minutes (`convex/crons.ts`). It reads up to 100 rules due on or before tomorrow in UTC, because no zone is more than 14 hours ahead, and schedules itself again when it fills a batch. For each rule whose `next` date has come in its own zone, it creates the occurrence, unless a Task already holds that rule and date. It writes one Activity row per rule with the `recurrence` actor. A generated Task takes the shape's fields, drops Labels that no longer exist, falls back from a trashed or missing Area or Project the way Trash restore does, gets new Checklist Items, and goes after its last sibling. Completing an after-completion rule's current Task, alone, in a selection or with its Project, sets `next` to the completion date plus the interval, in the same Activity row, so undo reverts both. Reopening that Task sets the rule back to `waiting`.
+
+Templates change through `planner/templates`. `saveFromTask` (`taskId`, `today`) takes the same snapshot as a rule. `createTask` (`templateId`, `when`, `parent?`, `today`) creates a Task with its own Checklist Items. The Template's parent wins unless it is loose, then `parent` is used. The Deadline is the scheduled date (or `today`) plus the offset. `update` (`templateId` and any shape field) validates like the Task setters, and refuses more than 100 Checklist titles or an offset outside 0 to 365 (`invalid_template`). `remove` deletes the Template.
 
 `planner/seed.test-utils.ts` builds a realistic planner (five Areas, six Projects, Headings, Deadlines, a Logbook). The list tests use it, and a scratch local backend can run it for visual checks.
 
@@ -453,11 +492,6 @@ Each slice adds these as new tables, or as variants of `vEntityRef` and `vJob`. 
 
 - **`dayPlans`** gains `capacityMinutes` and optional `shutdown { at, note }` with the Shutdown ritual, to freeze what a day's plan was. Until then a Day Plan is read live from the Tasks scheduled on that date and their `plan` keys, and the row holds only the Goal.
 
-### Recurrence and templates
-
-- **`templates`**: `title`, optional `estimateMinutes`, `labelIds`, optional `parent`, `checklist` (array of titles, bounded by the template form). Index: `by_order`.
-- **`recurrenceRules`**: `rule` (`daily`, `weekdays`, `weekly { days }`, `everyNWeeks { n, day }`, `monthlyNthWeekday { n, day }`), `templateId`, `nextDue`, optional `lastGenerated`. Index: `by_next_due` for the scheduled generator. Generated Tasks are keyed by rule and date (an idempotency key), so a rerun creates nothing twice.
-
 ### Notes projection
 
 - **`notes`**: `docId` (the CRDT document id on the peers), `title`, optional `areaId`, `excerpt`, `embedding`, `updatedAt`. Indexes: `by_doc` (the Home Server upserts by document), `by_area_updated`. Search index on `title` and `excerpt`. Vector index on `embedding`, filtered by `areaId`. The documents themselves stay on the peers.
@@ -507,4 +541,7 @@ Until Switch Day, `planner/things:importRows` takes the rows `apps/things-sync/t
 - **Nothing writes to Things.** LifeOS is the home of Avi's Tasks. The two-way bridge and its `things` Jobs were removed on 18 November 2026 (#35).
 - **Lease expiry happens at claim time.** `claim` takes expired Jobs as well as queued ones, so no cron is needed and an expired Job is reclaimed the moment a Worker asks.
 - **Planner tables are plain folders in the main app, not Convex components.** Components isolate tables, which would block cross-module links and shared Activity (`docs/architecture.md`).
+- **A Recurrence Rule catches up with one occurrence, not many.** After an outage the generator walks the missed dates and creates only the latest one inside the end. A week offline gives one "Water the plants", not seven. A missed occurrence still does not count towards `end: after`.
+- **Recurrence Rules are never deleted.** Undo cannot re-insert a row under its old id, and every occurrence points at its rule through `repeat.ruleId`. Stopping a rule sets `next` to `ended`.
+- **The generator's own changes cannot be undone.** Undoing one would set the rule due again, and the next run would create the same Task. Avi trashes an occurrence instead. The Task still holds the rule and date, so the rule never creates it again. Generation that happens inside `setRepeat` or `skip` belongs to that action and undoes with it.
 - **Every public function checks the caller in one place.** `platform/access.ts` builds every public query and mutation, so a new function cannot forget the owner check (#17).

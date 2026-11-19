@@ -6,6 +6,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { Recorder } from "../platform/activity";
 import { changeMutation } from "../platform/change";
 import { endFocusOnClosedTask } from "./focus";
+import { followCompletion } from "./recurrence";
 import { keyAfter, lastTaskOrder, load, parseDeadline, parseEstimate, parseParent, parseWhen, type PlannerError } from "./model";
 import { vParent, vWhen, type Parent } from "./tables";
 
@@ -109,6 +110,7 @@ export const complete = changeMutation({
       ok((task) => (task.status.kind === "open" ? { status: { kind: "completed" as const, at } } : {})),
     );
     await endFocusOnClosedTask(ctx, record, at);
+    await followCompletion(ctx, record, taskIds, at);
     return result;
   },
 });
@@ -116,13 +118,16 @@ export const complete = changeMutation({
 export const reopen = changeMutation({
   action: "tasks.reopen",
   args: { taskIds: vTaskIds },
-  handler: (ctx, { taskIds }, record) =>
-    applyToAll(
+  handler: async (ctx, { taskIds }, record) => {
+    const result = await applyToAll(
       ctx,
       record,
       taskIds,
       ok((task) => (task.status.kind === "open" ? {} : { status: { kind: "open" as const } })),
-    ),
+    );
+    await followCompletion(ctx, record, taskIds, Date.now());
+    return result;
+  },
 });
 
 export const trash = changeMutation({

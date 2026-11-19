@@ -3,6 +3,8 @@ import type { PlannerTask } from "@lifeos/backend/types";
 import type { DeadlineMark } from "@/components/lifeos/task-row";
 
 const DAY_MS = 86_400_000;
+
+export const UPCOMING_DAYS = 28;
 const LOCALE = "en-AU";
 
 const utc = (date: string) => Date.parse(`${date}T00:00:00Z`);

@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, CalendarDots, ListChecks, Moon, Note, Stack, Star, Tray, X, type Icon } from "@phosphor-icons/react";
+import { Archive, CalendarDots, ListChecks, Moon, Note, Repeat, Stack, Star, Tray, X, type Icon } from "@phosphor-icons/react";
 import { DndContext, KeyboardSensor, MouseSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -9,9 +9,10 @@ import { generateKeyBetween } from "fractional-indexing";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Result } from "neverthrow";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import type { PlannerTask } from "@lifeos/backend/types";
+import type { PlannerTask, TaskRepeat } from "@lifeos/backend/types";
 import { AreaDot, areaVar } from "@/components/lifeos/area";
 import { ActualMeter } from "@/components/lifeos/focus-timer";
+import { lowerFirst, repeatLabel } from "@/components/lifeos/repeat";
 import { ActualChip, DeadlineMarker, EstimateChip, TaskCheckbox } from "@/components/lifeos/task-row";
 import { Popover } from "@/components/ui/popover-panel";
 import { haptic } from "@/lib/haptics";
@@ -185,6 +186,16 @@ const ChecklistCount = ({ items }: { items: PlannerTask["checklist"] }) => (
     {items.filter((item) => item.done).length}/{items.length}
   </span>
 );
+
+export const RepeatMark = ({ repeat }: { repeat: Pick<TaskRepeat, "schedule" | "end"> }) => {
+  const text = `Repeats ${lowerFirst(repeatLabel(repeat.schedule, repeat.end))}`;
+  return (
+    <span title={text} className="inline-flex shrink-0 text-faint-foreground">
+      <Repeat className="size-3.5" aria-hidden="true" />
+      <span className="sr-only">, {lowerFirst(text)}</span>
+    </span>
+  );
+};
 
 const NotesText = ({ notes }: { notes: string }) =>
   notes && (
@@ -409,6 +420,7 @@ export const TaskItem = ({
                 </>
               )}
               {!open && task.checklist.length > 0 && <ChecklistCount items={task.checklist} />}
+              {!open && task.repeat?.active && <RepeatMark repeat={task.repeat} />}
             </span>
             {!open && ((show.context && task.context) || (task.deadline && !closed)) && (
               <span

@@ -4,7 +4,7 @@ import { DndContext, MouseSensor, closestCenter, useSensor, useSensors, type Col
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Archive, CalendarDots, CheckSquare, GearSix, Kanban, Plus, Shapes, Stack, Star, Trash, Tray, type Icon } from "@phosphor-icons/react";
+import { Archive, CalendarDots, CheckSquare, GearSix, Kanban, Plus, Shapes, Stack, Stamp, Star, Trash, Tray, type Icon } from "@phosphor-icons/react";
 import { generateKeyBetween } from "fractional-indexing";
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -356,6 +356,25 @@ const NewList = () => {
   );
 };
 
+const TemplatesLink = () => {
+  const { route } = useShell();
+  const here = route.kind === "templates";
+  return (
+    <RouteLink
+      to={{ kind: "templates" }}
+      aria-label="Templates"
+      title="Templates"
+      aria-current={here ? "page" : undefined}
+      className={cn(
+        "grid size-8 shrink-0 place-items-center rounded-lg transition-[background-color,color,scale] duration-(--dur-press) ease-out hover:bg-foreground/[0.06] hover:text-foreground active:scale-[0.94]",
+        here ? "bg-foreground/[0.06] text-foreground" : "text-faint-foreground",
+      )}
+    >
+      <Stamp weight="fill" className="size-4" aria-hidden="true" />
+    </RouteLink>
+  );
+};
+
 const SettingsItem = ({ via }: { via: Via }) => {
   const { today } = useShell();
   const attention = useNeedsAttention(today);
@@ -518,7 +537,10 @@ export const Sidebar = ({ view, via, notice }: { view: SidebarView | undefined; 
       <div className="mt-auto pt-2">
         <div className="flex items-center justify-between">
           <NewList />
-          <CalendarsButton />
+          <span className="flex items-center">
+            <TemplatesLink />
+            <CalendarsButton />
+          </span>
         </div>
         <SettingsItem via={via} />
       </div>

@@ -89,9 +89,10 @@ _Avoid_: sleep block, sleep event.
 
 **Shutdown**: the end-of-day review of a Day Plan: what got done, Actual Time by Area, what rolls to tomorrow.
 
-**Recurrence Rule**: a schedule that creates a fresh Task each time it comes due (every weekday, every 2 weeks on Thursday, the first Thursday of the month).
+**Recurrence Rule**: a schedule that creates a fresh Task each time it comes due (every weekday, every 2 weeks on Thursday, the last Friday of the month, every year on 29 February). An after-completion rule instead waits until its current Task is completed, then comes due a set number of days, weeks or months later. A rule can end on a date or after a number of occurrences. Each occurrence is its own Task, so editing a rule changes only the occurrences still to come. **Skip** passes over one due occurrence without creating it. Stopping a rule keeps every Task it made.
+_Avoid_: recurring task, repeat (as a noun in code, except the `repeat` link on a Task).
 
-**Template**: a saved Task shape (title, Estimate, Labels, Checklist Items) used to create new Tasks.
+**Template**: a saved Task shape (title, notes, Estimate, Labels, parent, Checklist titles, and a Deadline as days after the When) used to create new Tasks. A Task made from a Template, or by a Recurrence Rule, gets its own Checklist Items, so editing it never changes the Template.
 
 ## System
 
@@ -134,7 +135,7 @@ _Avoid_: admin, user (in code, `users` is only Convex Auth's table).
 
 **Agent Run**: one execution of an in-app agent. Its changes are recorded in Activity with the run as the actor, so the whole run can be undone.
 
-**Actor**: who made a change: Avi, an Agent Run, or Things (through a Things Import).
+**Actor**: who made a change: Avi, an Agent Run, Things (through a Things Import), or the Recurrence Rule generator.
 
 **Note**: a local-first document kept on each device and the Home Server, merged with a CRDT. Core holds only its searchable projection.
 

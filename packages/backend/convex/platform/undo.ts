@@ -5,11 +5,11 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { serialise } from "../../shared/result";
 import { fromStored, recordedFields, sameValue, startRecording } from "./activity";
 import { ownerMutation } from "./access";
-import type { Actor, RecordRef, UndoTarget } from "./tables";
+import { vEntityRef, type Actor, type EntityRef, type RecordRef, type UndoTarget } from "./tables";
 
 export type UndoError =
   | { readonly kind: "not_found" }
-  | { readonly kind: "not_undoable"; readonly reason: "undo" | "things" | "permanent" }
+  | { readonly kind: "not_undoable"; readonly reason: "undo" | "things" | "recurrence" | "permanent" }
   | { readonly kind: "already_undone" }
   | { readonly kind: "nothing_to_undo" }
   | { readonly kind: "run_active" }
@@ -19,6 +19,10 @@ type Expected = { entity: RecordRef; fields: Map<string, unknown> | null; exact:
 
 const DEPENDENT_SCAN_LIMIT = 100;
 const PERMANENT_ACTIONS = new Set(["trash.delete", "trash.empty", "label.remove"]);
+
+const LINKABLE_TABLES = new Set<string>(vEntityRef.members.map((member) => member.fields.table.value));
+
+const isLinkable = (entity: RecordRef): entity is EntityRef => LINKABLE_TABLES.has(entity.table);
 
 const changesOf = (ctx: MutationCtx, activityId: Id<"activity">) =>
   ctx.db
@@ -59,8 +63,7 @@ const expectedState = (changes: Doc<"activityChanges">[]) => {
 };
 
 const dependentsOf = async (ctx: MutationCtx, entity: RecordRef) => {
-  if (entity.table === "entityLinks" || entity.table === "calendars" || entity.table === "workingHours" || entity.table === "dayPlans" || entity.table === "features" || entity.table === "taskTrips")
-    return [];
+  if (!isLinkable(entity)) return [];
   const links = [
     ...(await ctx.db
       .query("entityLinks")
@@ -137,7 +140,9 @@ const undoActivity = async (ctx: MutationCtx, actor: Actor, activityId: Id<"acti
   const activity = await ctx.db.get("activity", activityId);
   if (!activity) return err<never, UndoError>({ kind: "not_found" });
   if (activity.undoes) return err<never, UndoError>({ kind: "not_undoable", reason: "undo" });
-  if (activity.actor.kind === "things") return err<never, UndoError>({ kind: "not_undoable", reason: "things" });
+  if (activity.actor.kind === "things" || activity.actor.kind === "recurrence") {
+    return err<never, UndoError>({ kind: "not_undoable", reason: activity.actor.kind });
+  }
   if (PERMANENT_ACTIONS.has(activity.action)) return err<never, UndoError>({ kind: "not_undoable", reason: "permanent" });
   if (await isUndone(ctx, activity)) return err<never, UndoError>({ kind: "already_undone" });
   return revert(ctx, actor, { kind: "activity", activityId }, await changesOf(ctx, activityId));

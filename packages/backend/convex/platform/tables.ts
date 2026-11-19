@@ -21,12 +21,15 @@ export const vRecordRef = v.union(
   v.object({ table: v.literal("dayPlans"), id: v.id("dayPlans") }),
   v.object({ table: v.literal("features"), id: v.id("features") }),
   v.object({ table: v.literal("taskTrips"), id: v.id("taskTrips") }),
+  v.object({ table: v.literal("templates"), id: v.id("templates") }),
+  v.object({ table: v.literal("recurrenceRules"), id: v.id("recurrenceRules") }),
 );
 
 export const vActor = v.union(
   v.object({ kind: v.literal("avi") }),
   v.object({ kind: v.literal("agentRun"), jobId: v.id("jobs") }),
   v.object({ kind: v.literal("things") }),
+  v.object({ kind: v.literal("recurrence") }),
 );
 
 const vStoredFields = v.record(v.string(), v.any());

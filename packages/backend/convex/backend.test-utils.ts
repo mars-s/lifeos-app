@@ -73,3 +73,12 @@ export const unwrap = <T, E>(result: SerialisedResult<T, E>) => {
   if (!result.ok) throw new Error(`Expected ok, got ${JSON.stringify(result.error)}`);
   return result.value;
 };
+
+export const refusal = async (call: Promise<unknown>) => {
+  const thrown: unknown = await call.then(
+    () => null,
+    (error: unknown) => error,
+  );
+  const data = thrown && typeof thrown === "object" && "data" in thrown ? thrown.data : null;
+  return data && typeof data === "object" && "kind" in data ? data.kind : thrown;
+};

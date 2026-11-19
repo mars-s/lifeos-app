@@ -22,6 +22,7 @@ import {
 import { endFocusOnClosedTask } from "./focus";
 import { requestTrip } from "../places/trips";
 import { requestSuggestion } from "./smartEstimates";
+import { followCompletion } from "./recurrence";
 import { vParent, vWhen } from "./tables";
 
 const CARD_LIMIT = 500;
@@ -153,6 +154,7 @@ export const complete = changeMutation({
       ok(task.status.kind === "completed" ? {} : { status: { kind: "completed" as const, at } }),
     );
     await endFocusOnClosedTask(ctx, record, at);
+    await followCompletion(ctx, record, [taskId], at);
     return result;
   },
 });
@@ -160,7 +162,11 @@ export const complete = changeMutation({
 export const uncomplete = changeMutation({
   action: "task.uncomplete",
   args: { taskId: v.id("tasks") },
-  handler: (ctx, { taskId }, record) => edit(ctx, record, taskId, () => ok({ status: { kind: "open" as const } })),
+  handler: async (ctx, { taskId }, record) => {
+    const result = await edit(ctx, record, taskId, () => ok({ status: { kind: "open" as const } }));
+    await followCompletion(ctx, record, [taskId], Date.now());
+    return result;
+  },
 });
 
 export const trash = changeMutation({

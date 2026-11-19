@@ -2,7 +2,8 @@ import { generateNKeysBetween } from "fractional-indexing";
 import type { MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { addDays, type IsoDate } from "../../shared/date";
-import type { Colour, Parent, Status, When } from "./tables";
+import { firstAfter } from "../../shared/recurrence";
+import type { Colour, Parent, Schedule, Status, Weekday, When } from "./tables";
 
 const DAY_MS = 86_400_000;
 
@@ -19,7 +20,10 @@ type SeedTask = {
   focus?: [minutesAgo: number, minutes: number][];
   thingsList?: "inbox" | "today" | "anytime" | "upcoming" | "someday";
   trashedAt?: number;
+  repeat?: Schedule;
 };
+
+const SEED_TIME_ZONE = "Australia/Sydney";
 
 const LOGBOOK_TITLES = [
   "Reply to Harry about the October invoice",
@@ -40,6 +44,8 @@ const LOGBOOK_TITLES = [
 ];
 
 const keys = (count: number) => generateNKeysBetween(null, null, count);
+
+const weekdayOf = (date: IsoDate) => (((new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7) + 1) as Weekday;
 
 const inArea = (areaId: Id<"areas">) => ({ kind: "area", areaId }) satisfies Parent;
 
@@ -151,14 +157,14 @@ export const seedPlanner = async (ctx: MutationCtx, today: IsoDate, now: number)
     { title: "Pick up the parcel from the post office", when: on(0), thingsList: "today" },
     { title: "Create Google Doc developer documentation for scanner.ai", when: anytime, deadline: day(0), estimate: 60, parent: inArea(chemwatch), thingsList: "today" },
     { title: "Cook dinner for Sam", when: on(0, true), parent: inArea(personal), thingsList: "today" },
-    { title: "Read two papers on retrieval", when: on(0, true), estimate: 60, parent: inProject(thesis, literature), labels: [deepWork], thingsList: "today" },
+    { title: "Read two papers on retrieval", when: on(0, true), estimate: 60, parent: inProject(thesis, literature), labels: [deepWork], thingsList: "today", repeat: { kind: "weekdays" } },
 
     { title: "Bill Harry for Paperless", when: on(1), deadline: day(1), estimate: 20, parent: inArea(paperless), labels: [admin], thingsList: "upcoming" },
     { title: "Weekly working bee prep", when: on(1), estimate: 30, parent: inArea(paperless), thingsList: "upcoming" },
     { title: "Return the hire car", when: on(2), parent: inArea(personal), labels: [errand], thingsList: "upcoming" },
     { title: "Tutorial marking, week 11", when: on(2), estimate: 120, parent: inArea(university), thingsList: "upcoming" },
     { title: "Sprint demo rehearsal", when: on(4), estimate: 45, parent: inProject(comp3900), thingsList: "upcoming" },
-    { title: "Send Gary the weekly sync notes", when: on(6), estimate: 15, parent: inArea(korvant), thingsList: "upcoming" },
+    { title: "Send Gary the weekly sync notes", when: on(6), estimate: 15, parent: inArea(korvant), thingsList: "upcoming", repeat: { kind: "weeks", every: 1, days: [weekdayOf(day(6))] } },
     { title: "Methods chapter: first full draft", when: on(9), deadline: day(14), estimate: 240, parent: inProject(thesis, methods), labels: [deepWork], thingsList: "upcoming" },
     { title: "Renew the domain names", when: on(13), deadline: day(16), estimate: 10, parent: inArea(paperless), labels: [admin], thingsList: "upcoming" },
     { title: "Final report submission", when: anytime, deadline: day(12), estimate: 180, parent: inProject(comp3900), thingsList: "anytime" },
@@ -186,7 +192,7 @@ export const seedPlanner = async (ctx: MutationCtx, today: IsoDate, now: number)
     { title: "Work from home deductions", when: anytime, estimate: 40, parent: inProject(tax), thingsList: "anytime" },
     { title: "Fix the bike's rear brake", when: anytime, parent: inArea(personal), labels: [errand], thingsList: "anytime" },
     { title: "Buy a birthday present for Dad", when: anytime, deadline: day(30), parent: inArea(personal), thingsList: "anytime" },
-    { title: "Back up the photo library", when: anytime, thingsList: "anytime" },
+    { title: "Back up the photo library", when: anytime, thingsList: "anytime", repeat: { kind: "afterCompletion", every: 2, unit: "week" } },
 
     { title: "Learn to make ramen from scratch", when: someday, parent: inArea(personal), thingsList: "someday" },
     { title: "Try the Blue Mountains overnight hike", when: someday, parent: inArea(personal), thingsList: "someday" },
@@ -248,6 +254,29 @@ export const seedPlanner = async (ctx: MutationCtx, today: IsoDate, now: number)
     for (const [itemIndex, [title, ticked]] of (task.checklist ?? []).entries()) {
       await ctx.db.insert("checklistItems", { taskId, title, done: ticked, order: itemKeys[itemIndex] ?? "a0" });
     }
+    if (task.repeat) {
+      const date = task.when?.kind === "scheduled" ? (task.when.date as IsoDate) : today;
+      const after = task.repeat.kind === "afterCompletion" ? null : firstAfter(task.repeat, date, date);
+      const ruleId = await ctx.db.insert("recurrenceRules", {
+        schedule: task.repeat,
+        end: { kind: "never" },
+        task: {
+          title: task.title,
+          notes: task.notes ?? "",
+          ...(task.estimate ? { estimateMinutes: task.estimate } : {}),
+          labelIds: task.labels ?? [],
+          parent: task.parent ?? { kind: "loose" },
+          checklist: (task.checklist ?? []).map(([title]) => title),
+        },
+        evening: task.when?.kind === "scheduled" && task.when.evening,
+        timeZone: SEED_TIME_ZONE,
+        anchor: date,
+        next: after ? { kind: "due", date: after } : { kind: "waiting" },
+        lastDate: date,
+        count: 1,
+      });
+      await ctx.db.patch("tasks", taskId, { repeat: { ruleId, date } });
+    }
     for (const [minutesAgo, minutes] of task.focus ?? []) {
       const start = now - minutesAgo * 60_000;
       await ctx.db.insert("focusSessions", {
@@ -259,6 +288,26 @@ export const seedPlanner = async (ctx: MutationCtx, today: IsoDate, now: number)
       });
     }
   }
+  const templateKeys = keys(2);
+  await ctx.db.insert("templates", {
+    title: "Weekly review",
+    notes: "Clear the Inbox, look over every Area, then plan the week.",
+    estimateMinutes: 30,
+    labelIds: [deepWork],
+    parent: inArea(personal),
+    checklist: ["Empty the Inbox", "Look over each Area", "Pick next week's three things"],
+    order: templateKeys[0] ?? "a0",
+  });
+  await ctx.db.insert("templates", {
+    title: "Invoice a client",
+    notes: "",
+    estimateMinutes: 20,
+    labelIds: [admin],
+    parent: inArea(paperless),
+    checklist: ["Log the hours", "Send the invoice"],
+    deadlineOffsetDays: 7,
+    order: templateKeys[1] ?? "a1",
+  });
   await ctx.db.insert("thingsSync", { syncedAt: now - 40_000, counts: { areas: 5, projects: 6, headings: 0, tasks: open.length, checklistItems: 0, labels: 0 } });
   return { areas: { university, paperless, korvant, personal, chemwatch }, projects: { thesis, comp3900, launch, onboarding, japan, tax } };
 };

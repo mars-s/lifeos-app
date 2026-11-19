@@ -9,16 +9,19 @@ import type { PlannerTask, SidebarView } from "@lifeos/backend/types";
 import { canUndo, undoLast } from "@/components/lifeos/undo";
 import { Kbd, KeyCombo } from "@/components/ui/key-hint";
 import { cn } from "@/lib/utils";
-import { drafts } from "../drafts";
+import { UPCOMING_DAYS } from "../dates";
+import { useChange } from "../changes";
+import { drafts, isDraftTask } from "../drafts";
 import { useActiveFocus, useFocusActions } from "../focus";
 import { useQuietView, valueOf } from "../hooks";
 import { useNewTask } from "../new-task";
+import { repeatActions } from "../repeat-actions";
 import type { Route } from "../route";
-import { UPCOMING_DAYS } from "../screens/upcoming";
 import { selection } from "../selection";
 import { useSelectionActions } from "../selection-actions";
 import { replayWelcome } from "../settings/welcome-replay";
 import { useShell } from "../shell-context";
+import { useTemplateActions } from "../template-actions";
 import { useFeatures } from "../settings/feature-state";
 import type { IsoDate } from "@lifeos/backend/date";
 import { BarDialog } from "./dialog";
@@ -31,10 +34,12 @@ import {
   goItems,
   moreItems,
   moveItems,
+  repeatItems,
   replayWelcomeItem,
   targetItems,
   targetLabel,
   taskItem,
+  templateItems,
   whenItems,
   type BarItem,
   type Page,
@@ -44,13 +49,14 @@ import { readRecents, rememberRecent } from "./recents";
 import { bar } from "./store";
 import { planCommands } from "../planner/commands";
 
-const PAGE_TITLE: Record<Exclude<Page, "root">, string> = { when: "When", deadline: "Deadline", estimate: "Estimate", move: "Move to" };
+const PAGE_TITLE: Record<Exclude<Page, "root">, string> = { when: "When", deadline: "Deadline", estimate: "Estimate", move: "Move to", repeat: "Repeat" };
 const PAGE_PLACEHOLDER: Record<Page, string> = {
   root: "Search Tasks, Projects, Areas and actions…",
   when: "Today, fri, next week, 12 dec…",
   deadline: "fri, next week, 12 dec…",
   estimate: "45, 1h30, 2h…",
   move: "Search Areas and Projects…",
+  repeat: "Every day, weekday, month…",
 };
 const TASK_LIMIT = 7;
 const CONTAINER_LIMIT = 5;
@@ -119,6 +125,9 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
   const focusDo = useFocusActions();
   const focus = useActiveFocus();
   const newTask = useNewTask(sidebar);
+  const change = useChange();
+  const templateDo = useTemplateActions();
+  const templates = useQuietView(api.planner.templates.list, {});
   const features = useFeatures();
   const index = useTaskIndex(today);
   const [targets, setTargets] = useState(initialTargets);
@@ -144,8 +153,23 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
     if (page === "deadline") return rank(wanted, deadlineItems(targets, today, wanted, act), (item) => item.text, PAGE_LIMIT).map(({ item }) => item);
     if (page === "estimate") return rank(wanted, estimateItems(targets, wanted, act), (item) => item.text, PAGE_LIMIT).map(({ item }) => item);
     if (page === "move") return rank(wanted, moveItems(targets, sidebar, act), (item) => item.text, PAGE_LIMIT).map(({ item }) => item);
+    const [one, ...others] = targets;
+    const repeatable = one && others.length === 0 && one.status.kind === "open" && !isDraftTask(one._id) ? one : undefined;
+    if (page === "repeat") {
+      return repeatable
+        ? rank(wanted, repeatItems(repeatable, today as IsoDate, repeatActions(change, repeatable, today)), (item) => item.text, PAGE_LIMIT).map(({ item }) => item)
+        : [];
+    }
 
-    const onTargets = targetItems(targets, { act, focus, startFocus: (task) => focusDo.start(task, "keyboard"), open: openTarget });
+    const onTargets = targetItems(targets, {
+      act,
+      focus,
+      startFocus: (task) => focusDo.start(task, "keyboard"),
+      open: openTarget,
+      canRepeat: repeatable !== undefined,
+      saveTemplate: (task) => templateDo.save(task, today),
+    });
+    const fromTemplates = templateItems(templates ?? [], (template) => newTask(true, undefined, template));
     const goTo = goItems(go);
     const create = createItems({
       inApp,
@@ -202,7 +226,7 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
       rank(wanted, containers.projects, (item) => item.text, CONTAINER_LIMIT),
       rank(wanted, containers.areas, (item) => item.text, CONTAINER_LIMIT),
       rank(wanted, goTo, (item) => item.text, CONTAINER_LIMIT),
-      rank(wanted, [...create, ...more, ...review], (item) => item.text, CONTAINER_LIMIT),
+      rank(wanted, [...create, ...fromTemplates, ...more, ...review], (item) => item.text, CONTAINER_LIMIT),
     ].filter((pool) => pool.length > 0);
     const [first, ...rest] = pools;
     const leads = targets.length > 0 && first?.[0]?.item.group === onTargets[0]?.group;
@@ -219,7 +243,7 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
         run: () => bar.capture(wanted),
       } satisfies BarItem,
     ];
-  }, [act, focus, focusDo, index, navigate, newTask, page, query, route, setDraft, setOpenCard, sidebar, features, targets, today]);
+  }, [act, change, focus, focusDo, index, navigate, newTask, page, query, route, setDraft, setOpenCard, sidebar, features, targets, templateDo, templates, today]);
 
   const highlighted = items.find((item) => item.id === active);
 

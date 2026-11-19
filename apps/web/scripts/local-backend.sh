@@ -15,7 +15,7 @@ import { createFunctionHandle } from "convex/server";
 import { v } from "convex/values";
 import { components, internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
-import { localIsoDate } from "../shared/date";
+import type { IsoDate } from "../shared/date";
 import { activeSession } from "./planner/focus";
 import { seedPlanner } from "./planner/seed.test-utils";
 import { seedTimebox } from "./planner/planSeed.test-utils";
@@ -31,6 +31,8 @@ const SEEDED = [
   "checklistItems",
   "workBlocks",
   "focusSessions",
+  "recurrenceRules",
+  "templates",
   "thingsSync",
   "activity",
   "activityChanges",

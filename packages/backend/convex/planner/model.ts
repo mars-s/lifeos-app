@@ -4,9 +4,20 @@ import type { QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { parseIsoDate } from "../../shared/date";
 import { MAX_ESTIMATE_MINUTES } from "../../shared/estimate";
+import type { ScheduleError } from "../../shared/recurrence";
 import type { Parent, When } from "./tables";
 
-type PlannerTable = "areas" | "projects" | "headings" | "labels" | "tasks" | "checklistItems" | "workBlocks" | "focusSessions";
+export type PlannerTable =
+  | "areas"
+  | "projects"
+  | "headings"
+  | "labels"
+  | "tasks"
+  | "checklistItems"
+  | "workBlocks"
+  | "focusSessions"
+  | "templates"
+  | "recurrenceRules";
 
 export type PlannerError =
   | { readonly kind: "not_found"; readonly table: PlannerTable; readonly id: string }
@@ -21,6 +32,9 @@ export type PlannerError =
   | { readonly kind: "heading_outside_project"; readonly headingId: string }
   | { readonly kind: "invalid_block"; readonly reason: "start" | "minutes" | "time_zone" | "overlap" }
   | { readonly kind: "invalid_plan"; readonly reason: "range" | "time_zone" | "order" | "goal" }
+  | ScheduleError
+  | { readonly kind: "stale_occurrence"; readonly ruleId: string; readonly date: string }
+  | { readonly kind: "invalid_template"; readonly reason: "checklist" | "deadline_offset" }
   | {
       readonly kind: "invalid_focus";
       readonly reason: "minutes" | "task_closed" | "not_active" | "not_ended" | "not_timed" | "not_pomodoro" | "on_break";
@@ -102,4 +116,17 @@ export const lastTaskOrder = async (ctx: QueryCtx, parent: Parent) => {
             .order("desc")
             .first();
   return last?.order;
+};
+
+const isLive = (record: { trashedAt?: number } | null) => record !== null && record.trashedAt === undefined;
+
+export const liveHome = async (ctx: QueryCtx, parent: Parent) => {
+  if (parent.kind === "loose") return parent;
+  if (parent.kind === "area") return isLive(await ctx.db.get("areas", parent.areaId)) ? parent : ({ kind: "loose" } satisfies Parent);
+  const project = await ctx.db.get("projects", parent.projectId);
+  if (isLive(project)) return parent;
+  const areaId = project?.areaId;
+  return areaId && isLive(await ctx.db.get("areas", areaId))
+    ? ({ kind: "area", areaId } satisfies Parent)
+    : ({ kind: "loose" } satisfies Parent);
 };

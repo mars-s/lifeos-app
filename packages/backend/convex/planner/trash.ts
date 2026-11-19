@@ -6,7 +6,7 @@ import { ownerQuery } from "../platform/access";
 import type { Recorder } from "../platform/activity";
 import { changeMutation } from "../platform/change";
 import { restoreArea, restoreProject } from "./containers";
-import { keyAfter, lastTaskOrder, type PlannerError } from "./model";
+import { keyAfter, lastTaskOrder, liveHome, type PlannerError } from "./model";
 import type { Parent } from "./tables";
 
 const LIST_LIMIT = 500;
@@ -150,20 +150,8 @@ export const list = ownerQuery({
   },
 });
 
-const liveHome = async (ctx: QueryCtx, task: Doc<"tasks">) => {
-  if (task.parent.kind === "loose") return task.parent;
-  if (task.parent.kind === "area") {
-    const area = await ctx.db.get("areas", task.parent.areaId);
-    return area && !isTrashed(area) ? task.parent : ({ kind: "loose" } satisfies Parent);
-  }
-  const project = await ctx.db.get("projects", task.parent.projectId);
-  if (project && !isTrashed(project)) return task.parent;
-  const area = project?.areaId ? await ctx.db.get("areas", project.areaId) : null;
-  return area && !isTrashed(area) ? ({ kind: "area", areaId: area._id } satisfies Parent) : ({ kind: "loose" } satisfies Parent);
-};
-
 const restoreTask = async (ctx: MutationCtx, record: Recorder, task: Doc<"tasks">) => {
-  const home = await liveHome(ctx, task);
+  const home = await liveHome(ctx, task.parent);
   if (home === task.parent) return record.patch("tasks", task._id, { trashedAt: undefined });
   return record.patch("tasks", task._id, { trashedAt: undefined, parent: home, order: keyAfter(await lastTaskOrder(ctx, home)) });
 };

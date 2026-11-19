@@ -66,12 +66,60 @@ export const vSuggestionOutcome = v.union(
   v.object({ kind: v.literal("failed"), error: vSmartEstimateError, inputsHash: v.string(), at: v.number() }),
 );
 
+export const vWeekday = v.union(...([1, 2, 3, 4, 5, 6, 7] as const).map((day) => v.literal(day)));
+
+export const vMonthDay = v.union(
+  v.object({ kind: v.literal("day"), day: v.number() }),
+  v.object({ kind: v.literal("weekday"), nth: v.union(...([1, 2, 3, 4, -1] as const).map((nth) => v.literal(nth))), weekday: vWeekday }),
+);
+
+export const vSchedule = v.union(
+  v.object({ kind: v.literal("days"), every: v.number() }),
+  v.object({ kind: v.literal("weekdays") }),
+  v.object({ kind: v.literal("weeks"), every: v.number(), days: v.array(vWeekday) }),
+  v.object({ kind: v.literal("months"), every: v.number(), on: vMonthDay }),
+  v.object({ kind: v.literal("years"), every: v.number(), month: v.number(), day: v.number() }),
+  v.object({
+    kind: v.literal("afterCompletion"),
+    every: v.number(),
+    unit: v.union(v.literal("day"), v.literal("week"), v.literal("month")),
+  }),
+);
+
+export const vRepeatEnd = v.union(
+  v.object({ kind: v.literal("never") }),
+  v.object({ kind: v.literal("on"), date: v.string() }),
+  v.object({ kind: v.literal("after"), count: v.number() }),
+);
+
+export const vRepeatNext = v.union(
+  v.object({ kind: v.literal("due"), date: v.string() }),
+  v.object({ kind: v.literal("waiting") }),
+  v.object({ kind: v.literal("ended") }),
+);
+
+export const vTaskShape = v.object({
+  title: v.string(),
+  notes: v.string(),
+  estimateMinutes: v.optional(v.number()),
+  labelIds: v.array(v.id("labels")),
+  parent: vParent,
+  checklist: v.array(v.string()),
+  deadlineOffsetDays: v.optional(v.number()),
+});
+
 export type When = Infer<typeof vWhen>;
 export type Status = Infer<typeof vStatus>;
 export type Parent = Infer<typeof vParent>;
 export type Colour = Infer<typeof vColour>;
 export type SmartEstimateError = Infer<typeof vSmartEstimateError>;
 export type SuggestionOutcome = Infer<typeof vSuggestionOutcome>;
+export type Weekday = Infer<typeof vWeekday>;
+export type MonthDay = Infer<typeof vMonthDay>;
+export type Schedule = Infer<typeof vSchedule>;
+export type RepeatEnd = Infer<typeof vRepeatEnd>;
+export type RepeatNext = Infer<typeof vRepeatNext>;
+export type TaskShape = Infer<typeof vTaskShape>;
 
 const areaFields = {
   title: v.string(),
@@ -157,6 +205,7 @@ export const plannerTables = {
     .index("by_order", ["order"]),
   tasks: defineTable({
     ...taskFields,
+    repeat: v.optional(v.object({ ruleId: v.id("recurrenceRules"), date: v.string() })),
     things: v.optional(thingsLink(vTaskBase).extend({ todayIndex: v.number() })),
   })
     .index("by_things_id", ["things.id"])
@@ -165,7 +214,20 @@ export const plannerTables = {
     .index("by_trashed_closed_at", ["trashedAt", "status.at"])
     .index("by_project_order", ["parent.projectId", "order"])
     .index("by_area_order", ["parent.areaId", "order"])
-    .index("by_parent_kind_order", ["parent.kind", "order"]),
+    .index("by_parent_kind_order", ["parent.kind", "order"])
+    .index("by_repeat", ["repeat.ruleId", "repeat.date"]),
+  recurrenceRules: defineTable({
+    schedule: vSchedule,
+    end: vRepeatEnd,
+    task: vTaskShape,
+    evening: v.boolean(),
+    timeZone: v.string(),
+    anchor: v.string(),
+    next: vRepeatNext,
+    lastDate: v.string(),
+    count: v.number(),
+  }).index("by_next", ["next.kind", "next.date"]),
+  templates: defineTable({ ...vTaskShape.fields, order: v.string() }).index("by_order", ["order"]),
   checklistItems: defineTable({ ...checklistItemFields, things: v.optional(thingsLink(vChecklistItemBase)) })
     .index("by_things_id", ["things.id"])
     .index("by_task_order", ["taskId", "order"]),

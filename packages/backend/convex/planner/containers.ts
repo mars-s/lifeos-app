@@ -1,6 +1,7 @@
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { Recorder } from "../platform/activity";
+import { followCompletion } from "./recurrence";
 import { colours } from "./tables";
 
 const CONTAINER_LIMIT = 200;
@@ -81,12 +82,13 @@ export const restoreArea = async (ctx: MutationCtx, record: Recorder, area: Doc<
 };
 
 export const closeProjectTasks = async (ctx: MutationCtx, record: Recorder, projectId: Id<"projects">, at: number) => {
-  for (const task of await projectTasks(ctx, projectId))
-    if (task.trashedAt === undefined && task.status.kind === "open")
-      await record.patch("tasks", task._id, { status: { kind: "completed", at } });
+  const closing = (await projectTasks(ctx, projectId)).filter((task) => task.trashedAt === undefined && task.status.kind === "open");
+  for (const task of closing) await record.patch("tasks", task._id, { status: { kind: "completed", at } });
+  await followCompletion(ctx, record, closing.map((task) => task._id), at);
 };
 
 export const reopenProjectTasks = async (ctx: MutationCtx, record: Recorder, projectId: Id<"projects">, at: number) => {
-  for (const task of await projectTasks(ctx, projectId))
-    if (task.status.kind === "completed" && task.status.at === at) await record.patch("tasks", task._id, { status: { kind: "open" } });
+  const reopening = (await projectTasks(ctx, projectId)).filter((task) => task.status.kind === "completed" && task.status.at === at);
+  for (const task of reopening) await record.patch("tasks", task._id, { status: { kind: "open" } });
+  await followCompletion(ctx, record, reopening.map((task) => task._id), Date.now());
 };
