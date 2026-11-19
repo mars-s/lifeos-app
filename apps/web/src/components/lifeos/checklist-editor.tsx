@@ -26,6 +26,7 @@ type ItemActions = {
   onEdit: (id: string, title: string) => void;
   onTick: (id: string, done: boolean) => void;
   onRemove: (id: string) => void;
+  marker?: (item: ChecklistEntry) => React.ReactNode;
 };
 
 const SORT_TRANSITION = { duration: 200, easing: CSS_EASE_OUT };
@@ -35,7 +36,7 @@ const focusSibling = (from: HTMLElement, step: 1 | -1) => {
   fields[fields.indexOf(from as HTMLInputElement) + step]?.focus();
 };
 
-const ItemRow = ({ item, onEdit, onTick, onRemove }: { item: ChecklistEntry } & ItemActions) => {
+const ItemRow = ({ item, onEdit, onTick, onRemove, marker }: { item: ChecklistEntry } & ItemActions) => {
   const reduce = useReducedMotion();
   const [draft, setDraft] = useState<string | null>(null);
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
@@ -69,7 +70,7 @@ const ItemRow = ({ item, onEdit, onTick, onRemove }: { item: ChecklistEntry } & 
           isDragging && "scale-[1.015] bg-popover shadow-lift",
         )}
       >
-        <TaskCheckbox size="sm" checked={item.done} onCheckedChange={(done) => onTick(item.id, done)} label={`Tick ${item.title}`} />
+        {marker ? marker(item) : <TaskCheckbox size="sm" checked={item.done} onCheckedChange={(done) => onTick(item.id, done)} label={`Tick ${item.title}`} />}
         <span className="relative min-w-0 flex-1">
           <span
             aria-hidden="true"

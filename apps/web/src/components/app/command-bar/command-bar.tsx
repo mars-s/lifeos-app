@@ -22,7 +22,7 @@ import { useSelectionActions } from "../selection-actions";
 import { replayWelcome } from "../settings/welcome-replay";
 import { useShell } from "../shell-context";
 import { useTemplateActions } from "../template-actions";
-import { useFeatures } from "../settings/feature-state";
+import { useFeatureOn, useFeatures } from "../settings/feature-state";
 import type { IsoDate } from "@lifeos/backend/date";
 import { BarDialog } from "./dialog";
 import { fuzzyScore, rank } from "./fuzzy";
@@ -128,6 +128,7 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
   const change = useChange();
   const templateDo = useTemplateActions();
   const templates = useQuietView(api.planner.templates.list, {});
+  const templatesOn = useFeatureOn("templates");
   const features = useFeatures();
   const index = useTaskIndex(today);
   const [targets, setTargets] = useState(initialTargets);
@@ -167,9 +168,9 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
       startFocus: (task) => focusDo.start(task, "keyboard"),
       open: openTarget,
       canRepeat: repeatable !== undefined,
-      saveTemplate: (task) => templateDo.save(task, today),
+      saveTemplate: templatesOn ? (task) => templateDo.save(task, today) : undefined,
     });
-    const fromTemplates = templateItems(templates ?? [], (template) => newTask(true, undefined, template));
+    const fromTemplates = templatesOn ? templateItems(templates ?? [], (template) => newTask(true, undefined, template)) : [];
     const goTo = goItems(go);
     const create = createItems({
       inApp,
@@ -243,7 +244,7 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
         run: () => bar.capture(wanted),
       } satisfies BarItem,
     ];
-  }, [act, change, focus, focusDo, index, navigate, newTask, page, query, route, setDraft, setOpenCard, sidebar, features, targets, templateDo, templates, today]);
+  }, [act, change, focus, focusDo, index, navigate, newTask, page, query, route, setDraft, setOpenCard, sidebar, features, targets, templateDo, templates, templatesOn, today]);
 
   const highlighted = items.find((item) => item.id === active);
 

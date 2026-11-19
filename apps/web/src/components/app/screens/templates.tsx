@@ -18,10 +18,11 @@ import { instant, springLayout } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
 import { both, patchLabelColour, patchLabelList, useChange } from "../changes";
 import { useQuietView, useView } from "../hooks";
-import { ListPage, ListSkeleton } from "../list-page";
+import { ListSkeleton } from "../list-page";
 import { useShell } from "../shell-context";
 import { NotesField } from "../task-card-body";
 import { isOptimistic } from "../task-actions";
+import { useFeatures } from "../settings/feature-state";
 import { editTemplates, useTemplateActions } from "../template-actions";
 
 type Label = PlannerTask["labels"][number];
@@ -454,42 +455,48 @@ const TemplateItem = ({
   );
 };
 
-export const TemplatesScreen = () => {
+export const TemplatesList = () => {
   const { today } = useShell();
   const templates = useView(api.planner.templates.list, {});
   const labels = useQuietView(api.planner.labels.list, {}) ?? [];
   const sidebar = useQuietView(api.planner.sidebar.get, { date: today });
+  const on = useFeatures().of("templates")?.enabled ?? true;
   const [openId, setOpenId] = useState<string | null>(null);
+  if (!templates) return <ListSkeleton />;
+  if (!on)
+    return (
+      <EmptyState
+        title="Templates are off"
+        hint={
+          templates.length === 0
+            ? "Switch them on to save a Task's shape and start new Tasks from it."
+            : `Your ${templates.length === 1 ? "Template is" : `${templates.length} Templates are`} kept, and come back when you switch Templates on.`
+        }
+        className="py-16"
+      />
+    );
+  if (templates.length === 0)
+    return (
+      <EmptyState
+        title="No Templates yet"
+        hint="Right-click a Task and choose Save as Template. Its notes, Checklist, Estimate, Labels and home come along."
+        className="py-16"
+      />
+    );
   return (
-    <ListPage
-      title="Templates"
-      icon={Stamp}
-      subtitle="Task shapes to start from. Find one in the command bar, or right-click an empty part of any list."
-    >
-      {!templates ? (
-        <ListSkeleton />
-      ) : templates.length === 0 ? (
-        <EmptyState
-          title="No Templates yet"
-          hint="Right-click a Task and choose Save as Template. Its notes, Checklist, Estimate, Labels and home come along."
-          className="py-16"
-        />
-      ) : (
-        <ul className="-mx-3">
-          <AnimatePresence initial={false}>
-            {templates.map((template) => (
-              <TemplateItem
-                key={template._id}
-                template={template}
-                open={openId === template._id}
-                onOpen={(open) => setOpenId(open ? template._id : null)}
-                labels={labels}
-                sidebar={sidebar?.ok ? sidebar.value : undefined}
-              />
-            ))}
-          </AnimatePresence>
-        </ul>
-      )}
-    </ListPage>
+    <ul className="-mx-3">
+      <AnimatePresence initial={false}>
+        {templates.map((template) => (
+          <TemplateItem
+            key={template._id}
+            template={template}
+            open={openId === template._id}
+            onOpen={(open) => setOpenId(open ? template._id : null)}
+            labels={labels}
+            sidebar={sidebar?.ok ? sidebar.value : undefined}
+          />
+        ))}
+      </AnimatePresence>
+    </ul>
   );
 };

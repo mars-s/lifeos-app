@@ -10,7 +10,6 @@ import { LogbookScreen } from "./logbook";
 import { PlannerScreen } from "./planner";
 import { FeatureScreen } from "../settings/features";
 import { SettingsScreen } from "../settings/settings-screen";
-import { TemplatesScreen } from "./templates";
 import { InboxScreen, TodayScreen } from "./today";
 import { TrashScreen } from "./trash";
 
@@ -47,8 +46,6 @@ export const Screen = ({ route, sidebar, sidebarFailed }: { route: Route; sideba
           {route.feature ? <FeatureScreen feature={route.feature} /> : <SettingsScreen />}
         </ViewTransition>
       );
-    case "templates":
-      return <TemplatesScreen />;
     case "missing":
       return <Missing />;
     case "area":

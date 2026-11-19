@@ -64,7 +64,7 @@ export const useNewTask = (sidebar: SidebarView | undefined) => {
   return useMemo(
     () => (byKey: boolean, into?: Route, template?: TemplateRow) => {
       const wanted = into ?? route;
-      const home: Route = wanted.kind === "logbook" || wanted.kind === "trash" || wanted.kind === "templates" || wanted.kind === "missing" ? { kind: "inbox" } : wanted;
+      const home: Route = wanted.kind === "logbook" || wanted.kind === "trash" || wanted.kind === "missing" ? { kind: "inbox" } : wanted;
       const context = newTaskFor(home, today);
       const moves = routeHref(home) !== routeHref(route);
       if (moves) navigate(home, "keyboard");

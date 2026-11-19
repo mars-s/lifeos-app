@@ -1,12 +1,13 @@
 "use client";
 
-import { ListChecks, Stamp } from "@phosphor-icons/react";
+import { ListChecks, Sparkle, Stamp } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "@lifeos/backend/api";
 import type { IsoDate } from "@lifeos/backend/date";
 import type { PlannerTask } from "@lifeos/backend/types";
 import { AreaDot } from "@/components/lifeos/area";
+import { StepsPreview, useBreakIntoSteps } from "./break-into-steps";
 import { ChecklistEditor } from "@/components/lifeos/checklist-editor";
 import { DeadlinePicker, WhenPicker } from "@/components/lifeos/date-pickers";
 import { LabelPicker } from "@/components/lifeos/label-picker";
@@ -22,6 +23,7 @@ import { Linkified, TitleLinks } from "./linkified";
 import { useRepeatActions } from "./repeat-actions";
 import { TaskEstimateField } from "./smart-estimate";
 import { isOptimistic, useTaskActions } from "./task-actions";
+import { useFeatureOn } from "./settings/feature-state";
 import { useTemplateActions } from "./template-actions";
 import { TaskTrip } from "./trip";
 
@@ -135,6 +137,9 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
   const actions = useTaskActions(task, today);
   const repeatDo = useRepeatActions(task, today);
   const templateDo = useTemplateActions();
+  const templatesOn = useFeatureOn("templates");
+  const steps = useBreakIntoSteps(task);
+  const breakIntoSteps = steps.available ? steps.ask : () => setComposing(true);
   const repeat = task.repeat?.active ? task.repeat : undefined;
   const labels = useQuietView(api.planner.labels.list, {}) ?? task.labels;
   const items = useStableKeys(task.checklist);
@@ -173,6 +178,7 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
           </motion.div>
         )}
       </AnimatePresence>
+      <StepsPreview steps={steps} />
       {task.workBlocks.length > 0 && (
         <WorkBlockList
           colour={task.area?.colour}
@@ -190,7 +196,7 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
         />
       )}
       <TaskTrip task={task} />
-      <TaskEstimateField task={task} onChange={(minutes) => void actions.setEstimate(minutes)} onSteps={() => setComposing(true)} />
+      <TaskEstimateField task={task} onChange={(minutes) => void actions.setEstimate(minutes)} onSteps={breakIntoSteps} />
       <FocusSection task={task} today={today} />
       <div className="-ml-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1.5">
         <WhenPicker when={task.when} label={whenLabel(task.when, today)} today={today} onChange={actions.setWhen} />
@@ -224,6 +230,7 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
             }}
           />
           {!hasChecklist && <ToolButton icon={ListChecks} label="Checklist" onClick={() => setComposing(true)} />}
+          {steps.available && <ToolButton icon={Sparkle} label="Break into steps" onClick={steps.ask} />}
           <RepeatPicker
             repeat={repeat && { schedule: repeat.schedule, end: repeat.end, next: repeat.next, settled: !isOptimistic(repeat.ruleId) }}
             base={baseDate(task.when, today as IsoDate)}
@@ -232,7 +239,7 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
             onStop={repeatDo.stop}
             onSkip={repeatDo.skip}
           />
-          <ToolButton icon={Stamp} label="Save as Template" onClick={() => templateDo.save(task, today)} />
+          {templatesOn && <ToolButton icon={Stamp} label="Save as Template" onClick={() => templateDo.save(task, today)} />}
           <DeadlinePicker
             deadline={task.deadline}
             label={deadline?.label}

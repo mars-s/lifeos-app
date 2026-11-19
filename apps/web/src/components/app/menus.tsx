@@ -70,6 +70,7 @@ import { useSelectionActions, type MoveTarget } from "./selection-actions";
 import { planCommands } from "./planner/commands";
 import { useShell } from "./shell-context";
 import { isOptimistic } from "./task-actions";
+import { useFeatureOn } from "./settings/feature-state";
 import { useTemplateActions } from "./template-actions";
 import { useTrashActions } from "./trash-actions";
 
@@ -187,6 +188,7 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
   const [pointPick, setPointPick] = useState<PointPick | null>(null);
   const occurrences = valueOf(useQuietView(api.planner.recurrence.upcoming, route.kind === "upcoming" ? { date: today, days: UPCOMING_DAYS } : "skip"));
   const occurrenceDo = useOccurrenceActions();
+  const templatesOn = useFeatureOn("templates");
   const templates = useQuietView(api.planner.templates.list, {}) ?? [];
   const templateDo = useTemplateActions();
   useRegisteredTasks();
@@ -463,7 +465,7 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
                 } satisfies MenuItem,
               ]
             : []),
-          ...(one ? [{ id: "template", label: "Save as Template", icon: Stamp, onSelect: () => templateDo.save(one, today) } satisfies MenuItem] : []),
+          ...(one && templatesOn ? [{ id: "template", label: "Save as Template", icon: Stamp, onSelect: () => templateDo.save(one, today) } satisfies MenuItem] : []),
           ...(touch && one
             ? [{ id: "select", label: "Select More", icon: SelectionAll, onSelect: () => selection.only(key) } satisfies MenuItem]
             : []),
@@ -677,20 +679,24 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
     {
       items: [
         { id: "new-task", label: "New Task", icon: CheckSquare, shortcut: "N", onSelect: () => newTask(false) },
-        {
-          id: "from-template",
-          type: "submenu",
-          label: "New Task from Template",
-          icon: Stamp,
-          disabled: templates.length === 0,
-          items: templates.map((template) => ({
-            id: template._id,
-            label: template.title,
-            leading: template.area ? <AreaDot colour={template.area.colour} className="size-2" /> : undefined,
-            disabled: isOptimistic(template._id),
-            onSelect: () => newTask(false, undefined, template),
-          })),
-        },
+        ...(templatesOn
+          ? [
+              {
+                id: "from-template",
+                type: "submenu",
+                label: "New Task from Template",
+                icon: Stamp,
+                disabled: templates.length === 0,
+                items: templates.map((template) => ({
+                  id: template._id,
+                  label: template.title,
+                  leading: template.area ? <AreaDot colour={template.area.colour} className="size-2" /> : undefined,
+                  disabled: isOptimistic(template._id),
+                  onSelect: () => newTask(false, undefined, template),
+                })),
+              } satisfies MenuItem,
+            ]
+          : []),
         {
           id: "new-project",
           label: "New Project",
@@ -700,7 +706,9 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
         { id: "new-area", label: "New Area", icon: Shapes, onSelect: () => setDraft({ kind: "area" }) },
       ],
     },
-    { items: [{ id: "templates", label: "Templates", icon: Stamp, onSelect: () => navigate({ kind: "templates" }, viaKeyboard ? "keyboard" : "pointer") }] },
+    ...(templatesOn
+      ? [{ items: [{ id: "templates", label: "Templates", icon: Stamp, onSelect: () => navigate({ kind: "settings", feature: "templates" }, viaKeyboard ? "keyboard" : "pointer") }] }]
+      : []),
   ];
 
   const groupsFor: () => MenuGroup[] = () => {

@@ -262,7 +262,7 @@ export const targetItems = (
     startFocus: (task: PlannerTask) => void;
     open: (task: PlannerTask) => void;
     canRepeat: boolean;
-    saveTemplate: (task: PlannerTask) => void;
+    saveTemplate: ((task: PlannerTask) => void) | undefined;
   },
 ) => {
   if (tasks.length === 0) return [];
@@ -292,7 +292,7 @@ export const targetItems = (
           }),
         ]
       : []),
-    ...(one ? [item("template", "Save as Template", <Stamp weight="fill" aria-hidden="true" className={muted} />, { run: () => deps.saveTemplate(one), text: "save as template" })] : []),
+    ...(one && deps.saveTemplate ? [item("template", "Save as Template", <Stamp weight="fill" aria-hidden="true" className={muted} />, { run: () => deps.saveTemplate?.(one), text: "save as template" })] : []),
     ...(one && one.status.kind === "open" && deps.focus?.taskId !== one._id
       ? [item("focus", "Start Focus Session", <Timer weight="fill" aria-hidden="true" className={muted} />, { keys: "f", run: () => deps.startFocus(one) })]
       : []),
@@ -342,15 +342,7 @@ export const goItems = (go: (route: Route) => void) => {
       run: () => go({ kind: "settings", feature }),
     } satisfies BarItem;
   });
-  const templates = {
-    id: "go:templates",
-    group: "Go to",
-    label: "Templates",
-    text: "templates go to",
-    leading: <Stamp weight="fill" aria-hidden="true" className={`${ICON} text-muted-foreground`} />,
-    run: () => go({ kind: "templates" }),
-  } satisfies BarItem;
-  return [...lists, templates, settings, ...features];
+  return [...lists, settings, ...features];
 };
 
 export const createItems = (deps: {

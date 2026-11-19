@@ -12,7 +12,8 @@ export type FeatureState = { feature: FeatureId; enabled: boolean; settings: Fea
 export const STATUS_WORDS = {
   off: () => "Off",
   ready: () => "On",
-  needs_key: () => "Needs an OpenAI key",
+  needs_key: () => "Needs a key",
+  needs_feature: () => "Needs AI",
   needs_setup: () => "Needs your home address",
 } satisfies { [K in FeatureStatus["kind"]]: () => string };
 
@@ -23,17 +24,27 @@ const withFeature = (feature: FeatureId, change: (state: FeatureState) => Featur
   if (states) store.setQuery(api.platform.features.list, {}, states.map((state) => (state.feature === feature ? change(state) : state)));
 };
 
+const hideTrips = (store: OptimisticLocalStore) => {
+  for (const { args } of store.getAllQueries(api.places.trips.forTask)) store.setQuery(api.places.trips.forTask, args, null);
+};
+
 const WHEN_OFF = {
-  smartEstimates: (store: OptimisticLocalStore) => {
+  ai: (store: OptimisticLocalStore) => {
     for (const { args } of store.getAllQueries(api.planner.smartEstimates.forTask)) store.setQuery(api.planner.smartEstimates.forTask, args, { kind: "presets" });
+    for (const { args } of store.getAllQueries(api.ai.steps.forTask)) store.setQuery(api.ai.steps.forTask, args, { kind: "off" });
+    hideTrips(store);
   },
-  places: (store: OptimisticLocalStore) => {
-    for (const { args } of store.getAllQueries(api.places.trips.forTask)) store.setQuery(api.places.trips.forTask, args, null);
-  },
+  places: hideTrips,
+  templates: () => undefined,
 } satisfies Record<FeatureId, (store: OptimisticLocalStore) => void>;
 
 const switched = (enabled: boolean, before: FeatureStatus) =>
   enabled ? (before.kind === "off" ? ({ kind: "ready" } as const) : before) : ({ kind: "off" } as const);
+
+export const useFeatureOn = (feature: FeatureId) => {
+  const states = useQuietView(api.platform.features.list, {});
+  return states?.find((state) => state.feature === feature)?.enabled ?? FEATURES[feature].enabledByDefault;
+};
 
 export const useFeatures = () => {
   const states = useQuietView(api.platform.features.list, {});
