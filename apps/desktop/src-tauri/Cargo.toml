@@ -29,6 +29,11 @@ objc2-event-kit = { version = "0.3", default-features = false, features = ["std"
 objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "block2", "UNNotificationContent", "UNNotificationRequest", "UNNotificationSettings", "UNNotificationSound", "UNNotificationTrigger", "UNUserNotificationCenter"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "NSArray", "NSBundle", "NSDate", "NSError", "NSNotification", "NSObject", "NSOperation", "NSPredicate", "NSString"] }
 
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true
+
 [lints.rust]
 unsafe_op_in_unsafe_fn = "warn"
 missing_debug_implementations = "warn"
