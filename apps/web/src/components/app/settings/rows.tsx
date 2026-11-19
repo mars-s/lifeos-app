@@ -54,6 +54,7 @@ export const FeatureRow = ({
   checked,
   onCheckedChange,
   disabled,
+  below,
 }: {
   icon: Icon;
   label: string;
@@ -61,8 +62,9 @@ export const FeatureRow = ({
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   disabled?: boolean;
+  below?: ReactNode;
 }) => (
-  <SettingsRow icon={icon} label={label} hint={hint}>
+  <SettingsRow icon={icon} label={label} hint={hint} below={below}>
     <Switch aria-label={label} checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
   </SettingsRow>
 );

@@ -93,6 +93,24 @@ Indexes: `by_name` (register, and `platform/workers:grant`, which adds one capab
 
 One row, absent until Avi changes a setting: `smartEstimates` (boolean, on when the row is missing). `platform/preferences:get` reads it with the defaults filled in. Each setter is a `changeMutation`, so a switch is in Activity and can be undone.
 
+### `secrets`
+
+One row per named API key Avi saves in Settings. Only `openai` exists today. The key itself is never stored in the clear and no query returns it.
+
+| Field | Type |
+| --- | --- |
+| `name` | `openai` |
+| `iv` | Base64 of the 12-byte AES-GCM nonce |
+| `ciphertext` | Base64 of the key sealed with AES-GCM under `LIFEOS_SECRETS_KEY`, with `lifeos-secret:<name>` as additional data so a row cannot be moved to another name |
+| `last4` | The key's last four characters, for "Key saved, ends in abcd" |
+| `savedAt` | When it was saved |
+
+Index: `by_name`.
+
+- **Saving.** `platform/secrets:save` is an `ownerAction`. It refuses an empty paste, refuses with `not_set_up` when `LIFEOS_SECRETS_KEY` is missing or is not 32 bytes of base64, then checks the key with `GET https://api.openai.com/v1/models`. A 401 or 403 is `refused`. Only a key OpenAI accepts is sealed and stored, replacing any earlier one. It returns `{ last4, savedAt }`.
+- **No Activity.** Saving and removing write through the internal `store` and `forget` mutations, not `changeMutation`, so neither the key nor its ciphertext reaches Activity or undo. Removing asks Avi to confirm instead.
+- **Reading.** `platform/secrets:status` returns `{ last4, savedAt }` or `null`. Only the internal action path unseals the key (`revealSecret`, used by `planner/smartEstimates:suggest`). It uses the saved key first and falls back to the `OPENAI_API_KEY` env var. Mutations only ask `secretAvailable`, which never decrypts.
+
 ### `users`
 
 One row per GitHub account that signed in. Convex Auth's components keep the sessions and the GitHub account link. Only the owner's row exists in practice, because sign-in refuses every other account (`docs/auth.md`).
@@ -200,13 +218,13 @@ Index: `by_task` (the card's query and every request).
 
 ### How a Smart Estimate lands
 
-- **Asking.** `tasks:create` and a real `tasks:rename` call `requestSuggestion`, and so does opening the card of a Task with no row yet (`planner/smartEstimates:request`, an `ownerMutation` because it changes none of Avi's data). Nothing happens when the Task already has an Estimate, is closed or trashed, Smart Estimates is off, or `OPENAI_API_KEY` is missing. Otherwise it bumps `requestedAt` and schedules `suggest` two seconds later, so a burst of edits makes one call.
+- **Asking.** `tasks:create` and a real `tasks:rename` call `requestSuggestion`, and so does opening the card of a Task with no row yet (`planner/smartEstimates:request`, an `ownerMutation` because it changes none of Avi's data). Nothing happens when the Task already has an Estimate, is closed or trashed, Smart Estimates is off, or there is no OpenAI key (neither a saved one in `secrets` nor `OPENAI_API_KEY`). Otherwise it bumps `requestedAt` and schedules `suggest` two seconds later, so a burst of edits makes one call.
 - **The signal.** `planFor` builds the title, notes (whitespace collapsed, cut at 600 characters), Checklist size, Area, Project and Label names, and up to 6 nearest past Tasks. Past Tasks are the last 300 closed Tasks plus any Task in the last 600 Focus Sessions. They rank by shared title words, then same Project, same Area and shared Labels. Each example sends only its title, Area, Project, Labels, Estimate and Actual Time. Other Tasks' notes and every id stay home.
 - **The call.** `POST https://api.openai.com/v1/decisions` with `gpt-6-luna`: one `choice` question (`estimate`, values `5` to `240` minutes) and one `predicate` (`too_vague`). The fixed instructions come first in a developer message and the Task follows as `input_json`. The request carries `prompt_cache_key`, but the prefix is under the 1,024 tokens caching needs, so every call is billed in full (about 300 to 900 input tokens, a fraction of a cent).
 - **The answer.** A `too_vague` probability of 0.7 or more stores `unclear`. Otherwise the pick is nudged by Avi's run ratio: the median of Actual Time over Estimate across the examples (2 or more pairs), or else across all history (3 or more). A ratio outside 0.85 to 1.15 moves the pick to the choice nearest `pick × ratio`. The reason is written in LifeOS, not by the model: the closest example and, when it applies, the over-run.
 - **Showing it.** `planner/smartEstimates:forTask` returns `{ minutes, reason }` only when the preference is on, the Task still has no Estimate, and `confidence` is at least 0.3.
 - **Once per change.** `inputsHash` is the SHA-256 of the model name, the signal and the ratio. A run whose hash matches the stored `suggested` or `unclear` outcome makes no call. A failure is retried on the next real change.
-- `planner/smartEstimates:status` says whether the preference is on and whether the key is set.
+- `planner/smartEstimates:status` says whether the preference is on and whether a key is available from either source.
 
 ### `thingsSync`
 

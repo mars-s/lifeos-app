@@ -1,11 +1,12 @@
 import { v } from "convex/values";
 import { errAsync, ResultAsync, type Result } from "neverthrow";
 import { internal } from "../_generated/api";
-import { env, internalAction, internalMutation, internalQuery, type MutationCtx, type QueryCtx } from "../_generated/server";
+import { internalAction, internalMutation, internalQuery, type MutationCtx, type QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { focusedMs, MINUTE_MS } from "../../shared/focus";
 import { ownerMutation, ownerQuery } from "../platform/access";
 import { preferencesOf } from "../platform/preferences";
+import { revealSecret, secretAvailable } from "../platform/secrets";
 import { sha256Hex } from "../platform/workers";
 import {
   calibrationOf,
@@ -34,8 +35,6 @@ const HISTORY_SESSIONS = 600;
 const CONTAINER_LIMIT = 500;
 const CHECKLIST_LIMIT = 100;
 
-const openAiKey = () => env.OPENAI_API_KEY;
-
 const wantsSuggestion = (task: Doc<"tasks">) =>
   task.estimateMinutes === undefined && task.status.kind === "open" && task.trashedAt === undefined;
 
@@ -46,7 +45,7 @@ const suggestionRow = (ctx: QueryCtx, taskId: Id<"tasks">) =>
     .unique();
 
 export const requestSuggestion = async (ctx: MutationCtx, taskId: Id<"tasks">, { onlyFirst = false } = {}) => {
-  if (!openAiKey() || !(await preferencesOf(ctx)).smartEstimates) return false;
+  if (!(await preferencesOf(ctx)).smartEstimates || !(await secretAvailable(ctx, "openai"))) return false;
   const task = await ctx.db.get("tasks", taskId);
   if (!task || !wantsSuggestion(task)) return false;
   const row = await suggestionRow(ctx, taskId);
@@ -77,7 +76,7 @@ export const forTask = ownerQuery({
 
 export const status = ownerQuery({
   args: {},
-  handler: async (ctx) => ({ enabled: (await preferencesOf(ctx)).smartEstimates, configured: openAiKey() !== undefined }),
+  handler: async (ctx) => ({ enabled: (await preferencesOf(ctx)).smartEstimates, configured: await secretAvailable(ctx, "openai") }),
 });
 
 type Lookups = {
@@ -222,8 +221,7 @@ const failureOf = (response: Response) => {
   return { kind: "unavailable", status: response.status } satisfies SmartEstimateError;
 };
 
-const askDecisions = (signal: EstimateSignal) => {
-  const key = openAiKey();
+const askDecisions = (key: string | undefined, signal: EstimateSignal) => {
   if (!key) return errAsync<Decision, SmartEstimateError>({ kind: "not_configured" });
   const unreachable: SmartEstimateError = { kind: "unavailable" };
   const unreadable: SmartEstimateError = { kind: "invalid_response" };
@@ -253,7 +251,7 @@ export const suggest = internalAction({
     const { signal, calibration } = plan;
     const inputsHash = await sha256Hex(canonicalJson({ model: DECISIONS_MODEL, signal, calibration }));
     if (plan.cachedHash === inputsHash) return null;
-    const result: Result<Decision, SmartEstimateError> = await askDecisions(signal);
+    const result: Result<Decision, SmartEstimateError> = await askDecisions(await revealSecret(ctx, "openai"), signal);
     const at = Date.now();
     const outcome: SuggestionOutcome = result.match(
       ({ pick, confidence, probabilities, vague, model }) => {

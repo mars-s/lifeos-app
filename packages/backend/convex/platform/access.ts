@@ -92,6 +92,21 @@ export const workerMutation = <Args extends PropertyValidators, Output>(spec: {
       spec.handler(ctx, args as ObjectType<Args>, await workerForToken(ctx, token)),
   });
 
+const callerKindQuery = makeFunctionReference<"query", Record<string, never>, "owner" | AccessRefusal>("platform/access:callerKind");
+
+export const ownerAction = <Args extends PropertyValidators, Output>(spec: {
+  args: Args;
+  handler: (ctx: ActionCtx, args: ObjectType<Args>) => Promise<Output>;
+}) =>
+  action({
+    args: spec.args,
+    handler: async (ctx: ActionCtx, args: ObjectType<Args>) => {
+      const kind = await ctx.runQuery(callerKindQuery, {});
+      if (kind !== "owner") throw refuse(kind);
+      return spec.handler(ctx, args);
+    },
+  });
+
 const workerForTokenQuery = makeFunctionReference<"query", { token: string }, Doc<"workers">>("platform/workers:forToken");
 
 export const workerAction = <Args extends PropertyValidators, Output>(spec: {
@@ -110,6 +125,11 @@ export const account = query({
     const user = await ctx.db.get("users", await requireOwner(ctx));
     return { login: user?.login ?? null };
   },
+});
+
+export const callerKind = internalQuery({
+  args: {},
+  handler: async (ctx) => (await callerOf(ctx)).kind,
 });
 
 export const isOwner = internalQuery({

@@ -42,6 +42,7 @@ const SEEDED = [
   "ouraConnection",
   "estimateSuggestions",
   "preferences",
+  "secrets",
 ] as const;
 
 export const seed = internalMutation({
@@ -80,6 +81,15 @@ export const suggestEstimate = internalMutation({
   },
 });
 
+export const storeSecret = internalMutation({
+  args: { last4: v.string() },
+  handler: async (ctx, { last4 }) => {
+    for (const row of await ctx.db.query("secrets").collect()) await ctx.db.delete("secrets", row._id);
+    await ctx.db.insert("secrets", { name: "openai", iv: "c2VlZGVk", ciphertext: "c2VlZGVk", last4, savedAt: Date.now() });
+    return null;
+  },
+});
+
 export const signIn = internalMutation({
   args: {},
   handler: async (ctx) =>
@@ -104,6 +114,7 @@ npx convex env set AUTH_GITHUB_CLIENT_ID local >/dev/null
 npx convex env set AUTH_GITHUB_CLIENT_SECRET local >/dev/null
 npx convex env set OURA_CLIENT_ID local >/dev/null
 npx convex env set OURA_CLIENT_SECRET local >/dev/null
+npx convex env set LIFEOS_SECRETS_KEY "$(openssl rand -base64 32)" >/dev/null
 npx convex dev --once --typecheck disable
 SEED_ARGS="{\"today\":\"$(date +%F)\",\"timeZone\":\"$(node -e 'console.log(Intl.DateTimeFormat().resolvedOptions().timeZone)')\"}"
 npx convex run scratch:seed "$SEED_ARGS" >/dev/null

@@ -5,6 +5,7 @@ export type TodayView = Extract<FunctionReturnType<typeof api.planner.today.get>
 export type TodayTask = TodayView["tasks"][number];
 export type ThingsSyncStatus = FunctionReturnType<typeof api.planner.things.status>;
 export type { AccessError } from "../convex/platform/access";
+export type { SecretError } from "../convex/platform/secrets";
 
 type Ok<T> = Extract<T, { ok: true }> extends { value: infer V } ? V : never;
 

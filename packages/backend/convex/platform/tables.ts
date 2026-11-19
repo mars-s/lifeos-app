@@ -39,6 +39,8 @@ export const vUndoTarget = v.union(
   v.object({ kind: v.literal("run"), jobId: v.id("jobs") }),
 );
 
+export const vSecretName = v.literal("openai");
+
 export const vJobKind = v.literal("agent");
 
 export const vCapability = v.union(v.literal("things"), v.literal("calendar"), vJobKind);
@@ -65,6 +67,7 @@ export type UndoTarget = Infer<typeof vUndoTarget>;
 export type JobKind = Infer<typeof vJobKind>;
 export type Capability = Infer<typeof vCapability>;
 export type Job = Infer<typeof vJob>;
+export type SecretName = Infer<typeof vSecretName>;
 
 export const platformTables = {
   users: defineTable({ githubId: v.string(), login: v.string() }),
@@ -98,6 +101,13 @@ export const platformTables = {
     .index("by_kind_status_available", ["job.kind", "status.kind", "status.availableAt"])
     .index("by_kind_status_lease", ["job.kind", "status.kind", "status.leaseUntil"]),
   preferences: defineTable({ smartEstimates: v.boolean() }),
+  secrets: defineTable({
+    name: vSecretName,
+    iv: v.string(),
+    ciphertext: v.string(),
+    last4: v.string(),
+    savedAt: v.number(),
+  }).index("by_name", ["name"]),
   workers: defineTable({
     name: v.string(),
     capabilities: v.array(vCapability),

@@ -4,12 +4,13 @@ Only Avi can read or change his LifeOS. He signs in with GitHub through [Convex 
 
 ## How the guard works
 
-Every public Convex function is built with one of three builders in `packages/backend/convex/platform/access.ts`:
+Every public Convex function is built with one of the builders in `packages/backend/convex/platform/access.ts`:
 
 | Builder | Who may call it | Used for |
 | --- | --- | --- |
 | `ownerQuery` | The owner, signed in | Every public query |
 | `ownerMutation` | The owner, signed in, or an active Agent Run (its `agentRun` credential) | `undo`, `undoRun`, and `changeMutation`, which every change is built with |
+| `ownerAction` | The owner, signed in. It checks through the internal query `platform/access:callerKind` before the handler runs | `platform/secrets:save` and `remove`, which must call OpenAI or must not be reachable by an Agent Run |
 | `workerMutation` | A registered Worker, by its token | `jobs.claim`, `heartbeat`, `complete`, `fail`, `things.retire` and `calendar/sync:applyWindow` (needs the `calendar` capability) |
 
 The owner check reads the caller's Convex Auth session, loads the `users` row it points at, and compares that row's GitHub id with `LIFEOS_OWNER_GITHUB_ID`. A failure is a `ConvexError` whose data is `{ kind, message }`:
@@ -73,6 +74,8 @@ The deployment already has `LIFEOS_OWNER_GITHUB_ID` (71009876, the id of `mars-s
 
 | `OURA_CLIENT_ID` | The Oura API application's client id. Optional: without it and the secret, Connect Oura says Oura is not set up | No |
 | `OURA_CLIENT_SECRET` | The Oura API application's client secret | Yes |
+| `OPENAI_API_KEY` | Optional fallback OpenAI key for Smart Estimates. A key saved in Settings wins over it | Yes |
+| `LIFEOS_SECRETS_KEY` | 32 random bytes, base64 (`openssl rand -base64 32`). Seals API keys saved in Settings. Without it Settings says "Secrets are not set up on this LifeOS". Changing it makes saved keys unreadable, so save them again | Yes |
 
 `convex.config.ts` declares the first four as required, so a deploy fails if one is missing. Convex Auth 2 signs its tokens with the deployment's own key, so there is no `JWT_PRIVATE_KEY` or `JWKS` to manage.
 
