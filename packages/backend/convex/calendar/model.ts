@@ -86,6 +86,17 @@ const offsetAt = (instant: number, timeZone: string) => {
   return wall - Math.floor(instant / 1000) * 1000;
 };
 
+export const zonedIso = (instant: number, timeZone: string) => {
+  const offsetMinutes = Math.round(offsetAt(instant, timeZone) / MINUTE_MS);
+  const wall = new Date(instant + offsetMinutes * MINUTE_MS).toISOString().slice(0, 16);
+  const size = Math.abs(offsetMinutes);
+  const hours = String(Math.floor(size / 60)).padStart(2, "0");
+  const minutes = String(size % 60).padStart(2, "0");
+  return `${wall}${offsetMinutes < 0 ? "-" : "+"}${hours}:${minutes}`;
+};
+
+export const zonedDate = (instant: number, timeZone: string) => zonedIso(instant, timeZone).slice(0, 10) as IsoDate;
+
 export const zonedMoment = (date: IsoDate, minute: number, timeZone: string) => {
   const wall = Date.parse(`${date}T00:00:00Z`) + minute * MINUTE_MS;
   const guess = wall - offsetAt(wall, timeZone);

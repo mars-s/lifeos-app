@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { api, internal } from "../_generated/api";
+import { api } from "../_generated/api";
 import { newBackend, registerWorker, unwrap } from "../backend.test-utils";
 import { packDate, rowsOf, thingsItem, thingsProject } from "./things.test-utils";
 
@@ -64,11 +64,4 @@ test("Today refuses a date that is not a real calendar date", async () => {
     ok: false,
     error: { kind: "invalid_date", input: "2026-13-01" },
   });
-});
-
-test("the MCP today tool reads the same Today through its internal query", async () => {
-  const t = await newBackend();
-  unwrap(await t.mutation(api.planner.tasks.create, { title: "Gym", when: scheduled(today) }));
-  const view = unwrap(await t.query(internal.planner.today.getForAgent, { date: today }));
-  expect(titles(view.tasks)).toEqual(["Gym"]);
 });

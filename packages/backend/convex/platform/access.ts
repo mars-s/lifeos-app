@@ -1,7 +1,8 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { vGithubProfile } from "@convex-dev/auth/methods/github/server";
-import { ConvexError, v, type ObjectType, type PropertyValidators } from "convex/values";
-import { makeFunctionReference } from "convex/server";
+import { vMcpUser } from "@convex-dev/mcp";
+import { ConvexError, v, type Infer, type ObjectType, type PropertyValidators } from "convex/values";
+import { makeFunctionReference, type DefaultFunctionArgs, type RegisteredQuery } from "convex/server";
 import {
   action,
   env,
@@ -16,6 +17,7 @@ import {
 import type { Doc, Id } from "../_generated/dataModel";
 import type { Actor } from "./tables";
 import { workerForToken } from "./workers";
+import { mcpRunActor } from "./agentRuns";
 
 export type AccessRefusal = "signed_out" | "not_owner";
 export type AccessError = { readonly kind: AccessRefusal; readonly message: string };
@@ -60,17 +62,32 @@ const actorFor = async (ctx: MutationCtx, agentRun: { token: string; jobId: Id<"
   return { kind: "agentRun", jobId: agentRun.jobId } satisfies Actor;
 };
 
+const ownerReads = new WeakMap<object, (ctx: QueryCtx, args: never) => Promise<unknown>>();
+
 export const ownerQuery = <Args extends PropertyValidators, Output>(spec: {
   args: Args;
   handler: (ctx: QueryCtx, args: ObjectType<Args>) => Promise<Output>;
-}) =>
-  query({
+}) => {
+  const registered = query({
     args: spec.args,
     handler: async (ctx: QueryCtx, args: ObjectType<Args>) => {
       await requireOwner(ctx);
       return spec.handler(ctx, args);
     },
   });
+  ownerReads.set(registered, spec.handler);
+  return registered;
+};
+
+export const readAsOwner = async <Args extends DefaultFunctionArgs, Output>(
+  ctx: QueryCtx,
+  registered: RegisteredQuery<"public", Args, Promise<Output>>,
+  args: Args,
+) => {
+  const read = ownerReads.get(registered);
+  if (!read) throw new Error("readAsOwner needs a query built with ownerQuery.");
+  return (await read(ctx, args as never)) as Output;
+};
 
 export const ownerMutation = <Args extends PropertyValidators, Output>(spec: {
   args: Args;
@@ -154,3 +171,46 @@ export const onSignIn = internalMutation({
     return null;
   },
 });
+
+export const MCP_SCOPES = { read: "lifeos:read", write: "lifeos:write" } as const;
+
+export const mcpOwnerUserId = () => process.env.LIFEOS_OWNER_USER_ID ?? "owner";
+
+export const vAgentCaller = vMcpUser();
+
+export type AgentCaller = Infer<typeof vAgentCaller>;
+
+export type AgentRunActor = Extract<Actor, { kind: "agentRun" }>;
+
+const requireOwnerConnection = (caller: AgentCaller) => {
+  if (caller.userId !== mcpOwnerUserId()) throw new ConvexError("This LifeOS belongs to someone else.");
+};
+
+export const agentQuery = <Args extends PropertyValidators, Output>(spec: {
+  args: Args;
+  handler: (ctx: QueryCtx, args: ObjectType<Args>) => Promise<Output>;
+}) =>
+  internalQuery({
+    args: { ...spec.args, caller: vAgentCaller },
+    handler: async (ctx, { caller, ...args }) => {
+      requireOwnerConnection(caller);
+      return spec.handler(ctx, args as ObjectType<Args>);
+    },
+  });
+
+export const agentMutation = <Args extends PropertyValidators, Output>(spec: {
+  args: Args;
+  handler: (ctx: MutationCtx, args: ObjectType<Args>, run: () => Promise<AgentRunActor>, caller: AgentCaller) => Promise<Output>;
+}) =>
+  internalMutation({
+    args: { ...spec.args, caller: vAgentCaller },
+    handler: async (ctx, { caller, ...args }) => {
+      requireOwnerConnection(caller);
+      if (!caller.scopes.includes(MCP_SCOPES.write)) {
+        throw new ConvexError("This connection can only read. Reconnect LifeOS with the lifeos:write scope to make changes.");
+      }
+      let actor: Promise<AgentRunActor> | undefined;
+      const run = () => (actor ??= mcpRunActor(ctx, caller));
+      return spec.handler(ctx, args as ObjectType<Args>, run, caller);
+    },
+  });

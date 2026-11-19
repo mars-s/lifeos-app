@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { err, ok } from "neverthrow";
-import type { MutationCtx } from "../_generated/server";
+import type { QueryCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { ownerQuery } from "../platform/access";
 import { changeMutation } from "../platform/change";
@@ -10,7 +10,7 @@ import { vColour } from "./tables";
 const LABEL_LIMIT = 500;
 const STRIP_LIMIT = 2000;
 
-export const labelNamed = async (ctx: MutationCtx, name: string) => {
+export const labelNamed = async (ctx: QueryCtx, name: string) => {
   const exact = await ctx.db
     .query("labels")
     .withIndex("by_name", (q) => q.eq("name", name))

@@ -136,7 +136,7 @@ const revert = async (ctx: MutationCtx, actor: Actor, undoes: UndoTarget, change
   return ok<{ undoActivityId: Id<"activity"> | null }, UndoError>({ undoActivityId: record.finish() });
 };
 
-const undoActivity = async (ctx: MutationCtx, actor: Actor, activityId: Id<"activity">) => {
+export const undoActivity = async (ctx: MutationCtx, actor: Actor, activityId: Id<"activity">) => {
   const activity = await ctx.db.get("activity", activityId);
   if (!activity) return err<never, UndoError>({ kind: "not_found" });
   if (activity.undoes) return err<never, UndoError>({ kind: "not_undoable", reason: "undo" });
@@ -148,10 +148,10 @@ const undoActivity = async (ctx: MutationCtx, actor: Actor, activityId: Id<"acti
   return revert(ctx, actor, { kind: "activity", activityId }, await changesOf(ctx, activityId));
 };
 
-const undoAgentRun = async (ctx: MutationCtx, actor: Actor, jobId: Id<"jobs">) => {
+export const undoAgentRun = async (ctx: MutationCtx, actor: Actor, jobId: Id<"jobs">) => {
   if (await runUndone(ctx, jobId)) return err<never, UndoError>({ kind: "already_undone" });
   const run = await ctx.db.get("jobs", jobId);
-  if (run?.status.kind === "claimed") return err<never, UndoError>({ kind: "run_active" });
+  if (run?.status.kind === "claimed" && run.status.leaseUntil >= Date.now()) return err<never, UndoError>({ kind: "run_active" });
   const groups = await ctx.db
     .query("activity")
     .withIndex("by_run", (q) => q.eq("actor.jobId", jobId))

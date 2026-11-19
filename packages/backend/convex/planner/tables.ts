@@ -215,7 +215,8 @@ export const plannerTables = {
     .index("by_project_order", ["parent.projectId", "order"])
     .index("by_area_order", ["parent.areaId", "order"])
     .index("by_parent_kind_order", ["parent.kind", "order"])
-    .index("by_repeat", ["repeat.ruleId", "repeat.date"]),
+    .index("by_repeat", ["repeat.ruleId", "repeat.date"])
+    .searchIndex("search_title", { searchField: "title", filterFields: ["status.kind"] }),
   recurrenceRules: defineTable({
     schedule: vSchedule,
     end: vRepeatEnd,

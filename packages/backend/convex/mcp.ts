@@ -1,9 +1,10 @@
-import { McpServer, tool } from "@convex-dev/mcp";
+import { McpServer } from "@convex-dev/mcp";
 import type { Auth, FunctionReference, FunctionReturnType } from "convex/server";
-import { ConvexError, v } from "convex/values";
 import { components, internal } from "./_generated/api";
-
-const ownerUserId = process.env.LIFEOS_OWNER_USER_ID ?? "owner";
+import { MCP_SCOPES, mcpOwnerUserId } from "./platform/access";
+import { platformTools } from "./platform/agentTools";
+import { plannerReadTools } from "./planner/agentReads";
+import { plannerWriteTools } from "./planner/agentWrites";
 
 type RunsQueries = {
   auth: Auth;
@@ -16,34 +17,24 @@ const siteUrl = process.env.SITE_URL ?? "http://localhost:3000";
 export const mcp: McpServer = new McpServer(components.mcp, {
   name: "lifeos",
   title: "LifeOS",
-  version: "0.1.0",
-  instructions:
-    "LifeOS is Avi's personal planner and the home of his Tasks. Apple Calendar owns time. Read before you suggest changes.",
+  version: "0.2.0",
+  instructions: [
+    "LifeOS is Avi's personal planner and the home of his Tasks, Areas, Projects and plans.",
+    "Use search, list_tasks or list_areas to find ids before you change anything. Dates are YYYY-MM-DD and times are in Avi's time zone unless you pass timeZone.",
+    "Every write is recorded as one Agent Run per connection (it ends after 10 idle minutes) and returns its runId and activityIds, so Avi can undo one change or the whole run. The undo tool does the same.",
+    "Apple Calendar owns External Commitments and Oura owns sleep: read them, never plan over them without asking.",
+  ].join(" "),
   consentUrl: process.env.MCP_CONSENT_URL ?? `${siteUrl}/connect`,
   scopes: {
-    "lifeos:read": "See your LifeOS tasks and plans",
+    [MCP_SCOPES.read]: "See your Tasks, Projects, Areas, plans, calendar and sleep",
+    [MCP_SCOPES.write]: "Create and change Tasks and plans, and undo those changes",
   },
-  tools: {
-    today: tool({
-      title: "Today",
-      description:
-        "List Avi's Today tasks for one local date (YYYY-MM-DD): the Today list, anything starting on or before that date, and anything due by then. Each task has its project or area as context.",
-      args: { date: v.string() },
-      annotations: { readOnlyHint: true },
-      scope: "lifeos:read",
-      handler: async (ctx, { date }, user) => {
-        if (user.userId !== ownerUserId) throw new ConvexError("This LifeOS belongs to someone else.");
-        const result = await ctx.runQuery(internal.planner.today.getForAgent, { date });
-        if (!result.ok) throw new ConvexError(`Use a real date in YYYY-MM-DD form, not "${result.error.input}".`);
-        return result.value;
-      },
-    }),
-  },
+  tools: { ...plannerReadTools, ...plannerWriteTools, ...platformTools },
 });
 
-export const { getAuthRequest, authorize, listConnections, revokeConnection, createApiKey } = mcp.api({
+export const { getAuthRequest, findAuthRequest, authorize, listConnections, revokeConnection, createApiKey } = mcp.api({
   getUserId: async (ctx) =>
-    runsQueries(ctx) && (await ctx.runQuery(internal.platform.access.isOwner)) ? ownerUserId : null,
+    runsQueries(ctx) && (await ctx.runQuery(internal.platform.access.isOwner)) ? mcpOwnerUserId() : null,
 });
 
 export const { createApiKeyForUser } = mcp.internalApi();
