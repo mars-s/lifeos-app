@@ -56,7 +56,6 @@ import type * as platform_change from "../platform/change.js";
 import type * as platform_features from "../platform/features.js";
 import type * as platform_jobs from "../platform/jobs.js";
 import type * as platform_links from "../platform/links.js";
-import type * as platform_preferences from "../platform/preferences.js";
 import type * as platform_secrets from "../platform/secrets.js";
 import type * as platform_tables from "../platform/tables.js";
 import type * as platform_undo from "../platform/undo.js";
@@ -117,7 +116,6 @@ declare const fullApi: ApiFromModules<{
   "platform/features": typeof platform_features;
   "platform/jobs": typeof platform_jobs;
   "platform/links": typeof platform_links;
-  "platform/preferences": typeof platform_preferences;
   "platform/secrets": typeof platform_secrets;
   "platform/tables": typeof platform_tables;
   "platform/undo": typeof platform_undo;

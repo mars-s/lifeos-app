@@ -99,6 +99,11 @@ export const status = ownerQuery({
   },
 });
 
+export const available = ownerQuery({
+  args: { name: vSecretName },
+  handler: (ctx, { name }) => secretAvailable(ctx, name),
+});
+
 const saveArgs = { name: vSecretName, value: v.string() };
 
 type Save = ReturnType<typeof ownerAction<typeof saveArgs, SerialisedResult<SavedSecret, SecretError>>>;

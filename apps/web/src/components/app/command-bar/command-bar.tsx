@@ -19,7 +19,7 @@ import { selection } from "../selection";
 import { useSelectionActions } from "../selection-actions";
 import { replayWelcome } from "../settings/welcome-replay";
 import { useShell } from "../shell-context";
-import { useSmartEstimates } from "../smart-estimate";
+import { useFeatures } from "../settings/feature-state";
 import type { IsoDate } from "@lifeos/backend/date";
 import { BarDialog } from "./dialog";
 import { fuzzyScore, rank } from "./fuzzy";
@@ -119,7 +119,7 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
   const focusDo = useFocusActions();
   const focus = useActiveFocus();
   const newTask = useNewTask(sidebar);
-  const smart = useSmartEstimates();
+  const features = useFeatures();
   const index = useTaskIndex(today);
   const [targets, setTargets] = useState(initialTargets);
   const [page, setPage] = useState<Page>("root");
@@ -161,8 +161,8 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
       toggleFocus: focusDo.toggle,
       stopFocus: focusDo.stop,
       shortcuts: () => bar.shortcuts(),
-      smartEstimates: smart.status,
-      setSmartEstimates: (enabled) => void smart.set(enabled),
+      features: features.states,
+      setFeature: (feature, enabled) => void features.setEnabled(feature, enabled),
       spreadToday: () => {
         if (planCommands.spread) return planCommands.spread(today as IsoDate);
         planCommands.pending = today as IsoDate;
@@ -219,7 +219,7 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
         run: () => bar.capture(wanted),
       } satisfies BarItem,
     ];
-  }, [act, focus, focusDo, index, navigate, newTask, page, query, route, setDraft, setOpenCard, sidebar, smart, targets, today]);
+  }, [act, focus, focusDo, index, navigate, newTask, page, query, route, setDraft, setOpenCard, sidebar, features, targets, today]);
 
   const highlighted = items.find((item) => item.id === active);
 

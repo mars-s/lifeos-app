@@ -412,6 +412,50 @@ li[data-selected]:has(+ li[data-selected]) .task-selected {
   animation: stage-in 300ms var(--ease-out) 140ms both;
 }
 
+::view-transition-old(.nav-forward) {
+  animation: nav-leave-left 180ms var(--ease-out) both;
+}
+
+::view-transition-new(.nav-forward) {
+  animation: nav-enter-right 260ms var(--ease-out) both;
+}
+
+::view-transition-old(.nav-back) {
+  animation: nav-leave-right 180ms var(--ease-out) both;
+}
+
+::view-transition-new(.nav-back) {
+  animation: nav-enter-left 260ms var(--ease-out) both;
+}
+
+@keyframes nav-leave-left {
+  to {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+}
+
+@keyframes nav-enter-right {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+
+@keyframes nav-leave-right {
+  to {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+@keyframes nav-enter-left {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+}
+
 @keyframes stage-out {
   to {
     opacity: 0;

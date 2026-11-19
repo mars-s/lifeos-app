@@ -287,7 +287,7 @@ test("the meter counts every planned Task, with or without an Area, and shows Sm
   expect(await thursdayLoad()).toMatchObject({ plannedMinutes: 120, guessedMinutes: 20, unestimated: 2 });
   expect((await week(t)).guesses).toEqual([{ taskId: guessed, minutes: 20 }]);
 
-  unwrap(await t.mutation(api.platform.preferences.setSmartEstimates, { enabled: false }));
+  unwrap(await t.mutation(api.platform.features.setEnabled, { feature: "smartEstimates", enabled: false }));
   expect(await thursdayLoad()).toMatchObject({ plannedMinutes: 120, guessedMinutes: 0, unestimated: 3 });
   vi.unstubAllEnvs();
 });

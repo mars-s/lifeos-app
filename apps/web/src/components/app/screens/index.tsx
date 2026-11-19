@@ -1,5 +1,6 @@
 "use client";
 
+import { ViewTransition } from "react";
 import type { SidebarView } from "@lifeos/backend/types";
 import { ListSkeleton, Missing, ListPage } from "../list-page";
 import type { Route } from "../route";
@@ -7,6 +8,7 @@ import { AnytimeScreen, SomedayScreen } from "./grouped";
 import { AreaScreen, ProjectScreen } from "./containers";
 import { LogbookScreen } from "./logbook";
 import { PlannerScreen } from "./planner";
+import { FeatureScreen } from "../settings/features";
 import { SettingsScreen } from "../settings/settings-screen";
 import { InboxScreen, TodayScreen } from "./today";
 import { TrashScreen } from "./trash";
@@ -36,7 +38,16 @@ export const Screen = ({ route, sidebar, sidebarFailed }: { route: Route; sideba
     case "trash":
       return <TrashScreen />;
     case "settings":
-      return <SettingsScreen />;
+      return (
+        <ViewTransition
+          key={route.feature ?? "settings"}
+          enter={{ "nav-forward": "nav-forward", "nav-back": "nav-back", default: "none" }}
+          exit={{ "nav-forward": "nav-forward", "nav-back": "nav-back", default: "none" }}
+          default="none"
+        >
+          {route.feature ? <FeatureScreen feature={route.feature} /> : <SettingsScreen />}
+        </ViewTransition>
+      );
     case "missing":
       return <Missing />;
     case "area":

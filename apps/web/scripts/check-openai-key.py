@@ -56,16 +56,16 @@ def main():
             " localStorage.setItem(`__convexAuthRefreshToken_${namespace}`, s.refreshToken); }",
             [NAMESPACE, session],
         )
-        page.goto(f"{BASE}/settings")
+        page.goto(f"{BASE}/settings/features/smartEstimates")
         field = page.get_by_label("OpenAI API key")
         field.wait_for()
-        section = page.locator("section", has_text="Smart Estimates").first
+        section = page.locator("section", has=page.get_by_role("heading", name="OpenAI key")).first
+        status = page.locator("#main header [role=status]")
         save = section.get_by_role("button", name="Save")
 
         expect("the key field hides what is typed", field.get_attribute("type"), "password")
         expect("browsers do not autofill it", field.get_attribute("autocomplete"), "off")
-        expect("the switch waits for a key", section.get_by_role("switch").is_disabled(), True)
-        expect("the switch shows off without a key", section.get_by_role("switch").get_attribute("aria-checked"), "false")
+        expect("the page says Smart Estimates needs a key", status.inner_text().split("\n")[0], "Needs an OpenAI key")
         section.screenshot(path=str(OUT / f"openai-key-empty-{THEME}.png"))
         save.click()
         expect("Save with nothing pasted asks for a key", section.get_by_role("alert").inner_text(), "Paste a key first.")
@@ -82,7 +82,8 @@ def main():
         saved = section.get_by_text("Key saved, ends in a9Qz")
         saved.wait_for()
         expect("the saved key shows only its last four", saved.count(), 1)
-        expect("the switch turns on once a key exists", section.get_by_role("switch").is_disabled(), False)
+        page.wait_for_timeout(400)
+        expect("the status turns on once a key exists", status.inner_text().split("\n")[0], "On")
         expect("no field shows the key once saved", section.get_by_label("OpenAI API key").count(), 0)
         section.screenshot(path=str(OUT / f"openai-key-saved-{THEME}.png"))
 

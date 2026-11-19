@@ -1,7 +1,7 @@
 "use client";
 
 import { List as MenuIcon } from "@phosphor-icons/react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { addTransitionType, startTransition, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "waku";
 import { api } from "@lifeos/backend/api";
 import type { IsoDate } from "@lifeos/backend/date";
@@ -22,7 +22,7 @@ import { Screen, UPCOMING_DAYS } from "./screens";
 import { SelectionBar } from "./selection-bar";
 import { Onboarding } from "./settings/onboarding";
 import { useSelectionGestures } from "./selection-gestures";
-import { ShellContext, type ListDraft, type OpenCard, type Renaming, type ShellState } from "./shell-context";
+import { ShellContext, type Depth, type ListDraft, type OpenCard, type Renaming, type ShellState } from "./shell-context";
 import { Sidebar } from "./sidebar";
 import { WindowDragStrip } from "./window-drag-strip";
 
@@ -76,14 +76,21 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
   const sidebar = valueOf(sidebarState.value);
 
   const shell = useMemo(() => {
-    const navigate = (to: Route, how: Via) => {
+    const navigate = (to: Route, how: Via, depth?: Depth) => {
       const target = routeHref(to);
       setDrawer(false);
       setVia(how);
       if (target === href) return;
-      setPending({ from: actual, to: target });
-      main.current?.scrollTo({ top: 0 });
-      router.push(target as never).catch(() => setPending(null));
+      const go = () => {
+        setPending({ from: actual, to: target });
+        main.current?.scrollTo({ top: 0 });
+        router.push(target as never).catch(() => setPending(null));
+      };
+      if (!depth || how === "keyboard") return go();
+      startTransition(() => {
+        addTransitionType(depth);
+        go();
+      });
     };
     return {
       route,

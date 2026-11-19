@@ -5,9 +5,9 @@ import { internalAction, internalMutation, internalQuery, type MutationCtx, type
 import type { Doc, Id } from "../_generated/dataModel";
 import { focusedMs, MINUTE_MS } from "../../shared/focus";
 import { ownerMutation, ownerQuery } from "../platform/access";
-import { preferencesOf } from "../platform/preferences";
+import { featureReady, featureState } from "../platform/features";
 import { workingHoursOf } from "../calendar/workingHours";
-import { revealSecret, secretAvailable } from "../platform/secrets";
+import { revealSecret } from "../platform/secrets";
 import { sha256Hex } from "../platform/workers";
 import {
   calibrationOf,
@@ -49,7 +49,7 @@ const suggestionRow = (ctx: QueryCtx, taskId: Id<"tasks">) =>
     .unique();
 
 export const requestSuggestion = async (ctx: MutationCtx, taskId: Id<"tasks">, { onlyFirst = false } = {}) => {
-  if (!(await preferencesOf(ctx)).smartEstimates || !(await secretAvailable(ctx, "openai"))) return false;
+  if (!(await featureReady(ctx, "smartEstimates"))) return false;
   const task = await ctx.db.get("tasks", taskId);
   if (!task || !wantsSuggestion(task)) return false;
   const row = await suggestionRow(ctx, taskId);
@@ -68,8 +68,7 @@ export const request = ownerMutation({
 
 const workingDayMinutes = ({ startMinute, endMinute }: { startMinute: number; endMinute: number }) => endMinute - startMinute;
 
-const smartEstimatesOn = async (ctx: QueryCtx) =>
-  (await preferencesOf(ctx)).smartEstimates && (await secretAvailable(ctx, "openai"));
+const smartEstimatesOn = (ctx: QueryCtx) => featureReady(ctx, "smartEstimates");
 
 export type EstimateView =
   | { kind: "presets" }
@@ -108,11 +107,6 @@ export const guessesFor = async (ctx: QueryCtx, tasks: readonly Doc<"tasks">[]) 
   const rows = await Promise.all(tasks.filter((task) => task.estimateMinutes === undefined).map((task) => suggestionRow(ctx, task._id)));
   return rows.flatMap((row) => (row?.outcome.kind === "suggested" ? [{ taskId: row.taskId, minutes: row.outcome.minutes }] : []));
 };
-
-export const status = ownerQuery({
-  args: {},
-  handler: async (ctx) => ({ enabled: (await preferencesOf(ctx)).smartEstimates, configured: await secretAvailable(ctx, "openai") }),
-});
 
 type Lookups = {
   areas: Map<Id<"areas">, Doc<"areas">>;
@@ -210,7 +204,7 @@ export const planFor = internalQuery({
     if (!row || row.requestedAt !== requestedAt) return skip;
     const task = await ctx.db.get("tasks", taskId);
     if (!task) return { kind: "gone" } satisfies SuggestionPlan;
-    if (!wantsSuggestion(task) || !(await preferencesOf(ctx)).smartEstimates) return { kind: "settle" } satisfies SuggestionPlan;
+    if (!wantsSuggestion(task) || !(await featureState(ctx, "smartEstimates")).enabled) return { kind: "settle" } satisfies SuggestionPlan;
     const lookups = await lookupsFor(ctx);
     const [{ signal, projectKey }, checklist, history] = await Promise.all([
       contextOf(ctx, lookups, task),

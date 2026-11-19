@@ -6,6 +6,8 @@ export type TodayTask = TodayView["tasks"][number];
 export type ThingsSyncStatus = FunctionReturnType<typeof api.planner.things.status>;
 export type { AccessError } from "../convex/platform/access";
 export type { SecretError } from "../convex/platform/secrets";
+export type { SavePlaceError, SavedPlace } from "../convex/places/saved";
+export type TripView = NonNullable<FunctionReturnType<typeof api.places.trips.forTask>>;
 
 type Ok<T> = Extract<T, { ok: true }> extends { value: infer V } ? V : never;
 

@@ -310,13 +310,18 @@ describe("big work", () => {
   });
 });
 
-describe("the Smart Estimates preference", () => {
+const smartStatus = async (t: Backend) => {
+  const state = (await t.query(api.platform.features.list, {})).find(({ feature }) => feature === "smartEstimates");
+  return { enabled: state?.enabled, configured: state?.status.kind !== "needs_key" };
+};
+
+describe("the Smart Estimates Feature", () => {
   test("off means no OpenAI call and the presets, and the switch itself undoes", async () => {
     const t = await newBackend();
     const asked = choosing("30 minutes");
-    expect(await t.query(api.planner.smartEstimates.status, {})).toEqual({ enabled: true, configured: true });
+    expect(await smartStatus(t)).toEqual({ enabled: true, configured: true });
 
-    const { activityId } = unwrap(await t.mutation(api.platform.preferences.setSmartEstimates, { enabled: false }));
+    const { activityId } = unwrap(await t.mutation(api.platform.features.setEnabled, { feature: "smartEstimates", enabled: false }));
     const { taskId } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Book dentist" }));
     expect(await t.mutation(api.planner.smartEstimates.request, { taskId })).toEqual({ requested: false });
     await settle(t);
@@ -324,7 +329,7 @@ describe("the Smart Estimates preference", () => {
     expect(await viewFor(t, taskId)).toEqual({ kind: "presets" });
 
     unwrap(await t.mutation(api.platform.undo.undo, { activityId: activityId! }));
-    expect(await t.query(api.planner.smartEstimates.status, {})).toEqual({ enabled: true, configured: true });
+    expect(await smartStatus(t)).toEqual({ enabled: true, configured: true });
   });
 
   test("with no key it says not set up, does nothing and keeps the presets", async () => {
@@ -334,7 +339,7 @@ describe("the Smart Estimates preference", () => {
     const { taskId } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Book dentist" }));
     await settle(t);
     expect(asked).toEqual([]);
-    expect(await t.query(api.planner.smartEstimates.status, {})).toEqual({ enabled: true, configured: false });
+    expect(await smartStatus(t)).toEqual({ enabled: true, configured: false });
     expect(await t.run(async (ctx) => ctx.db.query("estimateSuggestions").collect())).toEqual([]);
     expect(await viewFor(t, taskId)).toEqual({ kind: "presets" });
   });

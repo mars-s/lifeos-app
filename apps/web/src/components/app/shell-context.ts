@@ -11,11 +11,13 @@ export type Renaming = { kind: "area"; id: Id<"areas"> } | { kind: "project"; id
 
 export type ListDraft = { kind: "area" } | { kind: "project"; areaId: Id<"areas"> | null };
 
+export type Depth = "nav-forward" | "nav-back";
+
 export type ShellState = {
   route: Route;
   via: Via;
   today: IsoDate;
-  navigate: (route: Route, via: Via) => void;
+  navigate: (route: Route, via: Via, depth?: Depth) => void;
   openCard: OpenCard | null;
   setOpenCard: (card: OpenCard | null, on?: Route) => void;
   renaming: Renaming | null;

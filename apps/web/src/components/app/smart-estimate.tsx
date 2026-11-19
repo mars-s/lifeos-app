@@ -1,13 +1,11 @@
 "use client";
 
-import type { OptimisticLocalStore } from "convex/browser";
 import { useMutation } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@lifeos/backend/api";
 import type { PlannerTask } from "@lifeos/backend/types";
 import { EstimateField, type SmartEstimate } from "@/components/lifeos/estimate-field";
-import { useChange } from "./changes";
 import { isDraftTask } from "./drafts";
 import { useQuietView } from "./hooks";
 
@@ -62,32 +60,4 @@ export const TaskEstimateField = ({
     return () => clearTimeout(timer);
   }, [thinking, round]);
   return <EstimateField minutes={task.estimateMinutes} smart={smartFor(view, gaveUpOn !== round)} onChange={onChange} onSteps={onSteps} />;
-};
-
-const withSmartEstimates = (enabled: boolean) => (store: OptimisticLocalStore) => {
-    for (const { args, value } of store.getAllQueries(api.planner.smartEstimates.status)) {
-      if (value) store.setQuery(api.planner.smartEstimates.status, args, { ...value, enabled });
-    }
-    for (const { args } of store.getAllQueries(api.planner.smartEstimates.forTask)) {
-      if (!enabled) store.setQuery(api.planner.smartEstimates.forTask, args, { kind: "presets" });
-    }
-  };
-
-export const useSmartEstimates = () => {
-  const status = useQuietView(api.planner.smartEstimates.status, {});
-  const change = useChange();
-  return useMemo(
-    () => ({
-      status,
-      set: (enabled: boolean) =>
-        change({
-          title: enabled ? "Smart Estimates on" : "Smart Estimates off",
-          mutation: api.platform.preferences.setSmartEstimates,
-          args: { enabled },
-          apply: withSmartEstimates(enabled),
-          revert: withSmartEstimates(!enabled),
-        }),
-    }),
-    [change, status],
-  );
 };

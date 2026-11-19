@@ -1,5 +1,8 @@
 "use client";
 
+import { FEATURE_IDS, FEATURES, type FeatureId } from "@lifeos/backend/features";
+import { FEATURE_ICONS } from "../settings/feature-icons";
+import type { FeatureState } from "../settings/feature-state";
 import {
   ArrowBendUpRight,
   ArrowCounterClockwise,
@@ -17,7 +20,6 @@ import {
   Pause,
   Play,
   Shapes,
-  Sparkle,
   Stop,
   Timer,
   Trash,
@@ -250,7 +252,19 @@ export const goItems = (go: (route: Route) => void) => {
       recent: { kind: "list", id: kind },
     } satisfies BarItem;
   });
-  return [...lists, settings];
+  const features = FEATURE_IDS.map((feature) => {
+    const { title, icon } = FEATURES[feature];
+    const Glyph = FEATURE_ICONS[icon];
+    return {
+      id: `go:feature:${feature}`,
+      group: "Go to",
+      label: `${title} settings`,
+      text: `${title.toLowerCase()} settings feature go to`,
+      leading: <Glyph weight="fill" aria-hidden="true" className={`${ICON} text-muted-foreground`} />,
+      run: () => go({ kind: "settings", feature }),
+    } satisfies BarItem;
+  });
+  return [...lists, settings, ...features];
 };
 
 export const createItems = (deps: {
@@ -278,13 +292,12 @@ export const moreItems = (deps: {
   toggleFocus: () => void;
   stopFocus: () => void;
   shortcuts: () => void;
-  smartEstimates: { enabled: boolean; configured: boolean } | undefined;
-  setSmartEstimates: (enabled: boolean) => void;
+  features: readonly FeatureState[] | undefined;
+  setFeature: (feature: FeatureId, enabled: boolean) => void;
   spreadToday: () => void;
 }) => {
   const muted = MUTED;
   const item = plain.bind(null, "More");
-  const smart = deps.smartEstimates;
   const paused = deps.focus?.state.kind === "paused";
   return [
     ...(deps.canUndo ? [item("undo", "Undo the last change", <ArrowCounterClockwise weight="bold" aria-hidden="true" className={muted} />, deps.undo, "mod+z")] : []),
@@ -301,21 +314,21 @@ export const moreItems = (deps: {
           item("focus-stop", "Stop Focus Session", <Stop weight="fill" aria-hidden="true" className={muted} />, deps.stopFocus, undefined, deps.focus.title.toLowerCase()),
         ]
       : []),
-    ...(smart
-      ? [
-          {
-            ...item(
-              "smart-estimates",
-              smart.enabled ? "Turn Smart Estimates off" : "Turn Smart Estimates on",
-              <Sparkle weight="fill" aria-hidden="true" className={muted} />,
-              () => deps.setSmartEstimates(!smart.enabled),
-              undefined,
-              "suggest estimate openai settings preference",
-            ),
-            ...(smart.configured ? {} : { detail: "Not set up" }),
-          },
-        ]
-      : []),
+    ...(deps.features ?? []).map((state) => {
+      const { title, icon } = FEATURES[state.feature];
+      const Glyph = FEATURE_ICONS[icon];
+      return {
+        ...item(
+          `feature-${state.feature}`,
+          state.enabled ? `Turn ${title} off` : `Turn ${title} on`,
+          <Glyph weight="fill" aria-hidden="true" className={muted} />,
+          () => deps.setFeature(state.feature, !state.enabled),
+          undefined,
+          `${title.toLowerCase()} feature settings switch`,
+        ),
+        ...(state.status.kind === "needs_key" || state.status.kind === "needs_setup" ? { detail: "Not set up" } : {}),
+      };
+    }),
     item(
       "spread",
       "Spread today across the day",

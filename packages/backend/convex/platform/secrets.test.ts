@@ -42,7 +42,10 @@ const settle = (t: Backend) => t.finishAllScheduledFunctions(vi.runAllTimers);
 
 const keyStatus = (t: Backend) => t.query(api.platform.secrets.status, { name: "openai" });
 
-const smartStatus = (t: Backend) => t.query(api.planner.smartEstimates.status, {});
+const smartStatus = async (t: Backend) => {
+  const state = (await t.query(api.platform.features.list, {})).find(({ feature }) => feature === "smartEstimates");
+  return { enabled: state?.enabled, configured: state?.status.kind !== "needs_key" };
+};
 
 const suggestFor = async (t: Backend, title: string) => {
   unwrap(await t.mutation(api.planner.tasks.create, { title }));
@@ -121,7 +124,7 @@ describe("saving the OpenAI key", () => {
     openAiAnswering();
     const saved = await t.action(api.platform.secrets.save, { name: "openai", value: GOOD_KEY });
     const row = await t.run(async (ctx) => ctx.db.query("secrets").unique());
-    const replies = JSON.stringify([saved, await keyStatus(t), await smartStatus(t), await t.query(api.platform.preferences.get, {})]);
+    const replies = JSON.stringify([saved, await keyStatus(t), await smartStatus(t), await t.query(api.platform.features.list, {})]);
     for (const secret of [GOOD_KEY, row!.ciphertext, row!.iv]) expect(replies).not.toContain(secret);
 
     await t.action(api.platform.secrets.remove, { name: "openai" });
