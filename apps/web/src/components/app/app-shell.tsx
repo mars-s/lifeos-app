@@ -23,7 +23,7 @@ import { Screen } from "./screens";
 import { SelectionBar } from "./selection-bar";
 import { Onboarding } from "./settings/onboarding";
 import { useSelectionGestures } from "./selection-gestures";
-import { ShellContext, type Depth, type ListDraft, type OpenCard, type Renaming, type ShellState } from "./shell-context";
+import { ShellContext, liveShell, type Depth, type ListDraft, type OpenCard, type Renaming, type ShellState } from "./shell-context";
 import { Sidebar } from "./sidebar";
 import { WindowDragStrip } from "./window-drag-strip";
 
@@ -113,6 +113,7 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
 
   useEffect(() => {
     latest.current = shell;
+    liveShell.current = shell;
   }, [shell]);
   const openKey = card?.href === href ? card.key : undefined;
   useEffect(() => drafts.keepOnly(openKey), [openKey]);

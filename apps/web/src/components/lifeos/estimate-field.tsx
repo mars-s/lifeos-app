@@ -72,12 +72,14 @@ export const EstimateField = ({
   smart,
   onChange,
   onSteps,
+  onProject,
   className,
 }: {
   minutes: number | undefined;
   smart?: SmartEstimate | undefined;
   onChange: (minutes: number | null) => void;
   onSteps?: (() => void) | undefined;
+  onProject?: (() => void) | undefined;
   className?: string;
 }) => {
   const [draft, setDraft] = useState<string | null>(null);
@@ -191,15 +193,24 @@ export const EstimateField = ({
         {refused ? "Try 45, 1h30 or 1:30" : ""}
       </span>
       {big && (
-        <p className="flex basis-full items-center gap-2 text-micro text-pretty text-muted-foreground @md:pl-[4.125rem]">
+        <p className="flex basis-full flex-wrap items-center gap-x-2 gap-y-1 text-micro text-pretty text-muted-foreground @md:pl-[4.125rem]">
           Big one. Split it into a Project?
           {onSteps && (
             <button
               type="button"
               onClick={onSteps}
-              className="relative rounded-sm font-medium text-brand transition-[opacity] duration-(--dur-press) ease-out before:absolute before:-inset-x-1 before:-inset-y-2 hover:opacity-80"
+              className="relative rounded-sm font-medium whitespace-nowrap text-brand transition-[opacity] duration-(--dur-press) ease-out before:absolute before:-inset-x-1 before:-inset-y-2 hover:opacity-80"
             >
               Break it into steps
+            </button>
+          )}
+          {onProject && (
+            <button
+              type="button"
+              onClick={onProject}
+              className="relative rounded-sm font-medium whitespace-nowrap text-brand transition-[opacity] duration-(--dur-press) ease-out before:absolute before:-inset-x-1 before:-inset-y-2 hover:opacity-80"
+            >
+              Make it a Project
             </button>
           )}
         </p>

@@ -28,6 +28,8 @@ export type ShellState = {
 
 export const ShellContext = createContext<ShellState | null>(null);
 
+export const liveShell: { current: ShellState | null } = { current: null };
+
 export const useShell = () => {
   const shell = use(ShellContext);
   if (!shell) throw new Error("useShell needs the app shell around it.");

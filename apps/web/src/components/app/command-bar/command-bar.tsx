@@ -18,6 +18,7 @@ import { useNewTask } from "../new-task";
 import { repeatActions } from "../repeat-actions";
 import type { Route } from "../route";
 import { selection } from "../selection";
+import { useConvertToProject } from "../project-conversion";
 import { useSelectionActions } from "../selection-actions";
 import { replayWelcome } from "../settings/welcome-replay";
 import { useShell } from "../shell-context";
@@ -127,6 +128,7 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
   const newTask = useNewTask(sidebar);
   const change = useChange();
   const templateDo = useTemplateActions();
+  const convertToProject = useConvertToProject();
   const templates = useQuietView(api.planner.templates.list, {});
   const templatesOn = useFeatureOn("templates");
   const features = useFeatures();
@@ -169,6 +171,7 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
       open: openTarget,
       canRepeat: repeatable !== undefined,
       saveTemplate: templatesOn ? (task) => templateDo.save(task, today) : undefined,
+      toProject: repeatable ? (task) => convertToProject(task, "keyboard") : undefined,
     });
     const fromTemplates = templatesOn ? templateItems(templates ?? [], (template) => newTask({ byKey: true, template })) : [];
     const goTo = goItems(go);
@@ -249,7 +252,7 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
         run: () => bar.capture(wanted),
       } satisfies BarItem,
     ];
-  }, [act, change, focus, focusDo, index, navigate, newTask, page, query, route, setDraft, setOpenCard, sidebar, features, targets, templateDo, templates, templatesOn, today]);
+  }, [act, change, convertToProject, focus, focusDo, index, navigate, newTask, page, query, route, setDraft, setOpenCard, sidebar, features, targets, templateDo, templates, templatesOn, today]);
 
   const highlighted = items.find((item) => item.id === active);
 

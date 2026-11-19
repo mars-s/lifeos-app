@@ -270,6 +270,7 @@ export type Change<Mutation extends ChangeMutation> = {
   permanent?: boolean;
   silent?: boolean;
   onSaved?: (value: SavedValue<Mutation>) => void;
+  onUndone?: () => void;
 };
 
 export const useChange = () => {
@@ -283,16 +284,17 @@ export const useChange = () => {
       return convex.mutation(mutation, { ...args, ...taskIds, ...(taskId ? { taskId } : {}) }, { optimisticUpdate });
     };
 
-    const undo = async (sent: Promise<Id<"activity"> | null>, revert: Updater) => {
+    const undo = async (sent: Promise<Id<"activity"> | null>, revert: Updater, onUndone: (() => void) | undefined) => {
       const activityId = await sent;
       if (!activityId) return;
       const result = await convex
         .mutation(api.platform.undo.undo, { activityId }, { optimisticUpdate: revert })
         .catch(() => undefined);
       if (!result?.ok) toast.error("That could not be undone", { description: reasonFor(result?.error.kind) });
+      else onUndone?.();
     };
 
-    return <Mutation extends ChangeMutation>({ title, mutation, args, apply, revert, slot, permanent, silent, onSaved }: Change<Mutation>) => {
+    return <Mutation extends ChangeMutation>({ title, mutation, args, apply, revert, slot, permanent, silent, onSaved, onUndone }: Change<Mutation>) => {
       const refused = (kind: string | undefined) => {
         forget();
         if (kind === DISCARDED) return { saved: false, activityId: null };
@@ -312,7 +314,7 @@ export const useChange = () => {
         ? nothing
         : showUndo(
             title,
-            () => void undo(sent.then(({ activityId }) => activityId), revert),
+            () => void undo(sent.then(({ activityId }) => activityId), revert, onUndone),
             slot,
           );
       return sent.then(({ saved }) => saved);

@@ -3,6 +3,7 @@
 import {
   Archive,
   CalendarDots,
+  ChartPieSlice,
   CheckCircle,
   CheckSquare,
   Circle,
@@ -68,6 +69,7 @@ import { repeatActions, useOccurrenceActions } from "./repeat-actions";
 import { selection, useRegisteredTasks, useSelectionSize } from "./selection";
 import { useSelectionActions, type MoveTarget } from "./selection-actions";
 import { planCommands } from "./planner/commands";
+import { useConvertToProject } from "./project-conversion";
 import { useShell } from "./shell-context";
 import { isOptimistic } from "./task-actions";
 import { useFeatureOn } from "./settings/feature-state";
@@ -191,6 +193,7 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
   const templatesOn = useFeatureOn("templates");
   const templates = useQuietView(api.planner.templates.list, {}) ?? [];
   const templateDo = useTemplateActions();
+  const convertToProject = useConvertToProject();
   useRegisteredTasks();
   useSelectionSize();
 
@@ -535,6 +538,16 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
           { id: "move", type: "submenu", label: "Move to", icon: ArrowBendUpRight, items: [], groups: moveGroups(tasks) },
           ...(one && one.status.kind === "open" && !isDraftTask(one._id)
             ? [{ id: "repeat", type: "submenu", label: "Repeat", icon: Repeat, items: [], groups: repeatGroups(one) } satisfies MenuItem]
+            : []),
+          ...(one && one.status.kind === "open" && !isDraftTask(one._id)
+            ? [
+                {
+                  id: "project",
+                  label: "Convert to Project",
+                  icon: ChartPieSlice,
+                  onSelect: () => convertToProject(one, viaKeyboard ? "keyboard" : "pointer"),
+                } satisfies MenuItem,
+              ]
             : []),
         ],
       },

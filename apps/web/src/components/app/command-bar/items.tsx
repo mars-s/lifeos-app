@@ -10,6 +10,7 @@ import {
   ArrowSquareOut,
   ArrowsOutLineVertical,
   CalendarDots,
+  ChartPieSlice,
   CheckCircle,
   CheckSquare,
   Circle,
@@ -264,6 +265,7 @@ export const targetItems = (
     open: (task: PlannerTask) => void;
     canRepeat: boolean;
     saveTemplate: ((task: PlannerTask) => void) | undefined;
+    toProject: ((task: PlannerTask) => void) | undefined;
   },
 ) => {
   if (tasks.length === 0) return [];
@@ -290,6 +292,14 @@ export const targetItems = (
           item("repeat", one.repeat?.active ? `Repeat: ${repeatLabel(one.repeat.schedule, one.repeat.end)}` : "Repeat…", <Repeat weight="bold" aria-hidden="true" className={muted} />, {
             page: "repeat",
             text: "repeat recurring every daily weekly monthly",
+          }),
+        ]
+      : []),
+    ...(one && one.status.kind === "open" && deps.toProject
+      ? [
+          item("project", "Convert to Project", <ChartPieSlice weight="fill" aria-hidden="true" className={muted} />, {
+            run: () => deps.toProject?.(one),
+            text: "convert to project turn into project split big",
           }),
         ]
       : []),

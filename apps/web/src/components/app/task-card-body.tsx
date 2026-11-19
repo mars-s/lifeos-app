@@ -24,6 +24,7 @@ import { Linkified, TitleLinks } from "./linkified";
 import { useRepeatActions } from "./repeat-actions";
 import { TaskEstimateField } from "./smart-estimate";
 import { drafts, isDraftTask } from "./drafts";
+import { useConvertToProject } from "./project-conversion";
 import { isOptimistic, useTaskActions } from "./task-actions";
 import { useFeatureOn } from "./settings/feature-state";
 import { useTemplateActions } from "./template-actions";
@@ -146,6 +147,8 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
   const templateDo = useTemplateActions();
   const templatesOn = useFeatureOn("templates");
   const steps = useBreakIntoSteps(task);
+  const convertToProject = useConvertToProject();
+  const saved = !isDraftTask(task._id);
   const breakIntoSteps = steps.available ? steps.ask : () => setComposing(true);
   const repeat = task.repeat?.active ? task.repeat : undefined;
   const labels = useQuietView(api.planner.labels.list, {}) ?? task.labels;
@@ -203,7 +206,9 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
         />
       )}
       <TaskTrip task={task} />
-      <TaskEstimateField task={task} onChange={(minutes) => void actions.setEstimate(minutes)} onSteps={breakIntoSteps} />
+      <TaskEstimateField task={task} onChange={(minutes) => void actions.setEstimate(minutes)} onSteps={breakIntoSteps}
+        onProject={saved && task.status.kind === "open" ? () => convertToProject(task, "pointer") : undefined}
+      />
       <FocusSection task={task} today={today} />
       <div className="-ml-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1.5">
         <WhenPicker when={task.when} label={whenLabel(task.when, today)} today={today} onChange={actions.setWhen} />
