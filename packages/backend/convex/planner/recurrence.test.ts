@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { api, internal } from "../_generated/api";
-import type { Id } from "../_generated/dataModel";
+import type { WithoutSystemFields } from "convex/server";
+import type { Doc, Id } from "../_generated/dataModel";
 import {
   newBackend,
   newSignedOutBackend,
@@ -297,7 +298,7 @@ test("a rule rolls over at local midnight on both daylight-saving change days", 
   }
 });
 
-test("a generated Task leaves a trashed Area and drops a removed Label", async () => {
+test("a generated Task leaves a trashed Area its latest Task has moved out of, and drops a removed Label", async () => {
   const { t, make, setRepeat, generate, occurrences } = await setup();
   const { areaId } = unwrap(await t.mutation(api.planner.areas.create, { title: "Home" }));
   const { labelId: kept } = unwrap(await t.mutation(api.planner.labels.create, { name: "Errand", colour: "green" }));
@@ -306,6 +307,7 @@ test("a generated Task leaves a trashed Area and drops a removed Label", async (
   unwrap(await t.mutation(api.planner.tasks.move, { taskId, parent: { kind: "area", areaId } }));
   unwrap(await t.mutation(api.planner.tasks.setLabels, { taskId, labelIds: [kept, removed] }));
   const { ruleId } = unwrap(await setRepeat(taskId, daily));
+  unwrap(await t.mutation(api.planner.tasks.move, { taskId, parent: { kind: "loose" } }));
   unwrap(await t.mutation(api.planner.areas.trash, { areaId }));
   unwrap(await t.mutation(api.planner.labels.remove, { labelId: removed }));
   at(nineAm("2026-11-20"));
@@ -350,30 +352,94 @@ test("rows carry the repeat, Upcoming shows each rule's next occurrence, and sto
   expect(unwrap(await t.query(api.planner.recurrence.upcoming, { date: "2026-11-19", days: 7 }))).toEqual([]);
 });
 
-test("stopping a rule from Upcoming still works after its latest Task is deleted forever, and can be undone", async () => {
-  const { t, make, setRepeat, card, generate, datesOf } = await setup();
+test("trashing the latest Task pauses its rule and restoring it resumes from today, by hand or by undo", async () => {
+  const { t, make, setRepeat, generate, datesOf } = await setup();
   const taskId = await make("Water the plants");
   const { ruleId } = unwrap(await setRepeat(taskId, daily));
   const upcoming = async () => unwrap(await t.query(api.planner.recurrence.upcoming, { date: "2026-11-19", days: 7 }));
+  const trashed = unwrap(await t.mutation(api.planner.tasks.trash, { taskId }));
+  expect(await upcoming()).toEqual([]);
+
+  at(nineAm("2026-11-21"));
+  await generate();
+  expect(await datesOf(ruleId)).toEqual(["2026-11-19"]);
+
+  unwrap(await t.mutation(api.platform.undo.undo, { activityId: trashed.activityId! }));
+  expect(await upcoming()).toMatchObject([{ ruleId, date: "2026-11-20" }]);
+  await generate();
+  expect(await datesOf(ruleId)).toEqual(["2026-11-19", "2026-11-21"]);
+
+  const latest = (await t.run((ctx) => ctx.db.query("tasks").withIndex("by_repeat", (q) => q.eq("repeat.ruleId", ruleId).eq("repeat.date", "2026-11-21")).unique()))!;
+  unwrap(await t.mutation(api.planner.selection.trash, { taskIds: [latest._id] }));
+  at(nineAm("2026-11-23"));
+  await generate();
+  expect(await datesOf(ruleId)).toEqual(["2026-11-19", "2026-11-21"]);
+  unwrap(await t.mutation(api.planner.trash.restore, { items: [{ kind: "task", id: latest._id }] }));
+  await generate();
+  expect(await datesOf(ruleId)).toEqual(["2026-11-19", "2026-11-21", "2026-11-23"]);
+});
+
+test("a repeating Task trashed with its Project pauses, and comes back with it", async () => {
+  const { t, make, setRepeat, generate, datesOf } = await setup();
+  const { projectId } = unwrap(await t.mutation(api.planner.projects.create, { title: "Garden" }));
+  const taskId = await make("Water the plants");
+  unwrap(await t.mutation(api.planner.tasks.move, { taskId, parent: { kind: "project", projectId } }));
+  const { ruleId } = unwrap(await setRepeat(taskId, daily));
+  unwrap(await t.mutation(api.planner.projects.trash, { projectId }));
+  at(nineAm("2026-11-20"));
+  await generate();
+  expect(await datesOf(ruleId)).toEqual(["2026-11-19"]);
+  unwrap(await t.mutation(api.planner.projects.restore, { projectId }));
+  await generate();
+  expect(await datesOf(ruleId)).toEqual(["2026-11-19", "2026-11-20"]);
+});
+
+test("repeating a Task already in the Trash makes a paused rule", async () => {
+  const { t, make, setRepeat, generate, datesOf } = await setup();
+  const taskId = await make("Water the plants");
+  unwrap(await t.mutation(api.planner.tasks.trash, { taskId }));
+  const { ruleId } = unwrap(await setRepeat(taskId, daily));
+  at(nineAm("2026-11-20"));
+  await generate();
+  expect(await datesOf(ruleId)).toEqual(["2026-11-19"]);
+  expect(unwrap(await t.query(api.planner.recurrence.upcoming, { date: "2026-11-19", days: 7 }))).toEqual([]);
+});
+
+test("deleting the latest Task forever stops its rule", async () => {
+  const { t, make, setRepeat, card, generate, rule, datesOf } = await setup();
+  const taskId = await make("Water the plants");
+  const { ruleId } = unwrap(await setRepeat(taskId, daily));
   unwrap(await t.mutation(api.planner.tasks.trash, { taskId }));
   unwrap(await t.mutation(api.planner.trash.deleteForever, { items: [{ kind: "task", id: taskId }] }));
   expect(await card(taskId)).toBeNull();
-  const [occurrence] = await upcoming();
-  expect(occurrence).toMatchObject({ ruleId, date: "2026-11-20" });
-  expect(occurrence?.taskId).toBeUndefined();
-
-  const stopped = unwrap(await t.mutation(api.planner.recurrence.stopRule, { ruleId }));
-  expect(stopped.changed).toBe(true);
-  expect(await upcoming()).toEqual([]);
-  expect(unwrap(await t.mutation(api.planner.recurrence.stopRule, { ruleId }))).toMatchObject({ changed: false, activityId: null });
+  expect((await rule(ruleId))?.next).toEqual({ kind: "ended" });
+  expect(unwrap(await t.query(api.planner.recurrence.upcoming, { date: "2026-11-19", days: 7 }))).toEqual([]);
   at(nineAm("2026-11-20"));
   await generate();
   expect(await datesOf(ruleId)).toEqual([]);
+});
 
-  unwrap(await t.mutation(api.platform.undo.undo, { activityId: stopped.activityId! }));
-  expect(await upcoming()).toEqual([occurrence]);
+test("emptying the Trash stops the rules of the latest Tasks in it", async () => {
+  const { t, make, setRepeat, rule } = await setup();
+  const taskId = await make("Water the plants");
+  const { ruleId } = unwrap(await setRepeat(taskId, daily));
+  unwrap(await t.mutation(api.planner.tasks.trash, { taskId }));
+  unwrap(await t.mutation(api.planner.trash.empty, {}));
+  expect((await rule(ruleId))?.next).toEqual({ kind: "ended" });
+});
+
+test("deleting an older occurrence forever leaves the rule running", async () => {
+  const { t, make, setRepeat, generate, rule, datesOf } = await setup();
+  const taskId = await make("Water the plants");
+  const { ruleId } = unwrap(await setRepeat(taskId, daily));
+  at(nineAm("2026-11-20"));
   await generate();
-  expect(await datesOf(ruleId)).toEqual(["2026-11-20"]);
+  unwrap(await t.mutation(api.planner.tasks.trash, { taskId }));
+  unwrap(await t.mutation(api.planner.trash.deleteForever, { items: [{ kind: "task", id: taskId }] }));
+  expect((await rule(ruleId))?.next).toEqual({ kind: "due", date: "2026-11-21" });
+  at(nineAm("2026-11-21"));
+  await generate();
+  expect(await datesOf(ruleId)).toEqual(["2026-11-20", "2026-11-21"]);
 });
 
 test("a stranger or a signed-out caller cannot read or change Recurrence Rules", async () => {
@@ -506,4 +572,29 @@ test("the generator runs again when it fills a batch, so every due rule gets its
   await t.finishAllScheduledFunctions(vi.runAllTimers);
   const counts = await Promise.all(ruleIds.map(async (ruleId) => (await occurrences(ruleId)).length));
   expect(counts.every((count) => count === 2)).toBe(true);
+});
+
+test("a full batch of rules not yet due locally does not hold back a due rule behind it", async () => {
+  vi.useFakeTimers();
+  at(nineAm("2026-11-18"));
+  const { t, make, setRepeat, generate, datesOf } = await setup();
+  const notYet: WithoutSystemFields<Doc<"recurrenceRules">> = {
+    schedule: daily,
+    end: never,
+    task: { title: "Honolulu chore", notes: "", labelIds: [], parent: { kind: "loose" }, checklist: [] },
+    evening: false,
+    timeZone: "Pacific/Honolulu",
+    anchor: "2026-11-18",
+    next: { kind: "due", date: "2026-11-19" },
+    lastDate: "2026-11-18",
+    count: 1,
+  };
+  await t.run(async (ctx) => {
+    for (let index = 0; index < 100; index += 1) await ctx.db.insert("recurrenceRules", notYet);
+  });
+  const { ruleId } = unwrap(await setRepeat(await make("Water the plants"), daily));
+  at(nineAm("2026-11-19"));
+  await generate();
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(await datesOf(ruleId)).toEqual(["2026-11-18", "2026-11-19"]);
 });

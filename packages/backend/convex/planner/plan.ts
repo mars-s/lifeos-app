@@ -9,6 +9,7 @@ import { parseTimeZone, zonedMoment } from "../calendar/model";
 import { addDays, parseIsoDate, type IsoDate } from "../../shared/date";
 import { byDayPlan, dayLoad, dayShareCap, goalMinutesOf, MAX_GOAL_MINUTES, placeInDay } from "../../shared/plan";
 import { uncreatedDates } from "../../shared/recurrence";
+import { isPaused } from "./recurrence";
 import { serialise } from "../../shared/result";
 import type { PlannerError } from "./model";
 import { enrich, isLive } from "./rows";
@@ -49,10 +50,12 @@ const ghostsBetween = async (ctx: QueryCtx, from: IsoDate, last: IsoDate) => {
     .query("recurrenceRules")
     .withIndex("by_next", (q) => q.eq("next.kind", "due").lte("next.date", last))
     .take(PLAN_RULE_LIMIT);
-  const showing = rules.flatMap((rule) => {
+  const candidates = rules.flatMap((rule) => {
     const dates = uncreatedDates(rule, from, last);
     return dates.length > 0 ? [{ rule, dates }] : [];
   });
+  const paused = await Promise.all(candidates.map(({ rule }) => isPaused(ctx, rule)));
+  const showing = candidates.filter((_candidate, index) => !paused[index]);
   const homes = await Promise.all(showing.map(({ rule }) => homeSummary(ctx, rule.task.parent)));
   return showing.flatMap(({ rule, dates }, index) =>
     dates.map((date) => ({

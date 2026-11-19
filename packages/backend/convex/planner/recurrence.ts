@@ -64,6 +64,16 @@ const instanceOn = (ctx: QueryCtx, ruleId: Id<"recurrenceRules">, date: string) 
     .withIndex("by_repeat", (q) => q.eq("repeat.ruleId", ruleId).eq("repeat.date", date))
     .first();
 
+export const isPaused = async (ctx: QueryCtx, rule: Rule) => (await instanceOn(ctx, rule._id, rule.lastDate))?.trashedAt !== undefined;
+
+export const stopWithLatest = async (ctx: MutationCtx, record: Recorder, task: Doc<"tasks">) => {
+  if (!task.repeat) return;
+  const rule = await ctx.db.get("recurrenceRules", task.repeat.ruleId);
+  if (rule && rule.lastDate === task.repeat.date && rule.next.kind !== "ended") {
+    await record.patch("recurrenceRules", rule._id, { next: ENDED });
+  }
+};
+
 const latestDue = (rule: Rule, first: IsoDate, today: IsoDate) => {
   let latest: IsoDate | null = null;
   let date: IsoDate | null = first;
@@ -78,7 +88,7 @@ const settle = async (ctx: MutationCtx, record: Recorder, ruleId: Id<"recurrence
   const rule = await ctx.db.get("recurrenceRules", ruleId);
   if (rule?.next.kind !== "due") return false;
   const today = localDateIn(rule.timeZone, now);
-  if (rule.next.date > today) return false;
+  if (rule.next.date > today || (await isPaused(ctx, rule))) return false;
   const date = latestDue(rule, rule.next.date as IsoDate, today);
   if (!date) return record.patch("recurrenceRules", ruleId, { next: ENDED });
   const existing = await instanceOn(ctx, ruleId, date);
@@ -100,20 +110,17 @@ const settle = async (ctx: MutationCtx, record: Recorder, ruleId: Id<"recurrence
 };
 
 export const generate = internalMutation({
-  args: {},
+  args: { cursor: v.optional(v.string()) },
   returns: v.null(),
-  handler: async (ctx) => {
+  handler: async (ctx, { cursor }) => {
     const now = Date.now();
     const horizon = addDays(localDateIn("UTC", now), 1);
-    const rules = await ctx.db
+    const { page, isDone, continueCursor } = await ctx.db
       .query("recurrenceRules")
       .withIndex("by_next", (q) => q.eq("next.kind", "due").lte("next.date", horizon))
-      .take(RULE_BATCH);
-    const settled = [];
-    for (const rule of rules) settled.push(await settle(ctx, startRecording(ctx, RECURRENCE, "recurrence.generate"), rule._id, now));
-    if (rules.length === RULE_BATCH && settled.some(Boolean)) {
-      await ctx.scheduler.runAfter(0, internal.planner.recurrence.generate, {});
-    }
+      .paginate({ cursor: cursor ?? null, numItems: RULE_BATCH });
+    for (const rule of page) await settle(ctx, startRecording(ctx, RECURRENCE, "recurrence.generate"), rule._id, now);
+    if (!isDone) await ctx.scheduler.runAfter(0, internal.planner.recurrence.generate, { cursor: continueCursor });
     return null;
   },
 });
@@ -253,10 +260,12 @@ export const followCompletion = async (ctx: MutationCtx, record: Recorder, taskI
 
 const loadUpcoming = async (ctx: QueryCtx, date: IsoDate, days: number) => {
   const until = addDays(date, Math.min(Math.max(Math.floor(days), 1), MAX_UPCOMING_DAYS));
-  const rules = await ctx.db
+  const found = await ctx.db
     .query("recurrenceRules")
     .withIndex("by_next", (q) => q.eq("next.kind", "due").gt("next.date", date).lte("next.date", until))
     .take(UPCOMING_LIMIT);
+  const paused = await Promise.all(found.map((rule) => isPaused(ctx, rule)));
+  const rules = found.filter((_rule, index) => !paused[index]);
   const homes = await Promise.all(rules.map((rule) => homeSummary(ctx, rule.task.parent)));
   const instances = await Promise.all(rules.map((rule) => instanceOn(ctx, rule._id, rule.lastDate)));
   return rules.flatMap((rule, index) =>

@@ -406,6 +406,20 @@ test("upcoming Recurrence Rule occurrences show as ghosts on each day and count 
   expect(days[0]).toMatchObject({ plannedMinutes: 15, unestimated: 1 });
 });
 
+test("a repeat whose latest Task is in the Trash shows no ghosts until the Task is restored", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(at(thursday, 9));
+  const t = await newBackend();
+  const taskId = await repeatFrom(t, "Water the plants", { kind: "days", every: 1 }, { estimateMinutes: 15 });
+  const ghostDays = async () => (await week(t, 7)).days.filter((day) => day.ghosts.length > 0).length;
+  expect(await ghostDays()).toBe(6);
+  const trashed = unwrap(await t.mutation(api.planner.tasks.trash, { taskId }));
+  expect(await ghostDays()).toBe(0);
+  expect((await week(t, 7)).days[1]).toMatchObject({ plannedMinutes: 0 });
+  unwrap(await t.mutation(api.platform.undo.undo, { activityId: trashed.activityId! }));
+  expect(await ghostDays()).toBe(6);
+});
+
 test("a Spread places one session of a multi-day Task, never its whole Estimate", () => {
   const thesis = { _id: "thesis", estimateMinutes: 85 * 60 };
   const day = { start: 9 * 60, end: 17 * 60 + 30 };

@@ -7,6 +7,7 @@ import type { Recorder } from "../platform/activity";
 import { changeMutation } from "../platform/change";
 import { restoreArea, restoreProject } from "./containers";
 import { keyAfter, lastTaskOrder, liveHome, type PlannerError } from "./model";
+import { stopWithLatest } from "./recurrence";
 import type { Parent } from "./tables";
 
 const LIST_LIMIT = 500;
@@ -239,6 +240,7 @@ const deleteTask = async (ctx: MutationCtx, record: Recorder, task: Doc<"tasks">
   for (const session of sessions) await record.remove("focusSessions", session._id);
   for (const link of [...from, ...to]) await record.remove("entityLinks", link._id);
   await forgetAnswers(ctx, task._id);
+  await stopWithLatest(ctx, record, task);
   await bury(ctx, task);
   await record.remove("tasks", task._id);
 };
