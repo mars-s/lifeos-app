@@ -136,18 +136,27 @@ export const uncreatedDates = (rule: RuleClock, from: IsoDate, to: IsoDate) => {
   return dates;
 };
 
-const dateFormatters = new Map<string, Intl.DateTimeFormat>();
+const zonedFormatters = new Map<string, Intl.DateTimeFormat>();
 
-const dateFormatterFor = (timeZone: string) => {
-  const known = dateFormatters.get(timeZone);
+export const zonedFormatter = (timeZone: string) => {
+  const known = zonedFormatters.get(timeZone);
   if (known) return known;
-  const made = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
-  dateFormatters.set(timeZone, made);
+  const made = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  zonedFormatters.set(timeZone, made);
   return made;
 };
 
 export const localDateIn = (timeZone: string, instant: number) => {
-  const parts = dateFormatterFor(timeZone).formatToParts(instant);
+  const parts = zonedFormatter(timeZone).formatToParts(instant);
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((each) => each.type === type)?.value ?? "";
   return `${part("year")}-${part("month")}-${part("day")}` as IsoDate;
 };
@@ -156,7 +165,7 @@ const fault = (reason: ScheduleFault) => ({ kind: "invalid_schedule", reason }) 
 
 export const parseTimeZone = (timeZone: string) => {
   try {
-    dateFormatterFor(timeZone);
+    zonedFormatter(timeZone);
     return ok<string, ScheduleError>(timeZone);
   } catch {
     return err<string, ScheduleError>(fault("time_zone"));

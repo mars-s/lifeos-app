@@ -1,5 +1,6 @@
 import { err, ok } from "neverthrow";
 import type { IsoDate } from "../../shared/date";
+import { localDateIn, zonedFormatter } from "../../shared/recurrence";
 import type { Availability, CalendarKind, Response } from "./tables";
 
 export type CalendarError =
@@ -51,28 +52,9 @@ export const capacityOfDay = (window: Interval, commitments: readonly (Interval 
   return { workingMinutes, busyMinutes, freeMinutes: workingMinutes - busyMinutes };
 };
 
-const formatters = new Map<string, Intl.DateTimeFormat>();
-
-const formatterFor = (timeZone: string) => {
-  const known = formatters.get(timeZone);
-  if (known) return known;
-  const made = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    hourCycle: "h23",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-  formatters.set(timeZone, made);
-  return made;
-};
-
 export const parseTimeZone = (timeZone: string) => {
   try {
-    formatterFor(timeZone);
+    zonedFormatter(timeZone);
     return ok<string, CalendarError>(timeZone);
   } catch {
     return err<string, CalendarError>({ kind: "invalid_time_zone", timeZone });
@@ -80,7 +62,7 @@ export const parseTimeZone = (timeZone: string) => {
 };
 
 const offsetAt = (instant: number, timeZone: string) => {
-  const parts = formatterFor(timeZone).formatToParts(instant);
+  const parts = zonedFormatter(timeZone).formatToParts(instant);
   const part = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((each) => each.type === type)?.value ?? 0);
   const wall = Date.UTC(part("year"), part("month") - 1, part("day"), part("hour"), part("minute"), part("second"));
   return wall - Math.floor(instant / 1000) * 1000;
@@ -95,7 +77,7 @@ export const zonedIso = (instant: number, timeZone: string) => {
   return `${wall}${offsetMinutes < 0 ? "-" : "+"}${hours}:${minutes}`;
 };
 
-export const zonedDate = (instant: number, timeZone: string) => zonedIso(instant, timeZone).slice(0, 10) as IsoDate;
+export const zonedDate = (instant: number, timeZone: string) => localDateIn(timeZone, instant);
 
 export const zonedMoment = (date: IsoDate, minute: number, timeZone: string) => {
   const wall = Date.parse(`${date}T00:00:00Z`) + minute * MINUTE_MS;
