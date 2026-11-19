@@ -11,6 +11,7 @@ const app = defineApp({
     LIFEOS_OWNER_GITHUB_ID: v.string(),
     OURA_CLIENT_ID: v.optional(v.string()),
     OURA_CLIENT_SECRET: v.optional(v.string()),
+    OPENAI_API_KEY: v.optional(v.string()),
     SITE_URL: v.string(),
   },
 });

@@ -17,6 +17,7 @@ export const vRecordRef = v.union(
   v.object({ table: v.literal("entityLinks"), id: v.id("entityLinks") }),
   v.object({ table: v.literal("calendars"), id: v.id("calendars") }),
   v.object({ table: v.literal("workingHours"), id: v.id("workingHours") }),
+  v.object({ table: v.literal("preferences"), id: v.id("preferences") }),
 );
 
 export const vActor = v.union(
@@ -96,6 +97,7 @@ export const platformTables = {
     .index("by_idempotency_key", ["idempotencyKey"])
     .index("by_kind_status_available", ["job.kind", "status.kind", "status.availableAt"])
     .index("by_kind_status_lease", ["job.kind", "status.kind", "status.leaseUntil"]),
+  preferences: defineTable({ smartEstimates: v.boolean() }),
   workers: defineTable({
     name: v.string(),
     capabilities: v.array(vCapability),

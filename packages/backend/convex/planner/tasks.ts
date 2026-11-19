@@ -20,6 +20,7 @@ import {
   type PlannerError,
 } from "./model";
 import { endFocusOnClosedTask } from "./focus";
+import { requestSuggestion } from "./smartEstimates";
 import { vParent, vWhen } from "./tables";
 
 const CARD_LIMIT = 500;
@@ -72,6 +73,7 @@ export const create = changeMutation({
       status: { kind: "open" },
       order: keyAfter(await lastTaskOrder(ctx, parent)),
     });
+    await requestSuggestion(ctx, taskId);
     return ok<{ taskId: Id<"tasks"> }, PlannerError>({ taskId });
   },
 });
@@ -79,7 +81,11 @@ export const create = changeMutation({
 export const rename = changeMutation({
   action: "task.rename",
   args: { taskId: v.id("tasks"), title: v.string() },
-  handler: (ctx, { taskId, title }, record) => edit(ctx, record, taskId, () => parseTitle(title).map((valid) => ({ title: valid }))),
+  handler: async (ctx, { taskId, title }, record) => {
+    const result = await edit(ctx, record, taskId, () => parseTitle(title).map((valid) => ({ title: valid })));
+    if (result.isOk() && result.value.changed) await requestSuggestion(ctx, taskId);
+    return result;
+  },
 });
 
 export const setNotes = changeMutation({

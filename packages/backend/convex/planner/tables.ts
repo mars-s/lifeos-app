@@ -37,10 +37,35 @@ export const vFocusPlan = v.union(
   v.object({ kind: v.literal("pomodoro"), ...vPomodoro.fields }),
 );
 
+export const vSmartEstimateError = v.union(
+  v.object({ kind: v.literal("not_configured") }),
+  v.object({ kind: v.literal("unauthorised") }),
+  v.object({ kind: v.literal("rate_limited") }),
+  v.object({ kind: v.literal("unavailable"), status: v.optional(v.number()) }),
+  v.object({ kind: v.literal("invalid_response") }),
+  v.object({ kind: v.literal("refused") }),
+);
+
+export const vSuggestionOutcome = v.union(
+  v.object({ kind: v.literal("waiting") }),
+  v.object({
+    kind: v.literal("suggested"),
+    minutes: v.number(),
+    reason: v.string(),
+    confidence: v.number(),
+    model: v.string(),
+    inputsHash: v.string(),
+    at: v.number(),
+  }),
+  v.object({ kind: v.literal("failed"), error: vSmartEstimateError, inputsHash: v.string(), at: v.number() }),
+);
+
 export type When = Infer<typeof vWhen>;
 export type Status = Infer<typeof vStatus>;
 export type Parent = Infer<typeof vParent>;
 export type Colour = Infer<typeof vColour>;
+export type SmartEstimateError = Infer<typeof vSmartEstimateError>;
+export type SuggestionOutcome = Infer<typeof vSuggestionOutcome>;
 
 const areaFields = {
   title: v.string(),
@@ -161,6 +186,11 @@ export const plannerTables = {
     .index("by_task_start", ["taskId", "start"])
     .index("by_start", ["start"])
     .index("by_state", ["state.kind"]),
+  estimateSuggestions: defineTable({
+    taskId: v.id("tasks"),
+    requestedAt: v.number(),
+    outcome: vSuggestionOutcome,
+  }).index("by_task", ["taskId"]),
   thingsSync: defineTable({
     syncedAt: v.number(),
     counts: v.object({
