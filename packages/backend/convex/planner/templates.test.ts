@@ -1,5 +1,4 @@
 import { afterEach, assert, expect, test, vi } from "vitest";
-import { generateKeyBetween } from "fractional-indexing";
 import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import {
@@ -162,14 +161,13 @@ test("reordering a Template changes its position and undo restores the order", a
   const [first, second, last] = original;
   assert(first && second && last);
   const templateId = last._id;
-  const move = (order: string) => t.mutation(api.planner.templates.reorder, { templateId, order });
-  expect(await move("")).toMatchObject({ ok: false, error: { kind: "invalid_order" } });
-  expect(await move(first.order)).toMatchObject({ ok: false, error: { kind: "invalid_order" } });
-  expect(unwrap(await move(last.order))).toMatchObject({ changed: false, activityId: null });
+  const move = (targetId: Id<"templates">) => t.mutation(api.planner.templates.reorder, { templateId, targetId, placement: "after" });
+  expect(unwrap(await move(templateId))).toMatchObject({ changed: false, activityId: null });
+  expect(unwrap(await move(second._id))).toMatchObject({ changed: false, activityId: null });
 
-  const order = generateKeyBetween(first.order, second.order);
-  const { activityId } = unwrap(await move(order));
-  expect(await templates(t)).toEqual([first, { ...last, order }, second]);
+  const { activityId } = unwrap(await move(first._id));
+  const [before, moved, after] = await templates(t);
+  expect([before, moved?._id, after]).toEqual([first, templateId, second]);
   unwrap(await t.mutation(api.platform.undo.undo, { activityId: activityId! }));
   expect(await templates(t)).toEqual(original);
 });
@@ -190,7 +188,7 @@ test("a stranger or a signed-out caller cannot read or change Templates", async 
         refusal(caller.mutation(api.planner.templates.saveFromTask, { taskId, today })),
         refusal(caller.mutation(api.planner.templates.createTask, { templateId, when: { kind: "inbox" }, today })),
         refusal(caller.mutation(api.planner.templates.update, { templateId, title: "Mine now" })),
-        refusal(caller.mutation(api.planner.templates.reorder, { templateId, order: "a1" })),
+        refusal(caller.mutation(api.planner.templates.reorder, { templateId, targetId: templateId, placement: "after" })),
         refusal(caller.mutation(api.planner.templates.remove, { templateId })),
       ]),
     ).toEqual(Array.from({ length: 6 }, () => kind));
@@ -223,7 +221,7 @@ test("with Templates switched off, every Template change is refused, the Templat
   expect(await t.mutation(api.planner.templates.saveFromTask, { taskId, today })).toEqual(off);
   expect(await t.mutation(api.planner.templates.createTask, { templateId, when: { kind: "anytime" }, today })).toEqual(off);
   expect(await t.mutation(api.planner.templates.update, { templateId, title: "Renamed" })).toEqual(off);
-  expect(await t.mutation(api.planner.templates.reorder, { templateId, order: "a1" })).toEqual(off);
+  expect(await t.mutation(api.planner.templates.reorder, { templateId, targetId: templateId, placement: "after" })).toEqual(off);
   expect(await t.mutation(api.planner.templates.remove, { templateId })).toEqual(off);
   expect((await templates(t)).map(({ title }) => title)).toEqual(["Weekly review"]);
 

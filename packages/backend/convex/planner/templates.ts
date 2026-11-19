@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import type { WithoutSystemFields } from "convex/server";
+import { generateKeyBetween } from "fractional-indexing";
 import { Result, err, ok } from "neverthrow";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
@@ -13,7 +14,6 @@ import {
   load,
   parseEstimate,
   parseLabels,
-  parseOrder,
   parseParent,
   parseTitle,
   parseWhen,
@@ -145,16 +145,22 @@ export const update = changeMutation({
 
 export const reorder = changeMutation({
   action: "template.reorder",
-  args: { templateId: v.id("templates"), order: v.string() },
-  handler: async (ctx, { templateId, order }, record) => {
+  args: { templateId: v.id("templates"), targetId: v.id("templates"), placement: v.union(v.literal("before"), v.literal("after")) },
+  handler: async (ctx, { templateId, targetId, placement }, record) => {
     if (!(await templatesOn(ctx))) return err<{ changed: boolean }, PlannerError>(SWITCHED_OFF);
-    const inputs = Result.combine([await load(ctx, "templates", templateId), parseOrder(order)]);
+    const inputs = Result.combine(await Promise.all([load(ctx, "templates", templateId), load(ctx, "templates", targetId)]));
     if (inputs.isErr()) return err<{ changed: boolean }, PlannerError>(inputs.error);
-    const [template, validOrder] = inputs.value;
-    if (template.order === validOrder) return ok<{ changed: boolean }, PlannerError>({ changed: false });
-    const occupied = await ctx.db.query("templates").withIndex("by_order", (q) => q.eq("order", validOrder)).first();
-    if (occupied) return err<{ changed: boolean }, PlannerError>({ kind: "invalid_order", order });
-    return ok<{ changed: boolean }, PlannerError>({ changed: await record.patch("templates", templateId, { order: validOrder }) });
+    const [template, target] = inputs.value;
+    const before = placement === "before";
+    const neighbour = await ctx.db.query("templates")
+      .withIndex("by_order", (q) => before ? q.lt("order", target.order) : q.gt("order", target.order))
+      .order(before ? "desc" : "asc")
+      .first();
+    if (templateId === targetId || neighbour?._id === templateId) return ok<{ changed: boolean }, PlannerError>({ changed: false });
+    const order = before
+      ? generateKeyBetween(neighbour?.order ?? null, target.order)
+      : generateKeyBetween(target.order, neighbour?.order ?? null);
+    return ok<{ changed: boolean }, PlannerError>({ changed: await record.patch("templates", template._id, { order }) });
   },
 });
 

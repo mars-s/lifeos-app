@@ -548,12 +548,14 @@ export const TemplatesList = () => {
   const move = (id: string | number, to: number) => {
     const from = sortable.findIndex((template) => template._id === id);
     const template = sortable[from];
-    if (!template || to < 0 || to >= sortable.length || from === to) return;
+    const target = sortable[to];
+    if (!template || !target || from === to) return;
     const ordered = arrayMove(sortable, from, to);
     const before = ordered[to - 1]?.order ?? null;
     const after = ordered[to + 1]?.order ?? null;
-    if (before !== null && before === after) return;
-    actions.reorder(template, generateKeyBetween(before, after));
+    const placement = from < to ? "after" : "before";
+    const order = before !== null && before === after ? null : generateKeyBetween(before, after);
+    actions.reorder(template, target._id, placement, order ?? template.order);
   };
   return (
     <DndContext

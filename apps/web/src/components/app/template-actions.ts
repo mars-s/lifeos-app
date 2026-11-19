@@ -81,13 +81,13 @@ export const useTemplateActions = () => {
           slot: `template:${template._id}`,
         }),
 
-      reorder: (template: TemplateRow, order: string) => {
+      reorder: (template: TemplateRow, targetId: Id<"templates">, placement: "before" | "after", order: string) => {
         const place = (key: string) =>
           editTemplates((rows) => rows.map((row) => (row._id === template._id ? { ...row, order: key } : row)).toSorted(byOrder));
         void change({
           title: "Template moved",
           mutation: api.planner.templates.reorder,
-          args: { templateId: template._id, order },
+          args: { templateId: template._id, targetId, placement },
           apply: place(order),
           revert: place(template.order),
         });
