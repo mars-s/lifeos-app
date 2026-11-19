@@ -46,6 +46,7 @@ def expect(step, got, wanted):
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
+    convex("scratch:seed")
     session = json.loads(convex("scratch:signIn"))
     convex("scratch:storeSecret", json.dumps({"last4": "sk42", "name": "openai"}))
     convex("scratch:storeSecret", json.dumps({"last4": "go17", "name": "opencodeGo"}))
