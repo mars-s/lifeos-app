@@ -4,26 +4,42 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi 
 import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { newBackend, unwrap, type Backend } from "../backend.test-utils";
-import { calibrationOf, DECISIONS_URL, nearestExamples, parseDecision, type PastTask } from "./smartEstimateModel";
+import { calibrationOf, DECISIONS_URL, nearestExamples, nudged, parseDecision, type PastTask } from "./smartEstimateModel";
 
 type Asked = { authorization: string | null; body: Record<string, unknown> };
 
 const openai = setupServer();
 
-const decisionsAnswering = (answer: Record<string, unknown>, status = 200) => {
+const decisionsAnswering = (answers: Record<string, unknown>[], status = 200) => {
   const asked: Asked[] = [];
   openai.resetHandlers(
     http.post(DECISIONS_URL, async ({ request }) => {
       asked.push({ authorization: request.headers.get("authorization"), body: (await request.json()) as Record<string, unknown> });
       return status === 200
-        ? HttpResponse.json({ model: "gpt-6-luna", answers: [{ name: "estimate", ...answer }], usage: { input_tokens: 420 } })
+        ? HttpResponse.json({ model: "gpt-6-luna", answers, usage: { input_tokens: 420, output_tokens: 0 } })
         : new HttpResponse("{}", { status });
     }),
   );
   return asked;
 };
 
-const choosing = (minutes: number) => decisionsAnswering({ type: "choice", choice: String(minutes), confidence: 0.81, probabilities: [] });
+const choosing = (minutes: number, { confidence = 0.81, vague = 0.04 } = {}) =>
+  decisionsAnswering([
+    {
+      type: "choice",
+      name: "estimate",
+      choice: String(minutes),
+      confidence,
+      probabilities: [
+        { value: String(minutes), probability: 0.86 },
+        { value: "60", probability: 0.1 },
+        { value: "999", probability: 0.04 },
+      ],
+    },
+    { type: "predicate", name: "too_vague", probability: vague },
+  ]);
+
+const outcomeOf = (t: Backend) => t.run(async (ctx) => (await ctx.db.query("estimateSuggestions").first())?.outcome);
 
 const settle = (t: Backend) => t.finishAllScheduledFunctions(vi.runAllTimers);
 
@@ -78,7 +94,7 @@ describe("suggesting an Estimate", () => {
   test("a new Task without an Estimate gets one suggestion, built from its fields and the nearest past Tasks", async () => {
     const t = await newBackend();
     const { areaId, labelId } = await seedHistory(t);
-    const asked = choosing(60);
+    const asked = choosing(30);
     const { taskId } = unwrap(
       await t.mutation(api.planner.tasks.create, {
         title: "Write essay body",
@@ -93,11 +109,21 @@ describe("suggesting an Estimate", () => {
 
     expect(asked).toHaveLength(1);
     expect(asked[0]?.authorization).toBe("Bearer sk-test");
-    const body = asked[0]!.body as { model: string; input: { content: unknown }[]; questions: { type: string; choices: { value: string }[] }[] };
+    const body = asked[0]!.body as {
+      model: string;
+      prompt_cache_key: string;
+      input: { role: string; content: unknown }[];
+      questions: { type: string; name: string; choices?: { value: string }[] }[];
+    };
     expect(body.model).toBe("gpt-6-luna");
-    expect(body.questions[0]?.type).toBe("choice");
-    expect(body.questions[0]?.choices.map(({ value }) => value)).toEqual(["10", "15", "30", "45", "60", "90", "120", "180", "240"]);
-    const data = (body.input[1]!.content as { data: { task: unknown; examples: { title: string }[]; calibration: unknown } }[])[0]?.data;
+    expect(body.prompt_cache_key).toBe("lifeos-smart-estimate");
+    expect(body.input[0]?.role).toBe("developer");
+    expect(body.questions.map(({ type, name }) => [type, name])).toEqual([
+      ["choice", "estimate"],
+      ["predicate", "too_vague"],
+    ]);
+    expect(body.questions[0]?.choices?.map(({ value }) => value)).toEqual(["5", "10", "15", "30", "45", "60", "90", "120", "180", "240"]);
+    const data = (body.input[1]!.content as { data: { task: unknown; examples: { title: string }[] } }[])[0]?.data;
     expect(data?.task).toEqual({
       title: "Write essay body",
       notes: "Three sections, with sources",
@@ -106,14 +132,40 @@ describe("suggesting an Estimate", () => {
       labels: ["Deep Work"],
     });
     expect(data?.examples.slice(0, 2).map(({ title }) => title).toSorted()).toEqual(["Write essay conclusion", "Write essay introduction"]);
-    expect(data?.calibration).toEqual({ ratio: 1.33, tasks: 4 });
+    expect(data).not.toHaveProperty("calibration");
     expect(JSON.stringify(body)).not.toContain("Jordan");
     expect(JSON.stringify(body)).not.toContain(taskId);
 
     expect(await suggestionFor(t, taskId)).toEqual({
-      minutes: 60,
-      reason: "Like “Write essay introduction”, which took 0:45. You usually run 33% over.",
+      minutes: 45,
+      reason: "Like “Write essay introduction”, which took 0:45. You usually run 33% over on Tasks like this, so not 0:30.",
     });
+    expect(await outcomeOf(t)).toMatchObject({
+      kind: "suggested",
+      minutes: 45,
+      modelMinutes: 30,
+      confidence: 0.81,
+      probabilities: [
+        { minutes: 30, probability: 0.86 },
+        { minutes: 60, probability: 0.1 },
+      ],
+      model: "gpt-6-luna",
+    });
+  });
+
+  test("a low-confidence pick is kept but not shown, and a Task too vague to estimate gets no chip", async () => {
+    const t = await newBackend();
+    choosing(60, { confidence: 0.2 });
+    const { taskId } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Plan the trip" }));
+    await settle(t);
+    expect(await outcomeOf(t)).toMatchObject({ kind: "suggested", minutes: 60, confidence: 0.2 });
+    expect(await suggestionFor(t, taskId)).toBeNull();
+
+    choosing(30, { vague: 0.92 });
+    unwrap(await t.mutation(api.planner.tasks.rename, { taskId, title: "Stuff" }));
+    await settle(t);
+    expect(await outcomeOf(t)).toMatchObject({ kind: "unclear", vague: 0.92 });
+    expect(await suggestionFor(t, taskId)).toBeNull();
   });
 
   test("accepting the suggestion sets the Estimate through the normal change, so it undoes, and the suggestion steps aside", async () => {
@@ -180,18 +232,16 @@ describe("suggesting an Estimate", () => {
 
   test("a refused key or a refusal is stored as a failure and shows nothing", async () => {
     const t = await newBackend();
-    decisionsAnswering({}, 401);
+    decisionsAnswering([], 401);
     const { taskId } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Renew licence" }));
     await settle(t);
     expect(await suggestionFor(t, taskId)).toBeNull();
-    const outcome = await t.run(async (ctx) => (await ctx.db.query("estimateSuggestions").first())?.outcome);
-    expect(outcome).toMatchObject({ kind: "failed", error: { kind: "unauthorised" } });
+    expect(await outcomeOf(t)).toMatchObject({ kind: "failed", error: { kind: "unauthorised" } });
 
-    decisionsAnswering({ type: "refusal" });
+    decisionsAnswering([{ type: "refusal", name: "estimate" }]);
     unwrap(await t.mutation(api.planner.tasks.rename, { taskId, title: "Renew driver licence" }));
     await settle(t);
-    const refused = await t.run(async (ctx) => (await ctx.db.query("estimateSuggestions").first())?.outcome);
-    expect(refused).toMatchObject({ kind: "failed", error: { kind: "refused" } });
+    expect(await outcomeOf(t)).toMatchObject({ kind: "failed", error: { kind: "refused" } });
   });
 });
 
@@ -226,10 +276,15 @@ describe("the Smart Estimates preference", () => {
 });
 
 describe("the estimate model", () => {
-  test("calibration is the median of Actual Time over Estimate, and needs three Tasks", () => {
+  test("calibration prefers similar Tasks, falls back to all history with three Tasks, and nudges the pick", () => {
     const history = [past("a", { estimateMinutes: 30, actualMinutes: 60 }), past("b", { estimateMinutes: 60, actualMinutes: 60 })];
-    expect(calibrationOf(history)).toBeUndefined();
-    expect(calibrationOf([...history, past("c", { estimateMinutes: 10, actualMinutes: 15 })])).toEqual({ ratio: 1.5, tasks: 3 });
+    expect(calibrationOf([], history)).toBeUndefined();
+    const overall = calibrationOf([], [...history, past("c", { estimateMinutes: 10, actualMinutes: 15 })]);
+    expect(overall).toEqual({ ratio: 1.5, tasks: 3, scope: "overall" });
+    expect(calibrationOf(history, history)).toEqual({ ratio: 1.5, tasks: 2, scope: "similar" });
+    expect(nudged(30, overall)).toBe(45);
+    expect(nudged(30, { ratio: 1.1, tasks: 5, scope: "overall" })).toBe(30);
+    expect(nudged(60, { ratio: 0.5, tasks: 5, scope: "similar" })).toBe(30);
   });
 
   test("nearest examples rank shared title words over a shared Area, and skip Tasks with no time", () => {
@@ -248,8 +303,10 @@ describe("the estimate model", () => {
       kind: "invalid_response",
     });
     expect(parseDecision({ answers: [{ type: "choice", name: "estimate", choice: "45", confidence: 0.6 }], model: "gpt-6-luna" })._unsafeUnwrap()).toEqual({
-      minutes: 45,
+      pick: 45,
       confidence: 0.6,
+      probabilities: [],
+      vague: 0,
       model: "gpt-6-luna",
     });
   });

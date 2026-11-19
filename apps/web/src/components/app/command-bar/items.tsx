@@ -15,6 +15,7 @@ import {
   Pause,
   Play,
   Shapes,
+  Sparkle,
   Stop,
   Timer,
   Trash,
@@ -265,9 +266,12 @@ export const moreItems = (deps: {
   toggleFocus: () => void;
   stopFocus: () => void;
   shortcuts: () => void;
+  smartEstimates: { enabled: boolean; configured: boolean } | undefined;
+  setSmartEstimates: (enabled: boolean) => void;
 }) => {
   const muted = MUTED;
   const item = plain.bind(null, "More");
+  const smart = deps.smartEstimates;
   const paused = deps.focus?.state.kind === "paused";
   return [
     ...(deps.canUndo ? [item("undo", "Undo the last change", <ArrowCounterClockwise weight="bold" aria-hidden="true" className={muted} />, deps.undo, "mod+z")] : []),
@@ -282,6 +286,21 @@ export const moreItems = (deps: {
             deps.focus.title.toLowerCase(),
           ),
           item("focus-stop", "Stop Focus Session", <Stop weight="fill" aria-hidden="true" className={muted} />, deps.stopFocus, undefined, deps.focus.title.toLowerCase()),
+        ]
+      : []),
+    ...(smart
+      ? [
+          {
+            ...item(
+              "smart-estimates",
+              smart.enabled ? "Turn Smart Estimates off" : "Turn Smart Estimates on",
+              <Sparkle weight="fill" aria-hidden="true" className={muted} />,
+              () => deps.setSmartEstimates(!smart.enabled),
+              undefined,
+              "suggest estimate openai settings preference",
+            ),
+            ...(smart.configured ? {} : { detail: "Not set up" }),
+          },
         ]
       : []),
     item("shortcuts", "Keyboard shortcuts", <Keyboard weight="fill" aria-hidden="true" className={muted} />, deps.shortcuts, "shift+/", "help keys"),

@@ -8,7 +8,6 @@ import type { PlannerTask } from "@lifeos/backend/types";
 import { AreaDot } from "@/components/lifeos/area";
 import { ChecklistEditor } from "@/components/lifeos/checklist-editor";
 import { DeadlinePicker, WhenPicker } from "@/components/lifeos/date-pickers";
-import { EstimateField } from "@/components/lifeos/estimate-field";
 import { LabelPicker } from "@/components/lifeos/label-picker";
 import { ToolButton } from "@/components/lifeos/tool-button";
 import { WorkBlockList } from "@/components/lifeos/work-blocks";
@@ -17,6 +16,7 @@ import { deadlineMark, localDate, relativeDay, shortDay, whenLabel } from "./dat
 import { FocusSection, FocusTool } from "./focus";
 import { useQuietView } from "./hooks";
 import { Linkified, TitleLinks } from "./linkified";
+import { TaskEstimateField } from "./smart-estimate";
 import { isOptimistic, useTaskActions } from "./task-actions";
 
 type KnownKeys = ReadonlyMap<string, { key: string; order: string }>;
@@ -180,7 +180,7 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
           })}
         />
       )}
-      <EstimateField minutes={task.estimateMinutes} onChange={(minutes) => void actions.setEstimate(minutes)} />
+      <TaskEstimateField task={task} onChange={(minutes) => void actions.setEstimate(minutes)} />
       <FocusSection task={task} today={today} />
       <div className="-ml-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1.5">
         <WhenPicker when={task.when} label={whenLabel(task.when, today)} today={today} onChange={actions.setWhen} />

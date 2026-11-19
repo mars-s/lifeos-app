@@ -14,12 +14,16 @@ import {
   DECISIONS_URL,
   decisionRequest,
   nearestExamples,
+  nudged,
   parseDecision,
   reasonFor,
+  SHOW_CONFIDENCE,
   trimNotes,
+  VAGUE_THRESHOLD,
+  type Calibration,
+  type Decision,
   type EstimateSignal,
   type PastTask,
-  type Suggestion,
   type TaskSignal,
 } from "./smartEstimateModel";
 import { vSuggestionOutcome, type SmartEstimateError, type SuggestionOutcome } from "./tables";
@@ -66,6 +70,7 @@ export const forTask = ownerQuery({
     const task = await ctx.db.get("tasks", taskId);
     const row = await suggestionRow(ctx, taskId);
     if (!task || task.estimateMinutes !== undefined || row?.outcome.kind !== "suggested") return null;
+    if (row.outcome.confidence < SHOW_CONFIDENCE) return null;
     return { minutes: row.outcome.minutes, reason: row.outcome.reason };
   },
 });
@@ -160,7 +165,7 @@ const historyFor = async (ctx: QueryCtx, lookups: Lookups, taskId: Id<"tasks">) 
 export type SuggestionPlan =
   | { kind: "skip" }
   | { kind: "gone" }
-  | { kind: "ask"; signal: EstimateSignal; cachedHash: string | null };
+  | { kind: "ask"; signal: EstimateSignal; calibration: Calibration | null; cachedHash: string | null };
 
 export const planFor = internalQuery({
   args: { taskId: v.id("tasks"), requestedAt: v.number() },
@@ -181,15 +186,12 @@ export const planFor = internalQuery({
       historyFor(ctx, lookups, taskId),
     ]);
     const taskSignal = { ...signal, checklistItems: checklist.length };
-    const calibration = calibrationOf(history);
+    const examples = nearestExamples({ ...taskSignal, ...(projectKey ? { projectKey } : {}) }, history);
     return {
       kind: "ask",
-      signal: {
-        task: taskSignal,
-        examples: nearestExamples({ ...taskSignal, ...(projectKey ? { projectKey } : {}) }, history),
-        ...(calibration ? { calibration } : {}),
-      },
-      cachedHash: row.outcome.kind === "suggested" ? row.outcome.inputsHash : null,
+      signal: { task: taskSignal, examples },
+      calibration: calibrationOf(examples, history) ?? null,
+      cachedHash: row.outcome.kind === "suggested" || row.outcome.kind === "unclear" ? row.outcome.inputsHash : null,
     } satisfies SuggestionPlan;
   },
 });
@@ -222,7 +224,7 @@ const failureOf = (response: Response) => {
 
 const askDecisions = (signal: EstimateSignal) => {
   const key = openAiKey();
-  if (!key) return errAsync<Suggestion, SmartEstimateError>({ kind: "not_configured" });
+  if (!key) return errAsync<Decision, SmartEstimateError>({ kind: "not_configured" });
   const unreachable: SmartEstimateError = { kind: "unavailable" };
   const unreadable: SmartEstimateError = { kind: "invalid_response" };
   return ResultAsync.fromPromise(
@@ -248,20 +250,27 @@ export const suggest = internalAction({
     const plan: SuggestionPlan = await ctx.runQuery(internal.planner.smartEstimates.planFor, args);
     if (plan.kind === "gone") await ctx.runMutation(internal.planner.smartEstimates.forget, { taskId: args.taskId });
     if (plan.kind !== "ask") return null;
-    const inputsHash = await sha256Hex(canonicalJson({ model: DECISIONS_MODEL, signal: plan.signal }));
+    const { signal, calibration } = plan;
+    const inputsHash = await sha256Hex(canonicalJson({ model: DECISIONS_MODEL, signal, calibration }));
     if (plan.cachedHash === inputsHash) return null;
-    const result: Result<Suggestion, SmartEstimateError> = await askDecisions(plan.signal);
+    const result: Result<Decision, SmartEstimateError> = await askDecisions(signal);
     const at = Date.now();
     const outcome: SuggestionOutcome = result.match(
-      ({ minutes, confidence, model }) => ({
-        kind: "suggested" as const,
-        minutes,
-        reason: reasonFor(plan.signal, minutes),
-        confidence,
-        model,
-        inputsHash,
-        at,
-      }),
+      ({ pick, confidence, probabilities, vague, model }) => {
+        if (vague >= VAGUE_THRESHOLD) return { kind: "unclear" as const, vague, inputsHash, at };
+        const minutes = nudged(pick, calibration ?? undefined);
+        return {
+          kind: "suggested" as const,
+          minutes,
+          modelMinutes: pick,
+          reason: reasonFor(signal, calibration ?? undefined, pick, minutes),
+          confidence,
+          probabilities,
+          model,
+          inputsHash,
+          at,
+        };
+      },
       (error) => ({ kind: "failed" as const, error, inputsHash, at }),
     );
     await ctx.runMutation(internal.planner.smartEstimates.record, { ...args, outcome });

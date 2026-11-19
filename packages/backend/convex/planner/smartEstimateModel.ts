@@ -4,6 +4,12 @@ import type { SmartEstimateError } from "./tables";
 export const DECISIONS_URL = "https://api.openai.com/v1/decisions";
 export const DECISIONS_MODEL = "gpt-6-luna";
 export const QUESTION_NAME = "estimate";
+export const VAGUE_QUESTION = "too_vague";
+export const PROMPT_CACHE_KEY = "lifeos-smart-estimate";
+export const VAGUE_THRESHOLD = 0.7;
+export const SHOW_CONFIDENCE = 0.3;
+const MIN_SIMILAR_PAIRS = 2;
+const NUDGE_BAND = 0.15;
 export const NOTES_LIMIT = 600;
 export const EXAMPLE_LIMIT = 6;
 const MIN_CALIBRATION_TASKS = 3;
@@ -11,6 +17,7 @@ const MIN_COUNTED_ACTUAL_MINUTES = 5;
 const TITLE_SHOWN = 40;
 
 export const ESTIMATE_CHOICES = [
+  { minutes: 5, description: "0:05. A two minute job, such as a quick reply." },
   { minutes: 10, description: "0:10. A quick message, call or errand." },
   { minutes: 15, description: "0:15. A short admin step or a small fix." },
   { minutes: 30, description: "0:30. A small piece of focused work." },
@@ -42,11 +49,13 @@ export type Example = {
   actualMinutes?: number;
 };
 
-export type Calibration = { ratio: number; tasks: number };
+export type Calibration = { ratio: number; tasks: number; scope: "similar" | "overall" };
 
-export type EstimateSignal = { task: TaskSignal; examples: Example[]; calibration?: Calibration };
+export type EstimateSignal = { task: TaskSignal; examples: Example[] };
 
-export type Suggestion = { minutes: number; confidence: number; model: string };
+export type Probability = { minutes: number; probability: number };
+
+export type Decision = { pick: number; confidence: number; probabilities: Probability[]; vague: number; model: string };
 
 const STOP_WORDS = new Set(["the", "and", "for", "with", "from", "into", "onto", "this", "that", "about", "your", "my", "our", "a", "an", "to", "of", "on", "in", "at", "by", "or"]);
 
@@ -96,16 +105,30 @@ const median = (values: readonly number[]) => {
   return sorted.length % 2 === 1 ? (sorted[middle] ?? 0) : ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2;
 };
 
-export const calibrationOf = (history: readonly PastTask[]) => {
-  const ratios = history.flatMap(({ estimateMinutes, actualMinutes }) =>
+const runRatios = (tasks: readonly { estimateMinutes?: number; actualMinutes?: number }[]) =>
+  tasks.flatMap(({ estimateMinutes, actualMinutes }) =>
     estimateMinutes !== undefined && actualMinutes !== undefined && actualMinutes >= MIN_COUNTED_ACTUAL_MINUTES
       ? [actualMinutes / estimateMinutes]
       : [],
   );
-  return ratios.length < MIN_CALIBRATION_TASKS
-    ? undefined
-    : ({ ratio: Math.round(median(ratios) * 100) / 100, tasks: ratios.length } satisfies Calibration);
+
+const calibrationFrom = (ratios: readonly number[], scope: Calibration["scope"]) =>
+  ({ ratio: Math.round(median(ratios) * 100) / 100, tasks: ratios.length, scope }) satisfies Calibration;
+
+export const calibrationOf = (examples: readonly Example[], history: readonly PastTask[]) => {
+  const similar = runRatios(examples);
+  if (similar.length >= MIN_SIMILAR_PAIRS) return calibrationFrom(similar, "similar");
+  const overall = runRatios(history);
+  return overall.length >= MIN_CALIBRATION_TASKS ? calibrationFrom(overall, "overall") : undefined;
 };
+
+const nearestChoice = (minutes: number) =>
+  ESTIMATE_CHOICES.map((choice) => choice.minutes).reduce((best, choice) =>
+    Math.abs(Math.log(choice / minutes)) < Math.abs(Math.log(best / minutes)) ? choice : best,
+  );
+
+export const nudged = (pick: number, calibration: Calibration | undefined) =>
+  calibration && Math.abs(calibration.ratio - 1) > NUDGE_BAND ? nearestChoice(pick * calibration.ratio) : pick;
 
 export const trimNotes = (notes: string) => {
   const trimmed = notes.trim().replace(/\s+/g, " ");
@@ -114,14 +137,14 @@ export const trimNotes = (notes: string) => {
 
 const clock = (minutes: number) => `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
 
+const INSTRUCTIONS =
+  "Estimate how long one person's Task will take as focused work. The JSON holds the Task and the most similar Tasks from their history. actualMinutes is focused time they really spent; estimateMinutes is what they planned. When a similar Task has actualMinutes, trust it over estimateMinutes.";
+
 export const decisionRequest = (signal: EstimateSignal) => ({
   model: DECISIONS_MODEL,
+  prompt_cache_key: PROMPT_CACHE_KEY,
   input: [
-    {
-      role: "developer",
-      content:
-        "Estimate how long one person's Task will take. The JSON holds the Task and similar Tasks from their history. actualMinutes is focused time they really spent; estimateMinutes is what they planned. Trust actualMinutes over estimateMinutes. calibration.ratio is their usual actual time divided by their estimate: above 1 means they usually run over, so lean longer.",
-    },
+    { role: "developer", content: INSTRUCTIONS },
     { role: "user", content: [{ type: "input_json", data: signal }] },
   ],
   questions: [
@@ -131,22 +154,44 @@ export const decisionRequest = (signal: EstimateSignal) => ({
       instructions: "How long will this Task take, as focused work?",
       choices: ESTIMATE_CHOICES.map(({ minutes, description }) => ({ value: String(minutes), description })),
     },
+    {
+      type: "predicate",
+      name: VAGUE_QUESTION,
+      instructions: "Is this Task too vague to estimate, such as a bare word or a placeholder with no clear piece of work?",
+    },
   ],
 });
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 
+const offeredMinutes = (value: unknown) => {
+  const minutes = typeof value === "string" ? Number(value) : Number.NaN;
+  return ESTIMATE_CHOICES.some((choice) => choice.minutes === minutes) ? minutes : undefined;
+};
+
+const probabilitiesOf = (value: unknown) =>
+  (Array.isArray(value) ? value : []).flatMap((entry: unknown) => {
+    if (!isRecord(entry) || typeof entry.probability !== "number") return [];
+    const minutes = offeredMinutes(entry.value);
+    return minutes === undefined ? [] : [{ minutes, probability: Math.round(entry.probability * 1000) / 1000 }];
+  });
+
 export const parseDecision = (body: unknown) => {
-  const invalid = err<Suggestion, SmartEstimateError>({ kind: "invalid_response" });
+  const invalid = err<Decision, SmartEstimateError>({ kind: "invalid_response" });
   if (!isRecord(body) || !Array.isArray(body.answers)) return invalid;
-  const answer: unknown = body.answers.find((entry: unknown) => isRecord(entry) && entry.name === QUESTION_NAME);
-  if (!isRecord(answer)) return invalid;
-  if (answer.type === "refusal") return err<Suggestion, SmartEstimateError>({ kind: "refused" });
-  const minutes = typeof answer.choice === "string" ? Number(answer.choice) : Number.NaN;
-  if (answer.type !== "choice" || !ESTIMATE_CHOICES.some((choice) => choice.minutes === minutes)) return invalid;
-  return ok<Suggestion, SmartEstimateError>({
-    minutes,
+  const answers: unknown[] = body.answers;
+  const named = (name: string) => answers.find((entry): entry is Record<string, unknown> => isRecord(entry) && entry.name === name);
+  const answer = named(QUESTION_NAME);
+  if (!answer) return invalid;
+  if (answer.type === "refusal") return err<Decision, SmartEstimateError>({ kind: "refused" });
+  const pick = offeredMinutes(answer.choice);
+  if (answer.type !== "choice" || pick === undefined) return invalid;
+  const vague = named(VAGUE_QUESTION);
+  return ok<Decision, SmartEstimateError>({
+    pick,
     confidence: typeof answer.confidence === "number" ? answer.confidence : 0,
+    probabilities: probabilitiesOf(answer.probabilities),
+    vague: vague?.type === "predicate" && typeof vague.probability === "number" ? vague.probability : 0,
     model: typeof body.model === "string" ? body.model : DECISIONS_MODEL,
   });
 };
@@ -168,16 +213,16 @@ const evidence = (example: Example | undefined) => {
     : `Like ${title}, which took ${clock(example.actualMinutes)}.`;
 };
 
-const habit = (calibration: Calibration | undefined) => {
-  if (!calibration) return "";
+const habit = (calibration: Calibration | undefined, pick: number, minutes: number) => {
+  if (!calibration || Math.abs(calibration.ratio - 1) <= NUDGE_BAND) return "";
   const percent = Math.round(Math.abs(calibration.ratio - 1) * 100);
-  if (calibration.ratio >= 1.15) return ` You usually run ${percent}% over.`;
-  if (calibration.ratio <= 0.85) return ` You usually finish ${percent}% early.`;
-  return "";
+  const which = calibration.scope === "similar" ? " on Tasks like this" : "";
+  const moved = minutes === pick ? "" : `, so not ${clock(pick)}`;
+  return calibration.ratio > 1 ? ` You usually run ${percent}% over${which}${moved}.` : ` You usually finish ${percent}% early${which}${moved}.`;
 };
 
-export const reasonFor = (signal: EstimateSignal, minutes: number) =>
-  `${evidence(closestExample(signal.examples, minutes))}${habit(signal.calibration)}`;
+export const reasonFor = (signal: EstimateSignal, calibration: Calibration | undefined, pick: number, minutes: number) =>
+  `${evidence(closestExample(signal.examples, minutes))}${habit(calibration, pick, minutes)}`;
 
 export const canonicalJson = (value: unknown) =>
   JSON.stringify(value, (_key, inner: unknown) =>

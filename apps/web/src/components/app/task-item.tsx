@@ -12,7 +12,6 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { PlannerTask } from "@lifeos/backend/types";
 import { AreaDot, areaVar } from "@/components/lifeos/area";
 import { ActualMeter } from "@/components/lifeos/focus-timer";
-import { EstimateField } from "@/components/lifeos/estimate-field";
 import { ActualChip, DeadlineMarker, EstimateChip, TaskCheckbox } from "@/components/lifeos/task-row";
 import { Popover } from "@/components/ui/popover-panel";
 import { haptic } from "@/lib/haptics";
@@ -28,6 +27,7 @@ import { useSelectionActions } from "./selection-actions";
 import { useShell } from "./shell-context";
 import { Linkified, TitleLinks } from "./linkified";
 import { TaskCardBody, TitleField } from "./task-card-body";
+import { TaskEstimateField } from "./smart-estimate";
 import { useTaskActions } from "./task-actions";
 
 const WHEN_ICON = {
@@ -142,7 +142,7 @@ const EstimateEdit = ({ task, today }: { task: PlannerTask; today: string }) => 
         </button>
       }
     >
-      <EstimateField minutes={task.estimateMinutes} onChange={(minutes) => actions.setEstimate([task], minutes)} />
+      <TaskEstimateField task={task} onChange={(minutes) => actions.setEstimate([task], minutes)} />
     </Popover>
   );
 };
