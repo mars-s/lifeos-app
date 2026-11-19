@@ -191,7 +191,13 @@ input_named() {
 }
 
 go() {
-  js "document.querySelector('nav a[href=\"/$1\"]').click()"
+  if [ "$1" = templates ]; then
+    js "document.querySelector('nav a[href=\"/settings\"]').click()"
+    $AB wait 600 >/dev/null
+    js "document.querySelector('#main a[href=\"/settings/features/templates\"]').click()"
+  else
+    js "document.querySelector('nav a[href=\"/$1\"]').click()"
+  fi
   $AB wait 900 >/dev/null
 }
 
