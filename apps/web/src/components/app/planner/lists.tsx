@@ -4,7 +4,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Plus, Repeat } from "@phosphor-icons/react";
 import { AnimatePresence } from "motion/react";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import type { IsoDate } from "@lifeos/backend/date";
 import type { PlanGhost, PlannerTask } from "@lifeos/backend/types";
 import { AreaDot } from "@/components/lifeos/area";
@@ -15,6 +15,8 @@ import { RollingNumber } from "@/components/ui/rolling-number";
 import { cn } from "@/lib/utils";
 import { longDay } from "../dates";
 import { placeAttr } from "../new-task-place";
+import { RowGap, useRowWindow } from "../row-window";
+import { useShell } from "../shell-context";
 import { TaskItem, useCardHost, useHostedRows } from "../task-item";
 import type { PlanActions } from "./actions";
 import { DayHeader } from "./day-header";
@@ -92,6 +94,11 @@ const GhostRow = ({ ghost }: { ghost: PlanGhost }) => (
 
 const NO_GHOSTS: readonly PlanGhost[] = [];
 
+const LONG_TITLE = 26;
+
+const tileShape = (task: PlannerTask) =>
+  `${task.context || task.notes || task.checklist.length > 0 || task.deadline ? "meta" : ""}${task.title.length > LONG_TITLE ? "long" : ""}`;
+
 const PlanList = ({
   container,
   tasks,
@@ -114,30 +121,42 @@ const PlanList = ({
   const rows = usePlacedRows(container, useHostedRows(tasks, slot, true));
   const { setNodeRef, isOver } = useDroppable({ id: container });
   const { today, onCard, cardOf } = useCardHost();
+  const { openCard } = useShell();
+  const list = useRef<HTMLUListElement>(null);
+  const rowWindow = useRowWindow(list, rows, openCard?.key, tileShape);
   return (
     <SortableContext id={container} items={rows.map((row) => row.key)} strategy={verticalListSortingStrategy}>
       <ul
-        ref={setNodeRef}
+        ref={(node) => {
+          setNodeRef(node);
+          list.current = node;
+        }}
         aria-label={label}
         data-sortable=""
         data-arrow-scope=""
+        data-row-scroller=""
         data-plan-list={container}
         data-plan-scroll="lists"
         className="min-h-24 flex-1 overflow-y-auto overscroll-contain px-2 pt-1 pb-28 [scrollbar-width:thin]"
       >
         <AnimatePresence initial={false}>
-          {rows.map(({ key, task }) => (
-            <TaskItem
-              key={key}
-              itemKey={key}
-              task={task}
-              show={{ context: true, tileOn, tileLeft: left }}
-              sortable
-              today={today}
-              card={cardOf(key)}
-              onCard={onCard}
-            />
-          ))}
+          {rows.map((row, index) =>
+            rowWindow.shows(row, index) ? (
+              <TaskItem
+                key={row.key}
+                itemKey={row.key}
+                task={row.task}
+                show={{ context: true, tileOn, tileLeft: left }}
+                sortable
+                today={today}
+                card={cardOf(row.key)}
+                onCard={onCard}
+                settled={rowWindow.settled(row.key)}
+              />
+            ) : (
+              <RowGap key={row.key} itemKey={row.key} task={row.task} height={rowWindow.gapHeight(row)} />
+            ),
+          )}
         </AnimatePresence>
         {ghosts.map((ghost) => (
           <GhostRow key={ghost.key} ghost={ghost} />

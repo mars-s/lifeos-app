@@ -21,6 +21,7 @@ import { previewSpread, sleepOn, type SpreadPreview } from "../planner/spread";
 import { newDraft, smartBusy, useSmartActions, useSmartBlocks, useSmartFill, type SmartDraft } from "../planner/smart-blocks";
 import type { SmartFill } from "@lifeos/backend/smartBlocks";
 import { TimeboxPane, type TimeboxView } from "../planner/timebox-pane";
+import { arrowTarget } from "../row-window";
 import { selection } from "../selection";
 import type { PlannerTab } from "../route";
 import { useShell } from "../shell-context";
@@ -255,8 +256,8 @@ const Panes = ({
       return;
     }
     for (let next = order.indexOf(list) + sideways; next >= 0 && next < order.length; next += sideways) {
-      const items = [...document.querySelectorAll<HTMLElement>(`[data-plan-list="${order[next]}"] [data-arrow-item]`)];
-      const item = items[Math.min(at, items.length - 1)];
+      const items = [...document.querySelectorAll<HTMLElement>(`[data-plan-list="${order[next]}"] :is([data-arrow-item], [data-row-gap])`)];
+      const item = arrowTarget(items[Math.min(at, items.length - 1)]);
       if (!item || item.offsetParent === null) continue;
       item.focus({ preventScroll: true });
       item.scrollIntoView({ block: "nearest", inline: "nearest" });

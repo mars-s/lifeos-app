@@ -2,6 +2,7 @@
 
 import { useEffect, type RefObject } from "react";
 import { haptic } from "@/lib/haptics";
+import { revealRow } from "./row-window";
 import { rowKeys, selection } from "./selection";
 
 const DRAG_START_PX = 6;
@@ -32,6 +33,7 @@ const isTyping = (target: EventTarget | null) =>
   target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
 
 export const focusRow = (key: string) => {
+  revealRow(key);
   const row = document.querySelector<HTMLElement>(`#main [data-task-key="${CSS.escape(key)}"]`);
   const item = row?.querySelector<HTMLElement>("[data-arrow-item]");
   item?.focus({ preventScroll: true });

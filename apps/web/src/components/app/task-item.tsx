@@ -8,7 +8,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { generateKeyBetween } from "fractional-indexing";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Result } from "neverthrow";
-import { memo, useCallback, useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
 import type { PlannerTask, TaskRepeat } from "@lifeos/backend/types";
 import { AreaDot, areaVar } from "@/components/lifeos/area";
 import { formatMinutes } from "@/components/lifeos/format";
@@ -24,7 +24,8 @@ import { drafts, isDraftTask, useDraftCount, useRows } from "./drafts";
 import { FocusBadge, useActualMs, useFocusOn } from "./focus";
 import { PanelBoundary } from "./panel-boundary";
 import { routeHref } from "./route";
-import { selection, useLingering, useSelected } from "./selection";
+import { RowGap, useRowWindow } from "./row-window";
+import { selection, useLingering, useRegisteredTask, useSelected } from "./selection";
 import { useSelectionActions } from "./selection-actions";
 import { useShell, type OpenCard } from "./shell-context";
 import { Linkified, TitleLinks } from "./linkified";
@@ -301,6 +302,7 @@ type TaskItemProps = {
   today: string;
   card: CardState;
   onCard: (card: OpenCard | null) => void;
+  settled?: boolean;
 };
 
 const isShut = (card: CardState) => card === "closed" || card === "snapped";
@@ -338,14 +340,14 @@ const sameFields = (a: object, b: object) => {
 };
 
 const sameRow = (before: TaskItemProps, after: TaskItemProps) => {
-  const { show: { tileLeft: leftBefore, ...shownBefore } = NO_SHOW, card: cardBefore, ...restBefore } = before;
-  const { show: { tileLeft: leftAfter, ...shownAfter } = NO_SHOW, card: cardAfter, ...restAfter } = after;
+  const { show: { tileLeft: leftBefore, ...shownBefore } = NO_SHOW, card: cardBefore, settled: _settledBefore, ...restBefore } = before;
+  const { show: { tileLeft: leftAfter, ...shownAfter } = NO_SHOW, card: cardAfter, settled: _settledAfter, ...restAfter } = after;
   const sameCard = cardBefore === cardAfter || (isShut(cardBefore) && isShut(cardAfter));
   const sameLeft = leftBefore?.get(before.task._id) === leftAfter?.get(after.task._id);
   return sameCard && sameLeft && sameFields(restBefore, restAfter) && sameFields(shownBefore, shownAfter);
 };
 
-const TaskItemRow = ({ task, itemKey, show = NO_SHOW, sortable, today, card, onCard: setOpenCard }: TaskItemProps) => {
+const TaskItemRow = ({ task, itemKey, show = NO_SHOW, sortable, today, card, onCard: setOpenCard, settled = false }: TaskItemProps) => {
   const reduce = useReducedMotion();
   const container = useRef<HTMLLIElement>(null);
   const [closedByKey, setClosedByKey] = useState(false);
@@ -354,8 +356,7 @@ const TaskItemRow = ({ task, itemKey, show = NO_SHOW, sortable, today, card, onC
   const selected = useSelected(itemKey) && !open;
   const lingering = useLingering(task._id);
 
-  useEffect(() => selection.register(itemKey, task), [itemKey, task]);
-  useEffect(() => () => selection.forget(itemKey), [itemKey]);
+  useRegisteredTask(itemKey, task);
   const transition = reduce || quick || (!open && closedByKey) ? instant : springLayout;
   const closed = task.status.kind !== "open";
   const editable = open && !closed;
@@ -404,7 +405,7 @@ const TaskItemRow = ({ task, itemKey, show = NO_SHOW, sortable, today, card, onC
       data-task-id={task._id}
       data-open-card={open ? "" : undefined}
       data-selected={selected ? "" : undefined}
-      initial={ROW_HIDDEN}
+      initial={settled ? false : ROW_HIDDEN}
       animate={ROW_SHOWN}
       exit={ROW_HIDDEN}
       transition={reduce || (unsaved && quick) ? instant : springLayout}
@@ -568,8 +569,12 @@ export const useHasDrafts = () => useDraftCount(routeHref(useShell().route)) > 0
 export const useHostedRows = (tasks: readonly PlannerTask[], slot: string | undefined, inline: boolean) => {
   const { closeCard } = useShell();
   const rows = useRows(tasks, slot);
-  const shown = inline ? rows.filter(({ task }) => isDraftTask(task._id) || tasks.includes(task)) : rows;
-  const vanished = rows.find((row) => !shown.includes(row))?.key;
+  const shown = useMemo(() => {
+    if (!inline) return rows;
+    const listed = new Set(tasks);
+    return rows.filter(({ task }) => isDraftTask(task._id) || listed.has(task));
+  }, [rows, tasks, inline]);
+  const vanished = shown.length === rows.length ? undefined : rows.find((row) => !shown.includes(row))?.key;
 
   useEffect(() => {
     if (!vanished) return;
@@ -600,6 +605,8 @@ export const TaskItems = ({
   const actions = useSelectionActions(today);
   const shown = useHostedRows(tasks, hostsDrafts ? (slot ?? routeHref(route)) : undefined, hostsDrafts === "inline");
   const sensors = useSensors(useSensor(MouseSensor, { activationConstraint: { distance: DRAG_START_PX } }), useSensor(KeyboardSensor));
+  const list = useRef<HTMLUListElement>(null);
+  const rowWindow = useRowWindow(list, shown, openCard?.key, (task) => `${show?.context && task.context ? "context" : ""}${task.deadline ? "deadline" : ""}`);
   const place = (key: string, to: number) => {
     const moved = shown.find((row) => row.key === key);
     const others = shown.filter((row) => row.key !== key);
@@ -620,6 +627,7 @@ export const TaskItems = ({
     <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={DRAG_MODIFIERS} onDragEnd={onDragEnd}>
       <SortableContext items={shown.map((row) => row.key)} strategy={verticalListSortingStrategy}>
         <ul
+          ref={list}
           data-sortable={sortable ? "" : undefined}
           className={cn("-mx-3", className)}
           onKeyDown={(event) => {
@@ -633,9 +641,23 @@ export const TaskItems = ({
           }}
         >
           <AnimatePresence initial={false}>
-            {shown.map(({ key, task }) => (
-              <TaskItem key={key} itemKey={key} task={task} show={show} sortable={sortable} today={today} card={cardOf(key)} onCard={onCard} />
-            ))}
+            {shown.map((row, index) =>
+              rowWindow.shows(row, index) ? (
+                <TaskItem
+                  key={row.key}
+                  itemKey={row.key}
+                  task={row.task}
+                  show={show}
+                  sortable={sortable}
+                  today={today}
+                  card={cardOf(row.key)}
+                  onCard={onCard}
+                  settled={rowWindow.settled(row.key)}
+                />
+              ) : (
+                <RowGap key={row.key} itemKey={row.key} task={row.task} height={rowWindow.gapHeight(row)} />
+              ),
+            )}
           </AnimatePresence>
         </ul>
       </SortableContext>

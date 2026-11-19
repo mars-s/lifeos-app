@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import type { PlannerTask } from "@lifeos/backend/types";
 
 type Selection = { keys: ReadonlySet<string>; anchor: string | null; cursor: string | null };
@@ -12,6 +12,8 @@ let lingering: ReadonlySet<string> = new Set();
 let registered = 0;
 const listeners = new Set<() => void>();
 const tasks = new Map<string, PlannerTask>();
+
+const leaving = new Set<string>();
 
 let announcing = false;
 
@@ -77,15 +79,20 @@ export const selection = {
   },
   task: (key: string) => tasks.get(key),
   register: (key: string, task: PlannerTask) => {
+    leaving.delete(key);
     tasks.set(key, task);
     announce();
   },
   forget: (key: string) => {
-    tasks.delete(key);
-    if (!current.keys.has(key)) return;
-    const keys = new Set(current.keys);
-    keys.delete(key);
-    publish(keys.size === 0 ? EMPTY : { ...current, keys });
+    leaving.add(key);
+    queueMicrotask(() => {
+      if (!leaving.delete(key)) return;
+      tasks.delete(key);
+      if (!current.keys.has(key)) return;
+      const keys = new Set(current.keys);
+      keys.delete(key);
+      publish(keys.size === 0 ? EMPTY : { ...current, keys });
+    });
   },
   linger: (ids: readonly string[], on: boolean) => {
     const next = new Set(lingering);
@@ -94,6 +101,11 @@ export const selection = {
     listeners.forEach((listener) => listener());
   },
   isLingering: (id: string) => lingering.has(id),
+};
+
+export const useRegisteredTask = (key: string, task: PlannerTask) => {
+  useEffect(() => selection.register(key, task), [key, task]);
+  useEffect(() => () => selection.forget(key), [key]);
 };
 
 export const useSelected = (key: string) =>
