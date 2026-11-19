@@ -102,6 +102,7 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
       navigate,
       openCard: card?.href === href ? card : null,
       setOpenCard: (next, on) => setCard(next && { ...next, href: on ? routeHref(on) : href }),
+      closeCard: (key) => setCard((open) => (open?.key === key ? null : open)),
       renaming,
       setRenaming,
       draft,

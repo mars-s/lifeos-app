@@ -8,7 +8,7 @@ import type { Id } from "@lifeos/backend/dataModel";
 import { blockMinutesFor } from "@lifeos/backend/plan";
 import type { PlannerTask, SidebarView, TemplateRow } from "@lifeos/backend/types";
 import { minuteAtPointer, SNAP_MINUTES } from "@/components/lifeos/timebox";
-import { nothing, useChange } from "./changes";
+import { both, dropBlocksOf, dropTasks, nothing, useChange, type Updater } from "./changes";
 import { momentAt } from "./dates";
 import { drafts, type DraftBlock } from "./drafts";
 import { readPlace, startUnderPointer, type NewTaskPlace } from "./new-task-place";
@@ -140,7 +140,7 @@ export const knownTaskIds = () =>
 export type NewTask = { byKey: boolean; into?: Route; here?: boolean; at?: Point; template?: TemplateRow };
 
 export const useNewTask = (sidebar: SidebarView | undefined) => {
-  const { today, route, navigate, setOpenCard } = useShell();
+  const { today, route, navigate, setOpenCard, closeCard } = useShell();
   const change = useChange();
   useEffect(trackPointer, []);
   return useMemo(
@@ -165,7 +165,12 @@ export const useNewTask = (sidebar: SidebarView | undefined) => {
         const afterSave = (saved: boolean) => {
           if (saved) return;
           drafts.failed(key);
-          setOpenCard(null);
+          closeCard(key);
+        };
+        const uncreate: Updater = (store) => both(dropTasks([drafts.realId(key)]), dropBlocksOf([drafts.realId(key)]))(store);
+        const onUndo = () => {
+          drafts.release(key);
+          closeCard(key);
         };
         const save = (title: string) =>
           void change({
@@ -178,8 +183,9 @@ export const useNewTask = (sidebar: SidebarView | undefined) => {
               ...(place.block ? { block: { start: momentAt(place.block.date, place.block.minute), minutes: place.block.minutes, timeZone: localZone() } } : {}),
             },
             apply: nothing,
-            revert: nothing,
+            revert: uncreate,
             onSaved,
+            onUndo,
           }).then(afterSave);
         const key = drafts.add(
           place.slot,
@@ -211,10 +217,11 @@ export const useNewTask = (sidebar: SidebarView | undefined) => {
           mutation: api.planner.templates.createTask,
           args: { templateId: template._id, when: place.when, ...(place.parent ? { parent: place.parent } : {}), today },
           apply: nothing,
-          revert: nothing,
+          revert: uncreate,
           onSaved,
+          onUndo,
         }).then(afterSave);
       },
-    [change, navigate, route, setOpenCard, sidebar, today],
+    [change, navigate, route, setOpenCard, closeCard, sidebar, today],
   );
 };

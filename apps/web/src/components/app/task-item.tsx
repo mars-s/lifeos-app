@@ -526,7 +526,7 @@ const keyBetween = Result.fromThrowable(generateKeyBetween, () => "unordered" as
 export const useHasDrafts = () => useDraftCount(routeHref(useShell().route)) > 0;
 
 export const useHostedRows = (tasks: readonly PlannerTask[], slot: string | undefined, inline: boolean) => {
-  const { openCard, setOpenCard } = useShell();
+  const { closeCard } = useShell();
   const rows = useRows(tasks, slot);
   const shown = inline ? rows.filter(({ task }) => isDraftTask(task._id) || tasks.includes(task)) : rows;
   const vanished = rows.find((row) => !shown.includes(row))?.key;
@@ -534,8 +534,8 @@ export const useHostedRows = (tasks: readonly PlannerTask[], slot: string | unde
   useEffect(() => {
     if (!vanished) return;
     drafts.failed(vanished);
-    if (openCard?.key === vanished) setOpenCard(null);
-  }, [vanished, openCard, setOpenCard]);
+    closeCard(vanished);
+  }, [vanished, closeCard]);
 
   return shown;
 };

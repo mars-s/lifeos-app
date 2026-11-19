@@ -20,6 +20,7 @@ export type ShellState = {
   navigate: (route: Route, via: Via, depth?: Depth) => void;
   openCard: OpenCard | null;
   setOpenCard: (card: OpenCard | null, on?: Route) => void;
+  closeCard: (key: string) => void;
   renaming: Renaming | null;
   setRenaming: (renaming: Renaming | null) => void;
   draft: ListDraft | null;
