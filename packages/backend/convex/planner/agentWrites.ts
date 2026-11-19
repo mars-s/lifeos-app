@@ -20,13 +20,28 @@ import * as tasks from "./tasks";
 import * as templates from "./templates";
 import * as workBlocks from "./workBlocks";
 import { labelNamed } from "./labels";
+import type { PlannerTable } from "./model";
 import { agentDate, agentId, agentTimeZone, detail, loadTaskRow, vTaskDetail } from "./agentReads";
 import { vRepeatEnd, vSchedule, type Parent, type When } from "./tables";
 
 const MAX_CHECKLIST_ADD = 50;
 
+const RECORD_NOUNS = {
+  tasks: "Task",
+  areas: "Area",
+  projects: "Project",
+  headings: "Heading",
+  labels: "Label",
+  checklistItems: "Checklist Item",
+  workBlocks: "Work Block",
+  recurrenceRules: "Recurrence Rule",
+  templates: "Template",
+  smartBlocks: "Smart Block",
+  focusSessions: "Focus Session",
+} satisfies Record<PlannerTable, string>;
+
 const refusals: Record<string, (error: Record<string, unknown>) => string> = {
-  not_found: (error) => `No ${String(error.table)} has the id "${String(error.id)}".`,
+  not_found: (error) => `No ${RECORD_NOUNS[error.table as PlannerTable] ?? String(error.table)} has the id "${String(error.id)}".`,
   invalid_date: (error) => `Use a real date in YYYY-MM-DD form, not "${String(error.input)}".`,
   invalid_estimate: () => "An Estimate is a whole number of minutes from 1 to 12000.",
   empty_title: () => "A title cannot be empty.",
@@ -110,14 +125,15 @@ const labelIdsFor = async (ctx: QueryCtx, names: string[]) => {
   return found.flatMap(({ label }) => (label ? [label._id] : []));
 };
 
+const LOCAL_START = /^(\d{4}-\d{2}-\d{2})T([01]\d|2[0-3]):([0-5]\d)$/;
+const OFFSET_START = /^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,3})?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
+
 const parseStart = (input: string, timeZone: string) => {
-  const local = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/.exec(input);
-  if (local) {
-    const date = parseIsoDate(local[1] ?? "");
-    if (date.isOk()) return zonedMoment(date.value, Number(local[2]) * 60 + Number(local[3]), timeZone);
-  }
-  const instant = Date.parse(input);
-  if (!local && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(input) && Number.isFinite(instant)) return instant;
+  const local = LOCAL_START.exec(input);
+  const offset = OFFSET_START.exec(input);
+  const date = parseIsoDate(local?.[1] ?? offset?.[1] ?? "");
+  if (local && date.isOk()) return zonedMoment(date.value, Number(local[2]) * 60 + Number(local[3]), timeZone);
+  if (offset && date.isOk()) return Date.parse(input);
   throw new ConvexError(`"${input}" is not a start time. Use YYYY-MM-DDTHH:mm in Avi's time zone, or ISO 8601 with an offset.`);
 };
 

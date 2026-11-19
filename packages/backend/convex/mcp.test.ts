@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { newBackend, unwrap, type Backend } from "./backend.test-utils";
+import { newBackend, registerWorker, unwrap, type Backend } from "./backend.test-utils";
 import { zonedDate, zonedIso, zonedMoment } from "./calendar/model";
 import { addDays } from "../shared/date";
 import { mcp } from "./mcp";
@@ -557,5 +557,147 @@ describe("Agent Runs and undo", () => {
     vi.setSystemTime(Date.now() + MCP_RUN_IDLE_MS + 60_000);
     unwrap(await t.mutation(api.platform.undo.undoRun, { jobId }));
     expect(await t.run(async (ctx) => ctx.db.query("tasks").collect())).toEqual([]);
+  });
+});
+
+const noAuth = async (t: Backend, headers: Record<string, string>) =>
+  (
+    await t.fetch("/mcp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "MCP-Protocol-Version": "2025-06-18", ...headers },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "create_task", arguments: { title: "Sneaky" } } }),
+    })
+  ).status;
+
+describe("refusals", () => {
+  test("a missing or wrong key is turned away before any tool runs", async () => {
+    const { t, key } = await setup();
+    expect(await noAuth(t, {})).toBe(401);
+    expect(await noAuth(t, { Authorization: "Bearer not-a-key" })).toBe(401);
+    expect(await noAuth(t, { Authorization: `Bearer ${key}x` })).toBe(401);
+    expect(await noAuth(t, { Authorization: key })).toBe(401);
+    expect(await t.run(async (ctx) => [(await ctx.db.query("tasks").collect()).length, (await ctx.db.query("jobs").collect()).length])).toEqual([0, 0]);
+  });
+
+  test("Day Plan and repeat tools refuse bad input with a readable message and write nothing", async () => {
+    const { t, key } = await setup();
+    const { task } = await ok<TaskReceipt>(t, key, "create_task", { title: "Bins" });
+    const counts = async () =>
+      t.run(async (ctx) => [(await ctx.db.query("dayPlans").collect()).length, (await ctx.db.query("recurrenceRules").collect()).length]);
+    expect(await refused(t, key, "set_day_goal", { date: today(), minutes: 12.5 })).toBe(
+      "A Goal is a whole number of minutes from 0 to 1440, or null to reset it.",
+    );
+    expect(await refused(t, key, "set_day_goal", { date: "2026-02-30", minutes: 60 })).toBe("That Day Plan change is not valid.");
+    expect(await refused(t, key, "set_repeat", { taskId: task.id, schedule: { kind: "days", every: 0 } })).toBe(
+      "That repeat schedule is not valid (every).",
+    );
+    expect(await refused(t, key, "set_repeat", { taskId: task.id, schedule: { kind: "weeks", every: 1, days: [] } })).toBe(
+      "That repeat schedule is not valid (days).",
+    );
+    expect(await refused(t, key, "set_repeat", { taskId: task.id, schedule: { kind: "days", every: 1 }, timeZone: "Mars/Olympus" })).toMatch(
+      /"Mars\/Olympus" is not an IANA time zone/,
+    );
+    expect(await refused(t, key, "set_repeat", { taskId: "nope", schedule: null })).toMatch(/No Task has the id "nope"/);
+    expect(await counts()).toEqual([0, 0]);
+  });
+
+  test("Task and Work Block tools explain each refusal", async () => {
+    const { t, key } = await setup();
+    const date = today();
+    const { task } = await ok<TaskReceipt>(t, key, "create_task", { title: "Essay" });
+    expect(await refused(t, key, "update_task", { taskId: task.id, estimateMinutes: 0 })).toBe("An Estimate is a whole number of minutes from 1 to 12000.");
+    expect(await refused(t, key, "update_task", { taskId: task.id, deadline: "soon" })).toMatch(/Use a real date in YYYY-MM-DD form, not "soon"/);
+    expect(await refused(t, key, "update_task", { taskId: task.id, title: "  " })).toBe("A title cannot be empty.");
+    for (const start of ["next tuesday", `${date}T25:00`, `${date}T09:75`, `${date}T09:00:00`, "2026-02-31T09:00", "2026-02-31T09:00:00+11:00", "2026-11-20"])
+      expect(await refused(t, key, "save_work_block", { taskId: task.id, start, minutes: 30, timeZone: ZONE })).toMatch(/is not a start time/);
+    await ok(t, key, "save_work_block", { taskId: task.id, start: `${date}T09:00`, minutes: 60, timeZone: ZONE });
+    expect(await refused(t, key, "save_work_block", { taskId: task.id, start: `${date}T11:00`, minutes: 0, timeZone: ZONE })).toBe(
+      "That Work Block is not valid (minutes). Check the start time, the minutes and the time zone.",
+    );
+    await ok(t, key, "set_task_status", { taskId: task.id, status: "completed" });
+    expect(await refused(t, key, "start_focus", { taskId: task.id })).toBe("Only an open Task can start a Focus Session.");
+  });
+
+  test("a Task removed since the agent looked it up is named plainly in the refusal", async () => {
+    const { t, key } = await setup();
+    const gone = unwrap(await t.mutation(api.planner.tasks.create, { title: "Gone" }));
+    unwrap(await t.mutation(api.platform.undo.undo, { activityId: gone.activityId! }));
+    const missing = `No Task has the id "${gone.taskId}".`;
+    expect(await refused(t, key, "set_repeat", { taskId: gone.taskId, schedule: { kind: "days", every: 1 } })).toBe(missing);
+    expect(await refused(t, key, "start_focus", { taskId: gone.taskId })).toBe(missing);
+    expect(await refused(t, key, "save_work_block", { taskId: gone.taskId, start: "2026-11-25T09:00", minutes: 30, timeZone: ZONE })).toBe(missing);
+  });
+
+  test("save_work_block takes an ISO 8601 start with an offset", async () => {
+    const { t, key } = await setup();
+    const date = addDays(today(), 1);
+    const { task } = await ok<TaskReceipt>(t, key, "create_task", { title: "Deep work" });
+    const local = zonedIso(zonedMoment(date, 14 * 60, ZONE), ZONE);
+    await ok(t, key, "save_work_block", { taskId: task.id, start: local, minutes: 30, timeZone: ZONE });
+    const read = await ok<{ workBlocks: { start: string }[] }>(t, key, "get_task", { taskId: task.id, timeZone: ZONE });
+    expect(read.workBlocks.map((block) => block.start)).toEqual([local]);
+  });
+});
+
+describe("Day Plans and repeats over MCP", () => {
+  test("get_day_plan lists the day's External Commitments in the asked time zone", async () => {
+    const { t, key } = await setup();
+    const date = today();
+    const token = await registerWorker(t, "mac", ["calendar"]);
+    const start = zonedMoment(date, 10 * 60, ZONE);
+    unwrap(
+      await t.mutation(api.calendar.sync.applyWindow, {
+        token,
+        window: { start: zonedMoment(date, 0, ZONE), end: zonedMoment(addDays(date, 1), 0, ZONE) },
+        calendars: [{ calendarId: "work", title: "Work", colour: { red: 0.2, green: 0.47, blue: 0.96 }, source: "iCloud", kind: "calDAV" }],
+        commitments: [
+          { calendarId: "work", eventKey: "standup", title: "Team standup", start, end: start + 30 * 60_000, allDay: false, availability: "busy", recurring: false },
+        ],
+      }),
+    );
+    const plan = await ok<{ commitments: unknown[]; busyMinutes: number }>(t, key, "get_day_plan", { date, timeZone: ZONE });
+    expect(plan.commitments).toEqual([
+      { title: "Team standup", start: zonedIso(start, ZONE), end: zonedIso(start + 30 * 60_000, ZONE), allDay: false, takesTime: true },
+    ]);
+  });
+
+  test("list_repeats_and_templates names a Template's Labels", async () => {
+    const { t, key } = await setup();
+    const { task } = await ok<TaskReceipt>(t, key, "create_task", { title: "Weekly review", labels: ["Deep Work"] });
+    unwrap(await t.mutation(api.planner.templates.saveFromTask, { taskId: task.id as Id<"tasks">, today: today() }));
+    const listed = await ok<{ templates: { title: string; labels: string[] }[] }>(t, key, "list_repeats_and_templates");
+    expect(listed.templates).toEqual([expect.objectContaining({ title: "Weekly review", labels: ["Deep Work"] })]);
+  });
+
+  test("undoing the current run takes back a Day Goal and a repeat together, and restores the Task's When", async () => {
+    const { t, key } = await setup();
+    const date = addDays(today(), 2);
+    const { taskId } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Water plants", when: { kind: "anytime" } }));
+    await ok(t, key, "set_day_goal", { date, minutes: 180 });
+    const repeating = await ok<TaskReceipt & { task: { repeat?: { ruleId: string } } }>(t, key, "set_repeat", {
+      taskId,
+      schedule: { kind: "days", every: 3 },
+      timeZone: ZONE,
+    });
+    expect(repeating.task).toMatchObject({ when: today(), repeat: { ruleId: expect.any(String) } });
+    expect((await ok<{ undid: string }>(t, key, "undo", { currentRun: true })).undid).toBe("run");
+    expect(await t.run(async (ctx) => [await ctx.db.query("dayPlans").collect(), await ctx.db.query("recurrenceRules").collect()])).toEqual([[], []]);
+    expect(await t.query(api.planner.tasks.card, { taskId })).toMatchObject({ when: { kind: "anytime" } });
+    expect(await t.query(api.planner.tasks.card, { taskId })).not.toHaveProperty("repeat");
+  });
+
+  test("an agent undo explains an undo of an undo, a run with nothing left, and a later change by Avi", async () => {
+    const { t, key } = await setup();
+    const date = today();
+    const set = await ok<Receipt>(t, key, "set_day_goal", { date, minutes: 120 });
+    const { undoActivityId } = await ok<{ undoActivityId: string }>(t, key, "undo", { activityId: set.activityIds[0] });
+    expect(await refused(t, key, "undo", { activityId: undoActivityId })).toBe("An undo cannot itself be undone. Make the change again instead.");
+    expect(await refused(t, key, "undo", { runId: set.runId })).toBe("That Agent Run has no changes left to undo.");
+
+    const { task } = await ok<TaskReceipt>(t, key, "create_task", { title: "Plan" });
+    const renamed = await ok<TaskReceipt>(t, key, "update_task", { taskId: task.id, title: "Plan the week" });
+    unwrap(await t.mutation(api.planner.tasks.rename, { taskId: task.id as Id<"tasks">, title: "Plan the month" }));
+    expect(await refused(t, key, "undo", { activityId: renamed.activityIds[0] })).toMatch(/A later change touched the same tasks/);
+    expect((await ok<TaskOut>(t, key, "get_task", { taskId: task.id })).title).toBe("Plan the month");
   });
 });
