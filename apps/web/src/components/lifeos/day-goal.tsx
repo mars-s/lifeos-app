@@ -200,7 +200,7 @@ export const GoalEditor = ({
         onSubmit={(event) => {
           event.preventDefault();
           const parsed = parseEstimateText(typed);
-          if (parsed.isErr()) {
+          if (parsed.isErr() || parsed.value > MAX_SPAN) {
             setRefused(true);
             haptic("error");
             return;
@@ -234,7 +234,7 @@ export const GoalEditor = ({
         />
         {refused && (
           <p id={`${typedId}-hint`} role="status" className="mt-1 px-1 text-micro text-negative">
-            Try a time such as 5:30, 5h or 330.
+            Try a time within a day, such as 5:30, 5h or 330.
           </p>
         )}
       </form>

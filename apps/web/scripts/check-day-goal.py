@@ -48,7 +48,8 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     convex("scratch:seed", json.dumps({"today": TODAY, "timeZone": ZONE}))
     session = json.loads(convex("scratch:signIn"))
-    convex("scratch:suggestEstimate", json.dumps({"title": GUESSED, "minutes": 20, "reason": "Like a past errand"}))
+    convex("scratch:storeSecret", json.dumps({"last4": "test"}))
+    convex("scratch:suggestEstimate", json.dumps({"title": GUESSED, "guesses": [{"minutes": 20, "probability": 0.7}], "reason": "Like a past errand"}))
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         context = browser.new_context(viewport={"width": 1440, "height": 900}, color_scheme=THEME, device_scale_factor=2)
