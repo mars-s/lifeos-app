@@ -41,7 +41,7 @@ export default function TripMap({ trip, onPick }: { trip: Trip; onPick: (place: 
       fitBoundsOptions={{ padding: PADDING, maxZoom: 15 }}
       interactive={false}
       attributionControl={{ compact: true }}
-      className="trip-map h-36 overflow-hidden rounded-lg bg-foreground/[0.04]"
+      className="trip-map h-full overflow-hidden rounded-lg [&>.z-10]:hidden"
     >
       <MapMarker longitude={trip.from.lon} latitude={trip.from.lat}>
         <MarkerContent>

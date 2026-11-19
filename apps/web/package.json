@@ -25,6 +25,7 @@
     "cn": "^0.5.2",
     "convex": "^1.51.0",
     "fractional-indexing": "^3.4.0",
+    "glimm": "0.4.1",
     "maplibre-gl": "^6.19.0",
     "motion": "^14.14.0",
     "neverthrow": "^8.2.0",

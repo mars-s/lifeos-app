@@ -160,6 +160,9 @@ importers:
       fractional-indexing:
         specifier: ^3.4.0
         version: 3.4.0
+      glimm:
+        specifier: 0.4.1
+        version: 0.4.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       maplibre-gl:
         specifier: ^6.19.0
         version: 6.19.0(@types/react@19.3.0)(react@19.3.1)
@@ -3654,6 +3657,21 @@ packages:
 
   gl-matrix@3.4.4:
     resolution: {integrity: sha512-latSnyDNt/8zYUB6VIJ6PCh2jBjJX6gnDsoCZ7LyW7GkqrD51EWwa9qCoGixj8YqBtETQK/xY7OmpTF8xz1DdQ==}
+
+  glimm@0.4.1:
+    resolution: {integrity: sha512-Mi6fIrGR5/sVX0C6aasgjRDZ+/hhZdGMYo4iPV7tMKuQ+dxBm4YbWZVomkyAZoCBBqMxf6KOthP9fyVUgql4aA==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      next: '>=14'
+      react: '>=18'
+      react-dom: '>=18'
+    peerDependenciesMeta:
+      next:
+        optional: true
+      react:
+        optional: true
+      react-dom:
+        optional: true
 
   graceful-fs@4.2.12:
     resolution: {integrity: sha512-iuyGF2E4oafQfPsRrG2wtY2ILupMhvtdrhzrxB+0VcjsPpSPttpfYdjnGFGsTi5MaJFjI1jOKHPQ6UTbTj9TAw==}
@@ -8972,6 +8990,11 @@ snapshots:
   get-nonce@1.0.1: {}
 
   gl-matrix@3.4.4: {}
+
+  glimm@0.4.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
+    optionalDependencies:
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
 
   graceful-fs@4.2.12: {}
 

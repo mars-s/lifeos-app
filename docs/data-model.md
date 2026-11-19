@@ -504,18 +504,18 @@ One row per Task Places has looked at.
 | --- | --- |
 | `taskId` | `Id<"tasks">` |
 | `requestedAt` | The latest request. A scheduled run with an older value has been replaced and does nothing |
-| `outcome` | `waiting`; `none` (needs no trip); `unfound { query, mode, from }`; `found { query, mode, from, places }`; or `failed { error }`. Every outcome but `waiting` has `inputsHash`, `at` and, from #58, `answeredBy` |
+| `outcome` | `waiting { query? }` (`query` is set once the model has named the place and the search is running); `none` (needs no trip); `unfound { query, mode, from }`; `found { query, mode, from, places }`; or `failed { error, query? }` (`query` is set when the search failed, not the model). Every outcome but `waiting` has `inputsHash`, `at` and, from #58, `answeredBy` |
 | `choice` | `nearest`, `picked { key }` or `dismissed`. Changed only by `places/trips:choose` and `dismiss`, which are `changeMutation`s |
 
 `from` is Home rounded to three decimal places, the position that was sent out. Each place is `{ key, name, suburb?, position, straightMetres, travel? { seconds, metres } }`, where `key` is the OpenStreetMap element (`node/123`). Index: `by_task`.
 
 ### How a Trip lands
 
-- **Asking.** `tasks:create` and a real `tasks:rename` call `requestTrip`, and so does opening the card (`places/trips:request`, an `ownerMutation`, which asks again only when there is no row, the last run failed, or Home or the Travel Mode changed since). Nothing happens unless Places is `ready`. It schedules `locate` two seconds later.
+- **Asking.** `tasks:create` and a real `tasks:rename` call `requestTrip`, and so does opening the card (`places/trips:request`, an `ownerMutation`, which asks again only when there is no row, the last run failed, a search has been `waiting` for over a minute, or Home or the Travel Mode changed since. Asking again after a failed search puts the row straight back to `waiting` with its `query`, so the card shows it looking at once). Nothing happens unless Places is `ready`. It schedules `locate` two seconds later.
 - **The call.** The Trip detection capability's model (by default `POST /v1/decisions` with `gpt-6-luna`): a `needs_trip` predicate and a `place` choice over up to 24 phrases cut from the title (one to three words, not starting or ending with a small word or an errand verb), 14 kinds of place, and "no particular place". Only the title is sent.
-- **The search.** A `needs_trip` probability under 0.5 or no place stores `none`. Otherwise Overpass searches 15 km around the rounded Home, by tag for a kind of place, or by `brand` (starts with) and `name` (contains) for anything else. The nearest five by straight-line distance go to one OSRM `table` call on `routing.openstreetmap.de` (`routed-car`, `routed-foot` or `routed-bike`), and are ordered by travel time. If routing fails, the five are kept without travel time.
+- **The search.** A `needs_trip` probability under 0.5 or no place stores `none`. Otherwise `places/trips:searching` stores `waiting { query }` first (unless the row already holds a Trip to the same place), so the card can say what it is looking for while the slow calls run. Then Overpass searches 15 km around the rounded Home, by tag for a kind of place, or by `brand` (starts with) and `name` (contains) for anything else. The nearest five by straight-line distance go to one OSRM `table` call on `routing.openstreetmap.de` (`routed-car`, `routed-foot` or `routed-bike`), and are ordered by travel time. If routing fails, the five are kept without travel time.
 - **Once per change.** `inputsHash` is the SHA-256 of the model name, title, phrases, rounded Home and Travel Mode. A run whose hash matches the stored outcome makes no call. A new place query resets `choice` to `nearest`.
-- `places/trips:forTask` returns the Trip only when Places is `ready`: `{ kind: "trip", query, mode, from, chosen, places }`, `{ kind: "unfound", query, mode }`, or `null` (no trip, dismissed, waiting or failed).
+- `places/trips:forTask` returns the Trip only when Places is `ready`: `{ kind: "trip", query, mode, from, chosen, places }`, `{ kind: "unfound", query, mode }`, `{ kind: "looking", query, since }` while the search runs, `{ kind: "failed", query }` when the search failed, or `null` (no trip, dismissed, the model has not answered yet, or the model failed). `since` is `requestedAt`: the card treats a search older than `TRIP_LOOK_LIMIT_MS` (one minute, in `shared/features.ts`) as failed and offers Try again.
 
 ## AI module (`convex/ai`)
 

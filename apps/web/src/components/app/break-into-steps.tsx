@@ -1,6 +1,5 @@
 "use client";
 
-import { Sparkle } from "@phosphor-icons/react";
 import type { OptimisticLocalStore } from "convex/browser";
 import type { FunctionReturnType } from "convex/server";
 import { useMutation } from "convex/react";
@@ -11,7 +10,9 @@ import { api } from "@lifeos/backend/api";
 import { MODELS, isModelId } from "@lifeos/backend/ai";
 import type { Id } from "@lifeos/backend/dataModel";
 import type { PlannerTask } from "@lifeos/backend/types";
+import { AiMark, AiMarkWorking } from "@/components/lifeos/ai-mark";
 import { ChecklistEditor, type ChecklistEntry } from "@/components/lifeos/checklist-editor";
+import { GlimmBand } from "@/components/lifeos/glimm-band";
 import { Button } from "@/components/ui/action-button";
 import { haptic } from "@/lib/haptics";
 import { instant, springLayout } from "@/lib/motion-tokens";
@@ -142,6 +143,7 @@ export const StepsPreview = ({ steps }: { steps: Steps }) => {
   const reduce = useReducedMotion();
   const { view } = steps;
   const shown = view?.kind === "thinking" || view?.kind === "steps" || view?.kind === "failed";
+  const Mark = view?.kind === "thinking" ? AiMarkWorking : AiMark;
   return (
     <AnimatePresence initial={false}>
       {shown && (
@@ -153,9 +155,10 @@ export const StepsPreview = ({ steps }: { steps: Steps }) => {
           transition={reduce ? instant : springLayout}
           className="-ml-2 overflow-hidden"
         >
-          <div className="rounded-xl bg-brand/[0.05] p-1 ring-1 ring-brand/15 ring-inset">
+          <div className="relative rounded-xl bg-brand/[0.05] p-1 ring-1 ring-brand/15 ring-inset">
+            <GlimmBand working={view.kind === "thinking"} reveal={view.kind === "steps"} className="rounded-xl" />
             <h3 className="flex items-center gap-2 px-2 pt-1.5 pb-1 text-small font-medium">
-              <Sparkle weight="fill" className="size-3.5 text-brand" aria-hidden="true" />
+              <Mark weight="bold" className="size-3.5 text-brand" aria-hidden="true" />
               Suggested steps
             </h3>
             {view.kind === "thinking" && <Thinking />}

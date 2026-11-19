@@ -180,6 +180,38 @@ export const seedPlaces = internalMutation({
   },
 });
 
+export const tripState = internalMutation({
+  args: { title: v.string(), state: v.union(v.literal("looking"), v.literal("failed"), v.literal("found")) },
+  handler: async (ctx, { title, state }) => {
+    const task = (await ctx.db.query("tasks").collect()).find((row) => row.title === title);
+    if (!task) throw new Error(`No Task called ${title}`);
+    const row = await ctx.db.query("taskTrips").withIndex("by_task", (q) => q.eq("taskId", task._id)).unique();
+    if (!row) throw new Error(`No Trip for ${title}`);
+    const at = Date.now();
+    const outcome =
+      state === "looking"
+        ? { kind: "waiting" as const, query: "officeworks" }
+        : state === "failed"
+          ? { kind: "failed" as const, error: { kind: "unavailable" as const }, query: "officeworks", inputsHash: "seeded", at }
+          : { kind: "found" as const, query: "officeworks", mode: "drive" as const, from: { lat: -33.879, lon: 151.204 }, places: OFFICEWORKS, inputsHash: "seeded", at };
+    await ctx.db.patch("taskTrips", row._id, { requestedAt: at, outcome, choice: { kind: "nearest" } });
+    return null;
+  },
+});
+
+export const stepsThinking = internalMutation({
+  args: { title: v.string() },
+  handler: async (ctx, { title }) => {
+    const task = (await ctx.db.query("tasks").collect()).find((row) => row.title === title);
+    if (!task) throw new Error(`No Task called ${title}`);
+    const at = Date.now();
+    const row = await ctx.db.query("stepSuggestions").withIndex("by_task", (q) => q.eq("taskId", task._id)).unique();
+    if (row) await ctx.db.replace("stepSuggestions", row._id, { taskId: task._id, requestedAt: at, outcome: { kind: "waiting" } });
+    else await ctx.db.insert("stepSuggestions", { taskId: task._id, requestedAt: at, outcome: { kind: "waiting" } });
+    return task._id;
+  },
+});
+
 export const signIn = internalMutation({
   args: {},
   handler: async (ctx) =>
@@ -197,7 +229,7 @@ SCRATCH_TS
 
 cd "$SCRATCH"
 export CONVEX_AGENT_MODE=anonymous
-npx convex dev --once --typecheck disable >/dev/null 2>&1 || true
+npx convex dev --once --typecheck disable ${CONVEX_PORTS:-} >/dev/null 2>&1 || true
 npx convex env set LIFEOS_OWNER_GITHUB_ID "$OWNER_ID" >/dev/null
 npx convex env set SITE_URL "${BASE:-http://localhost:3990}" >/dev/null
 npx convex env set AUTH_GITHUB_CLIENT_ID local >/dev/null
@@ -205,10 +237,10 @@ npx convex env set AUTH_GITHUB_CLIENT_SECRET local >/dev/null
 npx convex env set OURA_CLIENT_ID local >/dev/null
 npx convex env set OURA_CLIENT_SECRET local >/dev/null
 npx convex env set LIFEOS_SECRETS_KEY "$(openssl rand -base64 32)" >/dev/null
-npx convex dev --once --typecheck disable
+npx convex dev --once --typecheck disable ${CONVEX_PORTS:-}
 SEED_ARGS="{\"today\":\"$(date +%F)\",\"timeZone\":\"$(node -e 'console.log(Intl.DateTimeFormat().resolvedOptions().timeZone)')\"}"
 npx convex run scratch:seed "$SEED_ARGS" >/dev/null
 npx convex run scratch:signIn > "$SCRATCH/session.json"
 echo "Local backend is seeded. Session: $SCRATCH/session.json"
 echo "Reseed with: (cd $SCRATCH && npx convex run scratch:seed '$SEED_ARGS')"
-echo "Keep it running with: (cd $SCRATCH && CONVEX_AGENT_MODE=anonymous npx convex dev --typecheck disable)"
+echo "Keep it running with: (cd $SCRATCH && CONVEX_AGENT_MODE=anonymous npx convex dev --typecheck disable ${CONVEX_PORTS:-})"

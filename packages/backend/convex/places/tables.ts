@@ -26,11 +26,11 @@ const vLooked = { inputsHash: v.string(), at: v.number(), answeredBy: v.optional
 const vSearched = { query: v.string(), mode: vTravelMode, from: vPosition };
 
 export const vTripOutcome = v.union(
-  v.object({ kind: v.literal("waiting") }),
+  v.object({ kind: v.literal("waiting"), query: v.optional(v.string()) }),
   v.object({ kind: v.literal("none"), ...vLooked }),
   v.object({ kind: v.literal("unfound"), ...vSearched, ...vLooked }),
   v.object({ kind: v.literal("found"), ...vSearched, places: v.array(vPlace), ...vLooked }),
-  v.object({ kind: v.literal("failed"), error: vPlacesError, ...vLooked }),
+  v.object({ kind: v.literal("failed"), error: vPlacesError, query: v.optional(v.string()), ...vLooked }),
 );
 
 export const vTripChoice = v.union(

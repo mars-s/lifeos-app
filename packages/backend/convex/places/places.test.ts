@@ -218,6 +218,50 @@ describe("finding a Trip", () => {
     expect(await tripOf(t, taskId)).toEqual({ kind: "unfound", query: "a post office", mode: "drive" });
   });
 
+  test("while the search runs the Trip names the place it is looking for", async () => {
+    const t = await newBackend();
+    world();
+    await placesReady(t);
+    const during: unknown[] = [];
+    let looked: Id<"tasks"> | undefined;
+    outside.use(
+      http.post(OVERPASS_URL, async () => {
+        if (looked) during.push(await tripOf(t, looked));
+        return HttpResponse.json({ elements: OFFICEWORKS });
+      }),
+    );
+    const { taskId } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Get moleskine notebooks from officeworks" }));
+    looked = taskId;
+    expect(await tripOf(t, taskId)).toBeNull();
+    await settle(t);
+    expect(during).toEqual([{ kind: "looking", query: "officeworks", since: expect.any(Number) }]);
+    expect(await tripOf(t, taskId)).toMatchObject({ kind: "trip", query: "officeworks" });
+  });
+
+  test("a search that fails says so, and asking again looks at once", async () => {
+    const t = await newBackend();
+    world();
+    await placesReady(t);
+    outside.use(http.post(OVERPASS_URL, () => HttpResponse.json({}, { status: 503 })));
+    const taskId = await newTask(t, "Get moleskine notebooks from officeworks");
+    expect(await tripOf(t, taskId)).toEqual({ kind: "failed", query: "officeworks" });
+
+    world();
+    expect(await t.mutation(api.places.trips.request, { taskId })).toEqual({ requested: true });
+    expect(await tripOf(t, taskId)).toMatchObject({ kind: "looking", query: "officeworks" });
+    await settle(t);
+    expect(await tripOf(t, taskId)).toMatchObject({ kind: "trip", query: "officeworks" });
+  });
+
+  test("a model that does not answer shows nothing, because no trip is known yet", async () => {
+    const t = await newBackend();
+    world();
+    await placesReady(t);
+    outside.use(http.post(DECISIONS_URL, () => HttpResponse.json({ error: { message: "down" } }, { status: 503 })));
+    const taskId = await newTask(t, "Get moleskine notebooks from officeworks");
+    expect(await tripOf(t, taskId)).toBeNull();
+  });
+
   test("the same title asks nothing again", async () => {
     const t = await newBackend();
     const { counts } = world();

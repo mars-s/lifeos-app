@@ -1,11 +1,11 @@
 "use client";
 
-import { Sparkle } from "@phosphor-icons/react";
 import { useState } from "react";
 import { parseEstimateText } from "@lifeos/backend/estimate";
 import { Tooltip } from "@/components/ui/tooltip-hint";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
+import { AiMark } from "./ai-mark";
 import { formatMinutes } from "./format";
 
 const ESTIMATE_CHIPS = [10, 15, 30, 60, 120] as const;
@@ -62,9 +62,7 @@ const Ghosts = () => (
   </>
 );
 
-const Spark = () => (
-  <Sparkle weight="fill" aria-hidden="true" className="pointer-events-none absolute -top-1 -right-1 size-2.5 text-brand" />
-);
+const Spark = () => <AiMark weight="bold" aria-hidden="true" className="pointer-events-none absolute -top-1 -right-1 size-2.5 text-brand" />;
 
 const chipsFor = (smart: SmartEstimate | undefined) =>
   smart?.kind === "guesses" ? smart.guesses : smart?.kind === "thinking" ? [] : ESTIMATE_CHIPS.map((minutes) => ({ minutes, probability: undefined }));

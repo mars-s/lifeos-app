@@ -11,7 +11,9 @@ export const vPlacesSettings = v.object({ travelMode: vTravelMode });
 export const vTemplatesSettings = v.object({});
 export const vSmartBlocksSettings = v.object({ areaOrder: v.array(v.id("areas")) });
 
-export type FeatureIcon = "sparkle" | "mapPin" | "stamp" | "frame";
+export type FeatureIcon = "ai" | "mapPin" | "stamp" | "frame";
+
+export const TRIP_LOOK_LIMIT_MS = 60_000;
 export type FeatureSecret = ProviderSecret;
 export type FeatureSetup = "home";
 
@@ -32,7 +34,7 @@ export const FEATURES = {
   ai: {
     title: "AI",
     summary: "Smart Estimates, steps for big Tasks and trip detection, on the models you pick. Nothing is sent while it is off.",
-    icon: "sparkle",
+    icon: "ai",
     enabledByDefault: false,
     keys: ["openai", "opencodeGo"],
     requires: [],

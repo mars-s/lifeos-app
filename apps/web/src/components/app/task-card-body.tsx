@@ -1,11 +1,12 @@
 "use client";
 
-import { ListChecks, Sparkle, Stamp } from "@phosphor-icons/react";
+import { ListChecks, Stamp } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "@lifeos/backend/api";
 import type { IsoDate } from "@lifeos/backend/date";
 import type { PlannerTask } from "@lifeos/backend/types";
+import { AiMark, AiMarkWorking } from "@/components/lifeos/ai-mark";
 import { AreaDot } from "@/components/lifeos/area";
 import { StepsPreview, useBreakIntoSteps } from "./break-into-steps";
 import { ChecklistEditor } from "@/components/lifeos/checklist-editor";
@@ -230,7 +231,7 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
             }}
           />
           {!hasChecklist && <ToolButton icon={ListChecks} label="Checklist" onClick={() => setComposing(true)} />}
-          {steps.available && <ToolButton icon={Sparkle} label="Break into steps" onClick={steps.ask} />}
+          {steps.available && <ToolButton icon={steps.view?.kind === "thinking" ? AiMarkWorking : AiMark} label="Break into steps" onClick={steps.ask} />}
           <RepeatPicker
             repeat={repeat && { schedule: repeat.schedule, end: repeat.end, next: repeat.next, settled: !isOptimistic(repeat.ruleId) }}
             base={baseDate(task.when, today as IsoDate)}

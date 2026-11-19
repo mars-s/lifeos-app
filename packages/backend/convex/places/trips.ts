@@ -3,7 +3,7 @@ import { err, errAsync, ok, okAsync, ResultAsync, type Result } from "neverthrow
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { internalAction, internalMutation, internalQuery, type MutationCtx, type QueryCtx } from "../_generated/server";
-import type { TravelMode } from "../../shared/features";
+import { TRIP_LOOK_LIMIT_MS, type TravelMode } from "../../shared/features";
 import { ownerMutation, ownerQuery } from "../platform/access";
 import { changeMutation } from "../platform/change";
 import { attemptsFor, capabilityChain } from "../ai/routing";
@@ -54,9 +54,11 @@ export const requestTrip = async (ctx: MutationCtx, taskId: Id<"tasks">, { onlyF
   const task = await ctx.db.get("tasks", taskId);
   if (!task || !wantsTrip(task)) return false;
   const row = await tripRow(ctx, taskId);
-  if (row && onlyFirst && !(await isStale(ctx, row.outcome))) return false;
+  const stuck = row?.outcome.kind === "waiting" && Date.now() - row.requestedAt > TRIP_LOOK_LIMIT_MS;
+  if (row && onlyFirst && !stuck && !(await isStale(ctx, row.outcome))) return false;
   const requestedAt = Math.max(Date.now(), (row?.requestedAt ?? 0) + 1);
-  if (row) await ctx.db.patch("taskTrips", row._id, { requestedAt });
+  const retried = row?.outcome.kind === "failed" && row.outcome.query !== undefined ? { outcome: { kind: "waiting" as const, query: row.outcome.query } } : {};
+  if (row) await ctx.db.patch("taskTrips", row._id, { requestedAt, ...retried });
   else await ctx.db.insert("taskTrips", { taskId, requestedAt, outcome: { kind: "waiting" }, choice: { kind: "nearest" } });
   await ctx.scheduler.runAfter(DEBOUNCE_MS, internal.places.trips.locate, { taskId, requestedAt });
   return true;
@@ -88,6 +90,8 @@ export const forTask = ownerQuery({
     const row = await tripRow(ctx, taskId);
     if (!row) return null;
     if (row.outcome.kind === "unfound") return { kind: "unfound" as const, query: row.outcome.query, mode: row.outcome.mode };
+    if (row.outcome.kind === "waiting" && row.outcome.query !== undefined) return { kind: "looking" as const, query: row.outcome.query, since: row.requestedAt };
+    if (row.outcome.kind === "failed" && row.outcome.query !== undefined) return { kind: "failed" as const, query: row.outcome.query };
     const trip = chosenOf(row);
     if (!trip) return null;
     const { query, mode, from } = trip.outcome;
@@ -162,6 +166,18 @@ export const record = internalMutation({
   },
 });
 
+export const searching = internalMutation({
+  args: { taskId: v.id("tasks"), requestedAt: v.number(), query: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { taskId, requestedAt, query }) => {
+    const row = await tripRow(ctx, taskId);
+    if (row?.requestedAt !== requestedAt) return null;
+    if (row.outcome.kind === "found" && row.outcome.query === query) return null;
+    await ctx.db.patch("taskTrips", row._id, { outcome: { kind: "waiting", query } });
+    return null;
+  },
+});
+
 export const forget = internalMutation({
   args: { taskId: v.id("tasks") },
   returns: v.null(),
@@ -204,9 +220,10 @@ const timed = (mode: TravelMode, from: Position, places: Place[]) =>
 
 type Found = Extract<TripOutcome, { kind: "none" | "unfound" | "found" }> extends infer O ? (O extends unknown ? Omit<O, "inputsHash" | "at"> : never) : never;
 
-const tripFor = (decision: TripDecision, from: Position, mode: TravelMode) => {
-  const query = decision.place;
-  if (decision.trip < TRIP_THRESHOLD || !query) return okAsync<Found, PlacesError>({ kind: "none" });
+const placeWanted = (decision: TripDecision) => (decision.trip < TRIP_THRESHOLD || !decision.place ? null : decision.place);
+
+const tripFor = (query: string | null, from: Position, mode: TravelMode) => {
+  if (!query) return okAsync<Found, PlacesError>({ kind: "none" });
   return searchNear(query, from).andThen((nearest) =>
     nearest.length === 0
       ? okAsync<Found, PlacesError>({ kind: "unfound", query, mode, from })
@@ -229,13 +246,15 @@ export const locate = internalAction({
     const inputsHash = await sha256Hex(canonicalJson({ model: plan.chain[0], title, phrases, from, mode }));
     if (plan.cachedHash === inputsHash) return null;
     const decided = await askChoice(await attemptsFor(ctx, plan.chain), tripAsk(title, phrases), parseTripDecision);
+    const query = decided.isOk() ? placeWanted(decided.value.value) : null;
+    if (query) await ctx.runMutation(internal.places.trips.searching, { ...args, query });
     const result: Result<Found & { answeredBy?: string }, PlacesError> = decided.isErr()
       ? err(decided.error)
-      : await tripFor(decided.value.value, from, mode).map((found) => ({ ...found, answeredBy: decided.value.answeredBy }));
+      : await tripFor(query, from, mode).map((found) => ({ ...found, answeredBy: decided.value.answeredBy }));
     const at = Date.now();
     const outcome: TripOutcome = result.match(
       (found) => ({ ...found, inputsHash, at }),
-      (error) => ({ kind: "failed" as const, error, inputsHash, at }),
+      (error) => ({ kind: "failed" as const, error, inputsHash, at, ...(query ? { query } : {}) }),
     );
     await ctx.runMutation(internal.places.trips.record, { ...args, outcome });
     return null;
