@@ -49,6 +49,7 @@ def main():
     convex("scratch:seed", json.dumps({"today": TODAY, "timeZone": ZONE}))
     session = json.loads(convex("scratch:signIn"))
     convex("scratch:storeSecret", json.dumps({"last4": "test"}))
+    convex("scratch:switchAi", json.dumps({"on": True}))
     convex("scratch:suggestEstimate", json.dumps({"title": GUESSED, "guesses": [{"minutes": 20, "probability": 0.7}], "reason": "Like a past errand"}))
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)

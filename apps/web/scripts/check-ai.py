@@ -65,7 +65,7 @@ def main():
         page.goto(f"{BASE}/settings")
         features = page.locator("section", has=page.get_by_role("heading", name="Features"))
         features.get_by_role("link", name="AI").wait_for()
-        expect("Settings lists AI, Places and Templates as Features", features.get_by_role("link").all_inner_texts(), ["AI", "Places", "Templates"])
+        expect("Settings lists every Feature", features.get_by_role("link").all_inner_texts(), ["AI", "Places", "Templates", "Smart Blocks"])
         expect("the old Templates section is gone", page.get_by_role("heading", name="Templates", exact=True).count(), 0)
 
         features.get_by_role("link", name="AI").click()
