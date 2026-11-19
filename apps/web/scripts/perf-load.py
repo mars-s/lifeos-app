@@ -11,8 +11,9 @@ It reseeds the backend first, with scratch:seedBulk on top (a 300 Task Inbox, 12
 Task Logbook), so two runs measure the same data.
 Each screen loads RUNS times in a fresh browser context (an empty HTTP cache, its own session, because
 a refresh token only works once) with the CPU slowed
-THROTTLE times, and the median is kept. BASE, CONVEX_URL, RUNS, THROTTLE and ENGINE (chromium or
-webkit, the Mac app's engine) change the run. WebKit has no CPU throttle and no long-task entries.
+THROTTLE times, and the median is kept. BASE, CONVEX_URL, RUNS, THROTTLE, ONLY (comma-separated screen
+names) and ENGINE (chromium or webkit, the Mac app's engine) change the run. WebKit has no CPU throttle
+and no long-task entries.
 """
 
 import gzip
@@ -34,6 +35,7 @@ SCRATCH = os.environ.get("SCRATCH", "/tmp/lifeos-local-backend")
 RUNS = int(os.environ.get("RUNS", "5"))
 THROTTLE = float(os.environ.get("THROTTLE", "4"))
 ENGINE = os.environ.get("ENGINE", "chromium")
+ONLY = [name for name in os.environ.get("ONLY", "").split(",") if name]
 OUT = Path(sys.argv[1] if len(sys.argv) > 1 else sys.exit(__doc__))
 NAMESPACE = re.sub(r"[^a-zA-Z0-9]", "", CONVEX_URL)
 ENV = {**os.environ, "CONVEX_AGENT_MODE": "anonymous"}
@@ -131,6 +133,8 @@ with sync_playwright() as playwright:
     browser = getattr(playwright, ENGINE).launch()
     report = {}
     for screen, selector in SCREENS.items():
+        if ONLY and screen not in ONLY:
+            continue
         load(browser, screen, selector)
         runs = [load(browser, screen, selector) for _ in range(RUNS)]
         report[screen] = {field: median(runs, field) for field in ("ready_ms", "blocked_ms", "script_ms", "js_files", "js_kb", "js_gzip_kb")}

@@ -6,7 +6,8 @@ perf-load.py for the commands). It reseeds before each screen, with scratch:seed
     SCRATCH=/tmp/lifeos-local-backend uv run --with playwright python scripts/perf-interact.py <output.json>
 
 Each step reports the slowest input-to-paint time the browser measured (Event Timing, the number INP
-is built from), the main-thread time blocked in long tasks, and for drags the frame times. The CPU is
+is built from), the main-thread time blocked in long tasks, and for drags the frame times. Frames come
+in steps of one screen refresh, so the mean shows a small change that the 95th percentile hides. The CPU is
 slowed THROTTLE times, and RUNS above 1 reports the median. BASE, CONVEX_URL, THROTTLE, RUNS and
 ONLY (comma-separated step names) change the run. PROFILE=<step> also writes a CPU profile of that
 one step beside the output, and TRACE=<step> prints where the browser spent that step (script,
@@ -270,6 +271,7 @@ def measured(page, cdp, step):
         "slowest_ms": round(slow[1]),
         "blocked_ms": round(sum(seen["long"])),
         "longest_task_ms": round(max(seen["long"], default=0)),
+        "frame_mean_ms": round(statistics.mean(frames), 1) if frames else 0,
         "frame_p95_ms": round(frames[int(len(frames) * 0.95)]) if frames else 0,
         "frame_max_ms": round(frames[-1]) if frames else 0,
         "frames_over_50ms": sum(1 for frame in frames if frame > 50),
@@ -308,7 +310,7 @@ with sync_playwright() as playwright:
 report = {}
 for name, first in runs[0].items():
     report[name] = {
-        field: value if isinstance(value, str) else round(statistics.median(run[name][field] for run in runs))
+        field: value if isinstance(value, str) else round(statistics.median(run[name][field] for run in runs), 1 if isinstance(value, float) else None)
         for field, value in first.items()
     }
     print(f"{name:26}", report[name], flush=True)
