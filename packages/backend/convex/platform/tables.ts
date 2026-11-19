@@ -21,6 +21,7 @@ export const vRecordRef = v.union(
   v.object({ table: v.literal("preferences"), id: v.id("preferences") }),
   v.object({ table: v.literal("dayPlans"), id: v.id("dayPlans") }),
   v.object({ table: v.literal("features"), id: v.id("features") }),
+  v.object({ table: v.literal("taskTrips"), id: v.id("taskTrips") }),
 );
 
 export const vActor = v.union(

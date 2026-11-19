@@ -412,6 +412,38 @@ One row per Connect in flight: `state`, the PKCE `verifier`, `expiresAt` (10 min
 
 `health/sleep:status({ today })` says whether Oura is set up (`OURA_CLIENT_ID` and `OURA_CLIENT_SECRET` are on the deployment) and connected, the last sync, Oura's latest status and recommendation, the plan, and how many nights it counted.
 
+## Places module (`convex/places`)
+
+The tables behind the Places Feature (`docs/architecture.md`, Features). Everything here is read only by the owner.
+
+### `savedPlaces`
+
+One row per **Saved Place**: `label` (`home`, `work` or `uni`), the `address` as Avi typed it, its `position` (`{ lat, lon }`), `found` (the short street and suburb the geocoder matched, shown under the field) and `savedAt`. Index: `by_label`.
+
+- `places/saved:save` is an `ownerAction`. It refuses an empty address, reuses the stored position when the same address (ignoring case and spacing) is already saved, and otherwise asks Nominatim once. An address Nominatim cannot match is `not_found`.
+- Saving and removing write through the internal `store` and `forget`, not `changeMutation`, so the address never reaches Activity. Removing asks Avi to confirm instead.
+
+### `taskTrips`
+
+One row per Task Places has looked at.
+
+| Field | Type |
+| --- | --- |
+| `taskId` | `Id<"tasks">` |
+| `requestedAt` | The latest request. A scheduled run with an older value has been replaced and does nothing |
+| `outcome` | `waiting`; `none` (needs no trip); `unfound { query, mode, from }`; `found { query, mode, from, places }`; or `failed { error }`. Every outcome but `waiting` has `inputsHash` and `at` |
+| `choice` | `nearest`, `picked { key }` or `dismissed`. Changed only by `places/trips:choose` and `dismiss`, which are `changeMutation`s |
+
+`from` is Home rounded to three decimal places, the position that was sent out. Each place is `{ key, name, suburb?, position, straightMetres, travel? { seconds, metres } }`, where `key` is the OpenStreetMap element (`node/123`). Index: `by_task`.
+
+### How a Trip lands
+
+- **Asking.** `tasks:create` and a real `tasks:rename` call `requestTrip`, and so does opening the card (`places/trips:request`, an `ownerMutation`, which asks again only when there is no row, the last run failed, or Home or the Travel Mode changed since). Nothing happens unless Places is `ready`. It schedules `locate` two seconds later.
+- **The call.** `POST /v1/decisions` with `gpt-6-luna`: a `needs_trip` predicate and a `place` choice over up to 24 phrases cut from the title (one to three words, not starting or ending with a small word or an errand verb), 14 kinds of place, and "no particular place". Only the title is sent.
+- **The search.** A `needs_trip` probability under 0.5 or no place stores `none`. Otherwise Overpass searches 15 km around the rounded Home, by tag for a kind of place, or by `brand` (starts with) and `name` (contains) for anything else. The nearest five by straight-line distance go to one OSRM `table` call on `routing.openstreetmap.de` (`routed-car`, `routed-foot` or `routed-bike`), and are ordered by travel time. If routing fails, the five are kept without travel time.
+- **Once per change.** `inputsHash` is the SHA-256 of the model name, title, phrases, rounded Home and Travel Mode. A run whose hash matches the stored outcome makes no call. A new place query resets `choice` to `nearest`.
+- `places/trips:forTask` returns the Trip only when Places is `ready`: `{ kind: "trip", query, mode, from, chosen, places }`, `{ kind: "unfound", query, mode }`, or `null` (no trip, dismissed, waiting or failed).
+
 ## Tables later slices add
 
 Each slice adds these as new tables, or as variants of `vEntityRef` and `vJob`. None reshapes a table above.

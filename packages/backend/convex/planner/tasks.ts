@@ -20,6 +20,7 @@ import {
   type PlannerError,
 } from "./model";
 import { endFocusOnClosedTask } from "./focus";
+import { requestTrip } from "../places/trips";
 import { requestSuggestion } from "./smartEstimates";
 import { vParent, vWhen } from "./tables";
 
@@ -74,6 +75,7 @@ export const create = changeMutation({
       order: keyAfter(await lastTaskOrder(ctx, parent)),
     });
     await requestSuggestion(ctx, taskId);
+    await requestTrip(ctx, taskId);
     return ok<{ taskId: Id<"tasks"> }, PlannerError>({ taskId });
   },
 });
@@ -83,7 +85,10 @@ export const rename = changeMutation({
   args: { taskId: v.id("tasks"), title: v.string() },
   handler: async (ctx, { taskId, title }, record) => {
     const result = await edit(ctx, record, taskId, () => parseTitle(title).map((valid) => ({ title: valid })));
-    if (result.isOk() && result.value.changed) await requestSuggestion(ctx, taskId);
+    if (result.isOk() && result.value.changed) {
+      await requestSuggestion(ctx, taskId);
+      await requestTrip(ctx, taskId);
+    }
     return result;
   },
 });
