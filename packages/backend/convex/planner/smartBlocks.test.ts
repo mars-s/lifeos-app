@@ -68,7 +68,7 @@ test("drawing a Smart Block and accepting its fill is one change, and one undo r
     await t.mutation(api.planner.smartBlocks.create, { title: "Focus", date: DATE, startMinute: FOUR, endMinute: SIX, timeZone: ZONE, fill: blocks }),
   );
   const [range] = (await occurrences(t, DATE, 1)).occurrences;
-  expect(range).toMatchObject({ title: "Focus", start: at(DATE, FOUR), end: at(DATE, SIX), filled: 2 });
+  expect(range).toMatchObject({ title: "Focus", start: at(DATE, FOUR), end: at(DATE, SIX), filled: 2, filledMinutes: 50 + 15 });
   const changes = await t.run((ctx) => ctx.db.query("activityChanges").collect());
   expect(new Set(changes.filter((change) => change.activityId === created.activityId).map((change) => change.entity.table))).toEqual(
     new Set(["smartBlocks", "workBlocks"]),
@@ -151,7 +151,7 @@ test("editing one occurrence detaches it with its fill, editing all changes the 
   );
   const { blocks } = proposal(await snapshotFor(t), blockId);
   unwrap(await t.mutation(api.planner.smartBlocks.fill, { blockId, date: DATE, blocks, release: [] }));
-  const moved = unwrap(await t.mutation(api.planner.smartBlocks.edit, { blockId, date: DATE, startMinute: 15 * 60 }));
+  const moved = unwrap(await t.mutation(api.planner.smartBlocks.fill, { blockId, date: DATE, blocks: [], release: [], edit: { scope: "one", startMinute: 15 * 60 } }));
   expect(moved.blockId).not.toBe(blockId);
   expect(await linked(t, moved.blockId)).toHaveLength(1);
   unwrap(await t.mutation(api.planner.smartBlocks.edit, { blockId, title: "Deep work" }));

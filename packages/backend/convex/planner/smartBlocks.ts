@@ -122,6 +122,11 @@ export const occurrencesIn = async (ctx: QueryCtx, from: IsoDate, days: number) 
   );
 };
 
+const filledOf = (fills: readonly Doc<"workBlocks">[]) => ({
+  filled: fills.length,
+  filledMinutes: fills.reduce((sum, fill) => sum + fill.minutes, 0),
+});
+
 export const range = ownerQuery({
   args: { from: v.string(), days: v.number(), timeZone: v.string() },
   handler: async (ctx, args) => {
@@ -152,7 +157,7 @@ export const range = ownerQuery({
             filter: block.filter,
             repeat: block.repeat ? { schedule: block.repeat.schedule, until: block.until === FOREVER ? null : block.until } : null,
             detached: block.detachedFrom !== undefined,
-            filled: fills.filter((fill) => fill.smartBlock?.blockId === block._id && fill.smartBlock.date === date).length,
+            ...filledOf(fills.filter((fill) => fill.smartBlock?.blockId === block._id && fill.smartBlock.date === date)),
           })),
         };
       }),
@@ -387,6 +392,27 @@ export const create = changeMutation({
     }),
 });
 
+const editAll = async (record: Recorder, block: SmartBlock, fields: EditFields, repeat: RepeatInput | null | undefined) => {
+  const parsed = parseEdit(block, fields);
+  if (parsed.isErr()) return err<Id<"smartBlocks">, PlannerError>(parsed.error);
+  const series =
+    repeat === undefined
+      ? ok<Pick<SmartBlockFields, "repeat" | "until">, PlannerError>({})
+      : parseRepeat(block.date as IsoDate, repeat, block.repeat?.skipped ?? []);
+  if (series.isErr()) return err<Id<"smartBlocks">, PlannerError>(series.error);
+  await record.patch("smartBlocks", block._id, { ...parsed.value, ...series.value });
+  return ok<Id<"smartBlocks">, PlannerError>(block._id);
+};
+
+const vScope = v.union(v.literal("one"), v.literal("all"));
+
+const vEdit = v.object({ scope: vScope, ...vEditFields, repeat: v.optional(v.union(vRepeatInput, v.null())) });
+
+type Edit = EditFields & { scope: "one" | "all"; repeat?: RepeatInput | null | undefined };
+
+const applyEdit = (ctx: MutationCtx, record: Recorder, block: SmartBlock, date: IsoDate, { scope, repeat, ...fields }: Edit) =>
+  scope === "one" ? editOne(ctx, record, block, date, fields) : editAll(record, block, fields, repeat);
+
 export const edit = changeMutation({
   action: "smartBlock.edit",
   args: {
@@ -404,16 +430,7 @@ export const edit = changeMutation({
       }
       const block = await liveBlock(ctx, blockId);
       if (block.isErr()) return err(block.error);
-      const parsed = parseEdit(block.value, fields);
-      if (parsed.isErr()) return err(parsed.error);
-      const anchor = block.value.date as IsoDate;
-      const series =
-        repeat === undefined
-          ? ok<Pick<SmartBlockFields, "repeat" | "until">, PlannerError>({})
-          : parseRepeat(anchor, repeat, block.value.repeat?.skipped ?? []);
-      if (series.isErr()) return err(series.error);
-      await record.patch("smartBlocks", blockId, { ...parsed.value, ...series.value });
-      return ok<{ blockId: Id<"smartBlocks"> }, PlannerError>({ blockId });
+      return (await editAll(record, block.value, fields, repeat)).map((id) => ({ blockId: id }));
     }),
 });
 
@@ -449,18 +466,19 @@ export const fill = changeMutation({
     date: v.string(),
     blocks: v.array(vFillBlock),
     release: v.array(v.id("workBlocks")),
-    window: v.optional(v.object({ startMinute: v.number(), endMinute: v.number() })),
+    edit: v.optional(vEdit),
   },
-  handler: (ctx, { blockId, date, blocks, release, window }, record) =>
+  handler: (ctx, { blockId, date, blocks, release, edit: changes }, record) =>
     whenOn(ctx, async () => {
       const occurrence = await occurrenceOf(ctx, blockId, date);
       if (occurrence.isErr()) return err(occurrence.error);
       let block = occurrence.value.block;
-      if (window && (window.startMinute !== block.startMinute || window.endMinute !== block.endMinute)) {
-        const edited = await editOne(ctx, record, block, occurrence.value.date, window);
+      if (changes) {
+        const edited = await applyEdit(ctx, record, block, occurrence.value.date, changes);
         if (edited.isErr()) return err(edited.error);
         const fresh = await ctx.db.get("smartBlocks", edited.value);
-        if (!fresh) return err<{ blockId: Id<"smartBlocks">; blockIds: Id<"workBlocks">[] }, PlannerError>({ kind: "not_found", table: "smartBlocks", id: edited.value });
+        if (!fresh || !occursOnDate(fresh, occurrence.value.date))
+          return err<{ blockId: Id<"smartBlocks">; blockIds: Id<"workBlocks">[] }, PlannerError>(refused("occurrence"));
         block = fresh;
       }
       const filled = await applyFill(ctx, record, block, occurrence.value.date, blocks, release);

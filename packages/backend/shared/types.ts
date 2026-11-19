@@ -31,3 +31,5 @@ export type SleepStatus = FunctionReturnType<typeof api.health.sleep.status>;
 export type TaskRepeat = NonNullable<PlannerTask["repeat"]>;
 export type RecurringOccurrence = Ok<FunctionReturnType<typeof api.planner.recurrence.upcoming>>[number];
 export type TemplateRow = FunctionReturnType<typeof api.planner.templates.list>[number];
+export type SmartBlockRange = Ok<FunctionReturnType<typeof api.planner.smartBlocks.range>>;
+export type SmartBlockOccurrence = SmartBlockRange["occurrences"][number];
