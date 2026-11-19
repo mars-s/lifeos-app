@@ -392,6 +392,11 @@ li[data-selected]:has(+ li[data-selected]) .task-selected {
   }
 }
 
+[torph-root] [torph-item]:not(br),
+[torph-root] [torph-slot] > span {
+  will-change: auto;
+}
+
 [data-toaster] {
   transition: bottom var(--dur-base) var(--ease-out);
 }
