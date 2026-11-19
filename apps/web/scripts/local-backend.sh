@@ -20,7 +20,9 @@ import { activeSession } from "./planner/focus";
 import { seedPlanner } from "./planner/seed.test-utils";
 import { seedTimebox } from "./planner/planSeed.test-utils";
 import { seedSleep } from "./health/sleepSeed.test-utils";
-import { parseIsoDate } from "../shared/date";
+import { addDays, parseIsoDate } from "../shared/date";
+import { generateNKeysBetween } from "fractional-indexing";
+import { zonedMoment } from "./calendar/model";
 
 const SEEDED = [
   "areas",
@@ -62,6 +64,80 @@ export const seed = internalMutation({
     await seedTimebox(ctx, today, args.timeZone ?? "Australia/Sydney");
     await seedSleep(ctx, today, args.timeZone ?? "Australia/Sydney");
     return null;
+  },
+});
+
+export const seedBulk = internalMutation({
+  args: {
+    today: v.optional(v.string()),
+    timeZone: v.optional(v.string()),
+    inbox: v.optional(v.number()),
+    perDay: v.optional(v.number()),
+    anytime: v.optional(v.number()),
+    logbook: v.optional(v.number()),
+  },
+  handler: async (ctx, { inbox = 300, perDay = 12, anytime = 400, logbook = 1500, ...args }) => {
+    const today = parseIsoDate(args.today ?? "").unwrapOr(localIsoDate(new Date()));
+    const timeZone = args.timeZone ?? "Australia/Sydney";
+    const areas = await ctx.db.query("areas").collect();
+    const projects = await ctx.db.query("projects").collect();
+    const labels = await ctx.db.query("labels").collect();
+    const orders = generateNKeysBetween("b00", null, inbox + perDay * 14 + anytime + logbook);
+    let made = 0;
+    const base = (title: string) => {
+      const label = labels[made % Math.max(1, labels.length)];
+      const fields = {
+        title,
+        notes: made % 5 === 0 ? "A note with a link https://example.com and a few words to wrap onto another line." : "",
+        labelIds: made % 4 === 0 && label ? [label._id] : [],
+        order: orders[made] ?? "zz",
+      };
+      made += 1;
+      return fields;
+    };
+    const parentOf = (index: number, everyNth: number) => {
+      const project = projects[index % Math.max(1, projects.length)];
+      const area = areas[index % Math.max(1, areas.length)];
+      if (index % everyNth === 0 && project) return { kind: "project" as const, projectId: project._id };
+      return area ? { kind: "area" as const, areaId: area._id } : { kind: "loose" as const };
+    };
+    for (let index = 0; index < inbox; index += 1)
+      await ctx.db.insert("tasks", { ...base(`Bulk inbox thought ${index}`), when: { kind: "inbox" }, parent: { kind: "loose" }, status: { kind: "open" } });
+    for (let day = -3; day < 11; day += 1)
+      for (let index = 0; index < perDay; index += 1) {
+        const taskId = await ctx.db.insert("tasks", {
+          ...base(`Bulk day ${day} task ${index}`),
+          when: { kind: "scheduled", date: addDays(today, day), evening: index % 6 === 5 },
+          parent: parentOf(index + day + 30, 3),
+          status: { kind: "open" },
+          estimateMinutes: [15, 30, 45, 60, 90][index % 5],
+          ...(index % 4 === 0 ? { deadline: addDays(today, day + 2) } : {}),
+        });
+        if (index < 5)
+          await ctx.db.insert("workBlocks", {
+            taskId,
+            start: zonedMoment(addDays(today, day), (8 + index * 2) * 60 + 15, timeZone),
+            minutes: [30, 45, 60, 90, 45][index] ?? 30,
+            timeZone,
+            done: false,
+          });
+      }
+    for (let index = 0; index < anytime; index += 1)
+      await ctx.db.insert("tasks", {
+        ...base(`Bulk anytime ${index}`),
+        when: { kind: index % 5 === 0 ? "someday" : "anytime" },
+        parent: parentOf(index, 2),
+        status: { kind: "open" },
+      });
+    const now = Date.now();
+    for (let index = 0; index < logbook; index += 1)
+      await ctx.db.insert("tasks", {
+        ...base(`Bulk done ${index}`),
+        when: { kind: "anytime" },
+        parent: { kind: "loose" },
+        status: { kind: "completed", at: now - index * 3_600_000 },
+      });
+    return made;
   },
 });
 
@@ -253,4 +329,5 @@ npx convex run scratch:seed "$SEED_ARGS" >/dev/null
 npx convex run scratch:signIn > "$SCRATCH/session.json"
 echo "Local backend is seeded. Session: $SCRATCH/session.json"
 echo "Reseed with: (cd $SCRATCH && npx convex run scratch:seed '$SEED_ARGS')"
+echo "Add 2,400 Tasks for the perf scripts with: (cd $SCRATCH && npx convex run scratch:seedBulk '$SEED_ARGS')"
 echo "Keep it running with: (cd $SCRATCH && CONVEX_AGENT_MODE=anonymous npx convex dev --typecheck disable ${CONVEX_PORTS:-})"
