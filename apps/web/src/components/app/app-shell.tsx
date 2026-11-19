@@ -20,7 +20,7 @@ import { AppMenu } from "./menus";
 import { PanelBoundary, PanelNotice } from "./panel-boundary";
 import { LISTS, parseRoute, routeHref, screenKey, type Route, type Via } from "./route";
 import { UPCOMING_DAYS } from "./dates";
-import { Screen } from "./screens";
+import { failedScreen, Screen } from "./screens";
 import { SelectionBar } from "./selection-bar";
 import { Onboarding } from "./settings/onboarding";
 import { useSelectionGestures } from "./selection-gestures";
@@ -227,7 +227,7 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
               </button>
             </div>
             <div key={screenKey(route)} className={cn(via === "pointer" && "animate-screen-in")}>
-              <PanelBoundary panel="list" variant="screen">
+              <PanelBoundary panel="list" fallback={failedScreen(route, sidebar)}>
                 <Screen route={route} sidebar={sidebar} sidebarFailed={sidebarState.error !== null} />
               </PanelBoundary>
             </div>

@@ -34,7 +34,7 @@ export const ListPage = ({
         {heading ? (
           heading
         ) : title ? (
-          <h1 className="text-title font-semibold text-balance">{title}</h1>
+          <h1 className="text-title font-semibold text-balance break-words">{title}</h1>
         ) : (
           <span className="block h-7 w-40 animate-delayed-in rounded-full bg-foreground/[0.06]" />
         )}

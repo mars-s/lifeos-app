@@ -2,8 +2,11 @@
 
 import { ViewTransition } from "react";
 import type { SidebarView } from "@lifeos/backend/types";
+import { AreaDot } from "@/components/lifeos/area";
 import { ListSkeleton, Missing, ListPage } from "../list-page";
+import { PanelNotice } from "../panel-boundary";
 import type { Route } from "../route";
+import { LIST_META, PLANNER_META, SETTINGS_META } from "../sidebar";
 import { AnytimeScreen, SomedayScreen } from "./grouped";
 import { AreaScreen, ProjectScreen } from "./containers";
 import { LogbookScreen } from "./logbook";
@@ -17,6 +20,33 @@ const knows = (sidebar: SidebarView, route: Extract<Route, { kind: "area" | "pro
   route.kind === "area"
     ? sidebar.areas.some((area) => area._id === route.id)
     : [...sidebar.projects, ...sidebar.areas.flatMap((area) => area.projects)].some((project) => project._id === route.id);
+
+const headerOf = (route: Route, sidebar: SidebarView | undefined) => {
+  switch (route.kind) {
+    case "planner":
+      return { title: PLANNER_META.label, icon: PLANNER_META.icon };
+    case "settings":
+      return { title: SETTINGS_META.label, icon: SETTINGS_META.icon };
+    case "area": {
+      const area = sidebar?.areas.find((entry) => entry._id === route.id);
+      return { title: area?.title ?? "Area", leading: area && <AreaDot colour={area.colour} className="size-3" /> };
+    }
+    case "project": {
+      const projects = [...(sidebar?.projects ?? []), ...(sidebar?.areas.flatMap((area) => area.projects) ?? [])];
+      return { title: projects.find((entry) => entry._id === route.id)?.title ?? "Project" };
+    }
+    case "missing":
+      return { title: "Nothing here" };
+    default:
+      return { title: LIST_META[route.kind].label, icon: LIST_META[route.kind].icon };
+  }
+};
+
+export const failedScreen = (route: Route, sidebar: SidebarView | undefined) => (onRetry: () => void) => (
+  <ListPage {...headerOf(route, sidebar)}>
+    <PanelNotice panel="list" variant="screen" onRetry={onRetry} />
+  </ListPage>
+);
 
 export const Screen = ({ route, sidebar, sidebarFailed }: { route: Route; sidebar: SidebarView | undefined; sidebarFailed: boolean }) => {
   switch (route.kind) {

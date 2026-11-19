@@ -31,7 +31,7 @@ export const PanelNotice = ({ panel, variant, onRetry }: { panel: PanelName; var
   );
   if (variant === "screen")
     return (
-      <div role="alert" className="mx-auto w-full max-w-[44rem] px-5 pt-4 md:px-10 md:pt-14">
+      <div role="alert">
         <EmptyState title={title} hint={hint} action={retry} className="py-16" />
       </div>
     );
