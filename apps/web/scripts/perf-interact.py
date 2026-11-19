@@ -146,6 +146,24 @@ def inbox_reorder(page):
     page.mouse.up()
 
 
+def scroll(page, selector, notches=40):
+    page.mouse.move(*centre(page, selector, 300))
+    for _ in range(notches):
+        page.mouse.wheel(0, 240)
+        page.wait_for_timeout(16)
+    for _ in range(notches):
+        page.mouse.wheel(0, -240)
+        page.wait_for_timeout(16)
+
+
+def inbox_scroll(page):
+    scroll(page, "#main")
+
+
+def planner_scroll_dump(page):
+    scroll(page, "[data-plan-list=inbox]")
+
+
 def to_planner(page):
     page.keyboard.press("8")
     page.wait_for_selector("[data-plan-list]")
@@ -211,9 +229,9 @@ def today_open(page):
 
 
 STEPS = [
-    ("inbox", "[data-task-key]", [inbox_select, inbox_open, inbox_type, inbox_close, inbox_arrows, inbox_select_all, inbox_complete, inbox_reorder, to_planner]),
+    ("inbox", "[data-task-key]", [inbox_select, inbox_open, inbox_type, inbox_close, inbox_arrows, inbox_select_all, inbox_complete, inbox_reorder, inbox_scroll, to_planner]),
     ("today", "[data-task-key]", [today_open]),
-    ("planner", "[data-plan-list]", [planner_open_card, planner_drag_to_day, planner_drag_to_calendar, planner_resize, planner_move_block, planner_week, planner_week_move]),
+    ("planner", "[data-plan-list]", [planner_scroll_dump, planner_open_card, planner_drag_to_day, planner_drag_to_calendar, planner_resize, planner_move_block, planner_week, planner_week_move]),
 ]
 
 
