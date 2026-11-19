@@ -68,6 +68,13 @@ export const drafts = {
     publish({ drafts: kept, adopted });
   },
 
+  release: (key: string) => {
+    if (!snapshot.drafts.some((draft) => draft.key === key)) return;
+    const adopted = new Map(snapshot.adopted);
+    adopted.delete(key);
+    publish({ drafts: snapshot.drafts.filter((draft) => draft.key !== key), adopted });
+  },
+
   adopt: (key: string, task: PlannerTask) => {
     if (snapshot.adopted.get(key) === task) return;
     publish({ ...snapshot, adopted: new Map(snapshot.adopted).set(key, task) });

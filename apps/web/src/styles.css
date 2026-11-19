@@ -347,6 +347,10 @@ li[data-selected]:has(+ li[data-selected]) .task-selected {
     font-optical-sizing: auto;
     caret-color: var(--brand);
   }
+  html.capture-window,
+  html.capture-window body {
+    background: transparent;
+  }
   ::selection {
     background: color-mix(in oklch, var(--brand) 26%, transparent);
   }

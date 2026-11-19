@@ -28,6 +28,8 @@ export const showUndo = (title: string, undo: () => void, slot?: string) => {
   return () => void drop(id);
 };
 
+export const canUndo = () => stack.length > 0;
+
 export const undoLast = () => {
   const latest = stack.at(-1);
   if (!latest) return false;

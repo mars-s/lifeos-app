@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default window permissions",
-  "windows": ["main"],
+  "windows": ["main", "capture"],
   "permissions": ["core:default", "deep-link:default"]
 }

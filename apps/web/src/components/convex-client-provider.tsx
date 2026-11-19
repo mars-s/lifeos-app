@@ -12,7 +12,7 @@ const client = convexUrl ? new ConvexReactClient(convexUrl) : null;
 
 export const isConvexConfigured = client !== null;
 
-const publicPaths = new Set(["/design"]);
+const publicPaths = new Set(["/design", "/capture"]);
 
 const Gated = ({ children }: { children: ReactNode }) => {
   const { path } = useRouter();

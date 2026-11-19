@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/lifeos/states";
 import { undoLast } from "@/components/lifeos/undo";
 import { Toaster } from "@/components/ui/toast-stack";
 import { cn } from "@/lib/utils";
+import { CommandBarHost } from "./command-bar/host";
 import { ConfirmHost } from "./confirm";
 import { drafts } from "./drafts";
 import { FocusPill, FocusProvider } from "./focus";
@@ -88,7 +89,7 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
       today,
       navigate,
       openCard: card?.href === href ? card : null,
-      setOpenCard: (next) => setCard(next && { ...next, href }),
+      setOpenCard: (next, on) => setCard(next && { ...next, href: on ? routeHref(on) : href }),
       renaming,
       setRenaming,
       draft,
@@ -227,6 +228,9 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
         </div>
       </div>
       </AppMenu>
+      <PanelBoundary panel="bar" fallback={() => null}>
+        <CommandBarHost sidebar={sidebar} />
+      </PanelBoundary>
       </PanelBoundary>
       </FocusProvider>
     </ShellContext>

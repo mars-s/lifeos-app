@@ -21,6 +21,7 @@
     "@phosphor-icons/react": "^2.1.10",
     "@tauri-apps/api": "^2.12.5",
     "@tauri-apps/plugin-deep-link": "^2.6.3",
+    "cmdk": "^1.1.1",
     "cn": "^0.5.2",
     "convex": "^1.51.0",
     "fractional-indexing": "^3.4.0",

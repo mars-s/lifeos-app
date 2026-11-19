@@ -10,6 +10,7 @@
     "./result": "./shared/result.ts",
     "./date": "./shared/date.ts",
     "./estimate": "./shared/estimate.ts",
+    "./capture": "./shared/capture.ts",
     "./focus": "./shared/focus.ts",
     "./plan": "./shared/plan.ts",
     "./types": {

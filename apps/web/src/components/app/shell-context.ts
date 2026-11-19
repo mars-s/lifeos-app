@@ -17,7 +17,7 @@ export type ShellState = {
   today: IsoDate;
   navigate: (route: Route, via: Via) => void;
   openCard: OpenCard | null;
-  setOpenCard: (card: OpenCard | null) => void;
+  setOpenCard: (card: OpenCard | null, on?: Route) => void;
   renaming: Renaming | null;
   setRenaming: (renaming: Renaming | null) => void;
   draft: ListDraft | null;

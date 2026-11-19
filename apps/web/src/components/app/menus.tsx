@@ -33,7 +33,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Popover as PopoverPrimitive } from "radix-ui";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "@lifeos/backend/api";
-import { addDays, type IsoDate } from "@lifeos/backend/date";
+import { addDays } from "@lifeos/backend/date";
 import type { PlannerTask, SidebarView } from "@lifeos/backend/types";
 import { AREA_COLOURS, AreaDot, areaVar, type AreaColour } from "@/components/lifeos/area";
 import { AREA_ICONS, AreaGlyph, type AreaIconName } from "@/components/lifeos/area-icon";
@@ -43,7 +43,6 @@ import { ProgressPie } from "@/components/lifeos/progress-ring";
 import { ContextMenu, type MenuGroup, type MenuItem } from "@/components/ui/action-menu";
 import { haptic } from "@/lib/haptics";
 import { EASE_OUT, instant } from "@/lib/motion-tokens";
-import { useChange } from "./changes";
 import {
   areaStepKey,
   isDraftId,
@@ -52,10 +51,9 @@ import {
   type SidebarArea,
   type SidebarProject,
 } from "./container-actions";
-import { drafts } from "./drafts";
 import { useActiveFocus, useFocusActions } from "./focus";
 import { useQuietView } from "./hooks";
-import { routeHref, type Route } from "./route";
+import { useNewTask } from "./new-task";
 import { selection, useRegisteredTasks, useSelectionSize } from "./selection";
 import { useSelectionActions, type MoveTarget } from "./selection-actions";
 import { planCommands } from "./planner/commands";
@@ -107,25 +105,6 @@ const stepItems: (up: string | null, down: string | null, move: (order: string) 
   { id: "move-down", label: "Move Down", icon: ArrowDown, shortcut: "⌘↓", disabled: down === null, onSelect: () => down && move(down) },
 ];
 
-const newTaskFor = (route: Route, today: IsoDate) => {
-  switch (route.kind) {
-    case "today":
-      return { when: { kind: "scheduled", date: today, evening: false } } as const;
-    case "upcoming":
-      return { when: { kind: "scheduled", date: addDays(today, 1), evening: false } } as const;
-    case "anytime":
-      return { when: { kind: "anytime" } } as const;
-    case "someday":
-      return { when: { kind: "someday" } } as const;
-    case "area":
-      return { when: { kind: "anytime" }, parent: { kind: "area", areaId: route.id } } as const;
-    case "project":
-      return { when: { kind: "anytime" }, parent: { kind: "project", projectId: route.id } } as const;
-    default:
-      return { when: { kind: "inbox" } } as const;
-  }
-};
-
 const DatePopover = ({ pick, today, onClose }: { pick: DatePick | null; today: string; onClose: () => void }) => {
   const reduce = useReducedMotion();
   const x = pick?.x ?? 0;
@@ -172,8 +151,7 @@ const shared = <T,>(tasks: readonly PlannerTask[], read: (task: PlannerTask) => 
 
 export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefined; children: ReactNode }) => {
   const shell = useShell();
-  const { today, route, navigate, setOpenCard, setRenaming, setDraft } = shell;
-  const change = useChange();
+  const { today, route, setOpenCard, setRenaming, setDraft } = shell;
   const tasksDo = useSelectionActions(today);
   const focusDo = useFocusActions();
   const focusNow = useActiveFocus();
@@ -189,54 +167,7 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
   useRegisteredTasks();
   useSelectionSize();
 
-  const newTask = useMemo(
-    () => (byKey: boolean) => {
-      const home: Route = route.kind === "logbook" || route.kind === "trash" || route.kind === "missing" ? { kind: "inbox" } : route;
-      const context = newTaskFor(home, today);
-      if (home !== route) navigate(home, "keyboard");
-      const area = route.kind === "area" ? sidebar?.areas.find((entry) => entry._id === route.id) : undefined;
-      const projectArea = route.kind === "project" ? sidebar?.areas.find((entry) => entry.projects.some((project) => project._id === route.id)) : undefined;
-      const project =
-        route.kind === "project" ? [...(sidebar?.projects ?? []), ...(projectArea?.projects ?? [])].find((entry) => entry._id === route.id) : undefined;
-      const owner = area ?? projectArea;
-      const known = new Set([...document.querySelectorAll<HTMLElement>("#main [data-task-id]")].flatMap((row) => row.dataset.taskId ?? []));
-      const key = drafts.add(
-        routeHref(home),
-        {
-          title: "New Task",
-          notes: "",
-          when: context.when,
-          parent: ("parent" in context && context.parent) || { kind: "loose" },
-          labelIds: [],
-          status: { kind: "open" },
-          order: "~",
-          context: project?.title ?? area?.title,
-          area: owner && { _id: owner._id, title: owner.title, colour: owner.colour, icon: owner.icon },
-          project: project && { _id: project._id, title: project.title },
-          labels: [],
-          checklist: [],
-          workBlocks: [],
-          focus: { ms: 0, sessions: [] },
-        },
-        known,
-      );
-      selection.clear();
-      setOpenCard({ key, instant: byKey });
-      void change({
-        title: "Task created",
-        mutation: api.planner.tasks.create,
-        args: { title: "New Task", ...context },
-        apply: () => undefined,
-        revert: () => undefined,
-        onSaved: ({ taskId }) => drafts.saved(key, taskId),
-      }).then((saved) => {
-        if (saved) return;
-        drafts.failed(key);
-        setOpenCard(null);
-      });
-    },
-    [change, navigate, route, setOpenCard, sidebar, today],
-  );
+  const newTask = useNewTask(sidebar);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -252,11 +183,6 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
       if (document.querySelector("[data-open-card], [role=menu], [role=dialog]")) return;
       const command = event.metaKey || event.ctrlKey;
       const chosen = selection.tasks();
-      if (command && !event.shiftKey && event.key.toLowerCase() === "k" && chosen.length > 0) {
-        event.preventDefault();
-        tasksDo.completeSoon(chosen);
-        return;
-      }
       if (!command && !event.shiftKey && (event.key === "Backspace" || event.key === "Delete") && chosen.length > 0) {
         event.preventDefault();
         tasksDo.trash(chosen);
@@ -273,14 +199,10 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
         }
         return;
       }
-      if (!command && !event.shiftKey && event.key.toLowerCase() === "n") {
-        event.preventDefault();
-        newTask(true);
-      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [newTask, tasksDo, focusDo, focusNow]);
+  }, [tasksDo, focusDo, focusNow]);
 
   const touched = useRef<{ element: Element; x: number; y: number } | null>(null);
 
@@ -516,7 +438,7 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
         items: [
           closed
             ? { id: "reopen", label: `Reopen${count}`, icon: Circle, onSelect: () => tasksDo.reopen(tasks) }
-            : { id: "complete", label: `Complete${count}`, icon: CheckCircle, shortcut: "⌘K", onSelect: () => tasksDo.completeSoon(tasks) },
+            : { id: "complete", label: `Complete${count}`, icon: CheckCircle, shortcut: "⌘K ↵", onSelect: () => tasksDo.completeSoon(tasks) },
         ],
       },
       {

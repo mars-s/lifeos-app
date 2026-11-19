@@ -26,6 +26,8 @@ import type { getConfig as File_AppTrash_getConfig } from './pages/(app)/trash';
 // prettier-ignore
 import type { getConfig as File_AppUpcoming_getConfig } from './pages/(app)/upcoming';
 // prettier-ignore
+import type { getConfig as File_Capture_getConfig } from './pages/capture';
+// prettier-ignore
 import type { getConfig as File_Design_getConfig } from './pages/design';
 // prettier-ignore
 import type { getConfig as File_AppLayout_getConfig } from './pages/(app)/_layout';
@@ -45,6 +47,7 @@ type Page =
 | ({ path: '/today' } & GetConfigResponse<typeof File_AppToday_getConfig>)
 | ({ path: '/trash' } & GetConfigResponse<typeof File_AppTrash_getConfig>)
 | ({ path: '/upcoming' } & GetConfigResponse<typeof File_AppUpcoming_getConfig>)
+| ({ path: '/capture' } & GetConfigResponse<typeof File_Capture_getConfig>)
 | ({ path: '/design' } & GetConfigResponse<typeof File_Design_getConfig>);
 
 // prettier-ignore

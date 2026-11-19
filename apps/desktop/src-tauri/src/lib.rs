@@ -1,16 +1,19 @@
 #[cfg(target_os = "macos")]
 mod calendar;
+mod capture;
 mod convex;
 mod haptics;
 mod things_import;
 
-use tauri::{App, AppHandle, Manager, Url, WebviewWindowBuilder};
+use tauri::{App, AppHandle, Manager, RunEvent, Url, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_opener::OpenerExt;
 
 const MAIN_WINDOW: &str = "main";
 
 /// Opens the main window and blocks until the app quits.
+///
+/// Closing the main window hides it, so the menu bar icon and quick capture keep working.
 ///
 /// # Errors
 ///
@@ -19,13 +22,27 @@ pub fn run() -> tauri::Result<()> {
     tauri::Builder::default()
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![haptics::haptic])
+        .invoke_handler(tauri::generate_handler![
+            haptics::haptic,
+            capture::hide_capture,
+            capture::show_capture
+        ])
         .setup(|app| Ok(set_up(app)?))
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())?
+        .run(|app, event| {
+            #[cfg(target_os = "macos")]
+            if matches!(event, RunEvent::Reopen { .. }) {
+                bring_forward(app);
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (app, event);
+        });
+    Ok(())
 }
 
 fn set_up(app: &App) -> tauri::Result<()> {
     open_main_window(app.handle())?;
+    capture::start(app)?;
     let handle = app.handle().clone();
     app.deep_link().on_open_url(move |_| bring_forward(&handle));
     things_import::start();
@@ -43,7 +60,7 @@ fn open_main_window(app: &AppHandle) -> tauri::Result<()> {
         .find(|window| window.label == MAIN_WINDOW)
         .expect("tauri.conf.json declares the main window");
     let handle = app.clone();
-    WebviewWindowBuilder::from_config(app, config)?
+    let window = WebviewWindowBuilder::from_config(app, config)?
         .on_navigation(move |url| {
             if tauri::is_dev() || stays_in_app(url) {
                 return true;
@@ -54,10 +71,19 @@ fn open_main_window(app: &AppHandle) -> tauri::Result<()> {
             false
         })
         .build()?;
+    let kept = window.clone();
+    window.on_window_event(move |event| {
+        if let WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            if let Err(error) = kept.hide() {
+                eprintln!("could not hide the LifeOS window: {error}");
+            }
+        }
+    });
     Ok(())
 }
 
-fn bring_forward(app: &AppHandle) {
+pub(crate) fn bring_forward(app: &AppHandle) {
     let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
         return;
     };
