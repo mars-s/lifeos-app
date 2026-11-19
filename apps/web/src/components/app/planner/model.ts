@@ -3,9 +3,10 @@
 import { useMemo } from "react";
 import { api } from "@lifeos/backend/api";
 import { addDays, type IsoDate } from "@lifeos/backend/date";
-import { BLOCK_STEP_MINUTES, byDayPlan, plannedMinutes } from "@lifeos/backend/plan";
+import { BLOCK_STEP_MINUTES, byDayPlan, dayLoad } from "@lifeos/backend/plan";
 import type { CommitmentRow, PlannerTask, WorkBlockRow } from "@lifeos/backend/types";
-import type { PlannedSlice } from "@/components/lifeos/capacity";
+import type { MeterSlice } from "@/components/lifeos/capacity";
+import type { LoadArea } from "@/components/lifeos/day-goal";
 import type { TimeboxAllDay, TimeboxBlock, TimeboxCommitment } from "@/components/lifeos/timebox";
 import { localDate, minuteOfDay, startOfLocalDay } from "../dates";
 import { useQuietView, useView, valueOf } from "../hooks";
@@ -33,9 +34,27 @@ export type PlanDay = {
   date: IsoDate;
   tasks: PlannerTask[];
   free: number;
+  goal: number;
+  goalSet: boolean;
   planned: number;
-  slices: PlannedSlice[];
+  guessed: number;
+  unestimated: number;
+  slices: MeterSlice[];
+  areas: LoadArea[];
   busy: { start: number; end: number }[];
+  boxed: ReadonlySet<string>;
+};
+
+const NO_AREA = "none";
+
+const areasOf = (slices: readonly (MeterSlice & { title: string | undefined })[]) => {
+  const byKey = new Map<string, LoadArea>();
+  for (const slice of slices) {
+    const key = slice.title === undefined ? NO_AREA : `${slice.title}:${slice.colour}`;
+    const known = byKey.get(key) ?? { key, title: slice.title ?? "No Area", colour: slice.colour, minutes: 0, guessed: 0 };
+    byKey.set(key, slice.guess ? { ...known, guessed: known.guessed + slice.minutes } : { ...known, minutes: known.minutes + slice.minutes });
+  }
+  return [...byKey.values()].toSorted((a, b) => (a.key === NO_AREA ? 1 : b.key === NO_AREA ? -1 : b.minutes + b.guessed - (a.minutes + a.guessed)));
 };
 
 const useWindow = (from: IsoDate, days: number) => {
@@ -75,35 +94,50 @@ export const usePlanner = (today: IsoDate) => {
       compare(a._creationTime, b._creationTime);
     const dayOf = (task: PlannerTask) => (task.when.kind !== "scheduled" ? null : task.when.date > today ? task.when.date : today);
     const open = blocks.filter((block) => block.task.status.kind === "open");
+    const guesses = new Map<string, number>(week.guesses.map((guess) => [guess.taskId, guess.minutes]));
 
     const days = week.days.map((day) => {
       const tasks = all.filter((task) => dayOf(task) === day.date && day.date <= last).toSorted(byDayPlan(day.date, byRank));
       const dayBlocks = open.filter((block) => localDate(block.start) === day.date);
-      const mine = new Set<string>(tasks.map((task) => task._id));
-      const slices = [
-        ...tasks.map((task) => {
-          const own = dayBlocks.filter((block) => block.taskId === task._id);
-          return {
-            id: task._id as string,
-            colour: task.area?.colour ?? ("slate" as const),
-            minutes: own.length > 0 ? own.reduce((sum, block) => sum + block.minutes, 0) : (task.estimateMinutes ?? 0),
-          };
-        }),
-        ...dayBlocks
-          .filter((block) => !mine.has(block.taskId))
-          .map((block) => ({ id: block._id as string, colour: block.task.area?.colour ?? ("slate" as const), minutes: block.minutes })),
-      ] satisfies PlannedSlice[];
+      const load = dayLoad(
+        tasks,
+        dayBlocks.map((block) => ({ ...block, area: block.task.area })),
+        (taskId) => guesses.get(taskId),
+      );
+      const slices = load.slices.map((slice) => ({
+        id: slice.id,
+        colour: slice.area?.colour,
+        title: slice.area?.title,
+        minutes: slice.minutes,
+        guess: slice.source === "guess",
+      }));
       const busy = [
         ...commitments.flatMap((row) => (row.allDay || !blocksTime(row) ? [] : (clipTo(row, day.date) ?? []))),
-        ...dayBlocks.map((block) => ({ start: minuteOfDay(block.start), end: minuteOfDay(block.start) + block.minutes })),
+        ...blocks
+          .filter((block) => localDate(block.start) === day.date)
+          .map((block) => ({ start: minuteOfDay(block.start), end: minuteOfDay(block.start) + block.minutes })),
       ].toSorted((a, b) => a.start - b.start);
-      return { date: day.date, tasks, free: day.freeMinutes, planned: plannedMinutes(tasks, dayBlocks), slices, busy } satisfies PlanDay;
+      return {
+        date: day.date,
+        tasks,
+        free: day.freeMinutes,
+        goal: day.goalMinutes,
+        goalSet: day.goalSet,
+        planned: load.plannedMinutes,
+        guessed: load.guessedMinutes,
+        unestimated: load.unestimated,
+        slices,
+        areas: areasOf(slices),
+        busy,
+        boxed: new Set(dayBlocks.map((block) => block.taskId)),
+      } satisfies PlanDay;
     });
 
     return {
       dump: all.filter((task) => task.when.kind === "inbox").toSorted((a, b) => compare(a.order, b.order) || compare(a._creationTime, b._creationTime)),
       days,
       workingHours: week.workingHours,
+      guesses,
     };
   }, [inbox, week, blocks, commitments, today]);
 };

@@ -4,6 +4,7 @@ import {
   ArrowBendUpRight,
   ArrowCounterClockwise,
   ArrowSquareOut,
+  ArrowsOutLineVertical,
   CalendarDots,
   CheckCircle,
   CheckSquare,
@@ -279,6 +280,7 @@ export const moreItems = (deps: {
   shortcuts: () => void;
   smartEstimates: { enabled: boolean; configured: boolean } | undefined;
   setSmartEstimates: (enabled: boolean) => void;
+  spreadToday: () => void;
 }) => {
   const muted = MUTED;
   const item = plain.bind(null, "More");
@@ -314,6 +316,14 @@ export const moreItems = (deps: {
           },
         ]
       : []),
+    item(
+      "spread",
+      "Spread today across the day",
+      <ArrowsOutLineVertical weight="bold" aria-hidden="true" className={muted} />,
+      deps.spreadToday,
+      undefined,
+      "timebox work blocks schedule plan day auto sunsama",
+    ),
     item("shortcuts", "Keyboard shortcuts", <Keyboard weight="fill" aria-hidden="true" className={muted} />, deps.shortcuts, "shift+/", "help keys"),
   ];
 };

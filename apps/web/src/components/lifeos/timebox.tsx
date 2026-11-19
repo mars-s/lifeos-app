@@ -66,6 +66,8 @@ export type TimeboxSleep = {
 
 export type TimeboxGhost = { day: number; start: number; minutes: number; title: string; colour: AreaColour | undefined };
 
+export type TimeboxPreview = TimeboxGhost & { id: string };
+
 type Span = { id: string; start: number; end: number };
 type Lane = { lane: number; lanes: number };
 
@@ -188,6 +190,7 @@ export const Timebox = ({
   blocks,
   sleep = [],
   ghost,
+  previews = [],
   workingHours,
   now,
   scrollKey,
@@ -205,6 +208,7 @@ export const Timebox = ({
   blocks: readonly TimeboxBlock[];
   sleep?: readonly TimeboxSleep[];
   ghost: TimeboxGhost | null;
+  previews?: readonly TimeboxPreview[];
   workingHours: { startMinute: number; endMinute: number };
   now: { day: number; minute: number } | null;
   scrollKey: string;
@@ -540,6 +544,32 @@ export const Timebox = ({
               );
             })}
           </AnimatePresence>
+          {previews.map((preview, index) => (
+            <motion.div
+              key={preview.id}
+              aria-hidden="true"
+              data-spread-preview=""
+              initial={reduce ? { opacity: 0 } : { opacity: 0, transform: "translateY(4px)" }}
+              animate={{ opacity: 1, transform: "translateY(0px)" }}
+              transition={{ duration: reduce ? 0.12 : 0.22, ease: [0.23, 1, 0.32, 1], delay: reduce ? 0 : Math.min(index, 12) * 0.035 }}
+              className={cn(
+                "pointer-events-none absolute z-20 overflow-hidden rounded-lg px-2 text-small outline-[1.5px] -outline-offset-[1.5px] outline-dashed",
+                toPx(preview.minutes) < 26 ? "flex items-center py-0 leading-none" : "py-1",
+              )}
+              style={{
+                ...slotStyle(preview.day, count, WHOLE),
+                top: toPx(preview.start) + 1,
+                height: Math.max(toPx(preview.minutes) - 2, 12),
+                outlineColor: `color-mix(in oklab, ${tintOf(preview.colour)} 70%, transparent)`,
+                backgroundColor: `color-mix(in oklab, ${tintOf(preview.colour)} 10%, var(--surface-inset))`,
+              }}
+            >
+              <span className={cn("block truncate font-medium", toPx(preview.minutes) < 26 && "text-micro")}>{preview.title}</span>
+              {toPx(preview.minutes) >= 40 && (
+                <span className="block truncate font-mono text-micro text-foreground/65">{clockSpan(preview.start, preview.start + preview.minutes)}</span>
+              )}
+            </motion.div>
+          ))}
           {ghost && (
             <div
               aria-hidden="true"

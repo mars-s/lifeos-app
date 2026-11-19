@@ -7,13 +7,13 @@ import { AnimatePresence } from "motion/react";
 import { useState, type ReactNode } from "react";
 import type { IsoDate } from "@lifeos/backend/date";
 import type { PlannerTask } from "@lifeos/backend/types";
-import { CapacityDots } from "@/components/lifeos/capacity";
 import { formatMinutes } from "@/components/lifeos/format";
 import { RollingNumber } from "@/components/ui/rolling-number";
 import { cn } from "@/lib/utils";
-import { dayMonth, longDay, weekdayShort } from "../dates";
+import { longDay } from "../dates";
 import { TaskItem, useHostedRows } from "../task-item";
 import type { PlanActions } from "./actions";
+import { DayHeader } from "./day-header";
 import { usePlacedRows } from "./drag";
 import { INBOX, dayContainer, type PlanDay } from "./model";
 
@@ -133,36 +133,27 @@ export const BrainDump = ({ tasks, actions, className }: { tasks: readonly Plann
   );
 };
 
-export const DayColumn = ({ day, today, actions }: { day: PlanDay; today: IsoDate; actions: PlanActions }) => {
-  const over = day.planned - day.free;
+export const DayColumn = ({
+  day,
+  today,
+  actions,
+  onSpread,
+}: {
+  day: PlanDay;
+  today: IsoDate;
+  actions: PlanActions;
+  onSpread: (date: IsoDate) => void;
+}) => {
+  const over = day.planned + day.guessed - Math.max(0, day.free);
   const isToday = day.date === today;
   return (
     <section aria-label={longDay(day.date)} data-plan-day={day.date} className="flex min-h-0 w-[17.5rem] shrink-0 snap-start flex-col @max-4xl/planner:w-full">
       <header className="space-y-2 px-2 pb-2">
-        <h2 className="flex h-8 items-center gap-2 px-3 text-heading">
-          <span className="font-semibold">{weekdayShort(day.date)}</span>
-          <span className="text-muted-foreground">{dayMonth(day.date)}</span>
-          {isToday && <span className="text-small font-medium text-brand">Today</span>}
-        </h2>
-        <div className="space-y-1.5 px-3">
-          <CapacityDots capacity={day.free} planned={day.slices} />
-          <p className="text-micro text-muted-foreground">
-            {over > 0 ? (
-              <span className="text-negative">
-                <RollingNumber value={formatMinutes(over)} className="font-mono font-medium" /> over your <span className="font-mono">{formatMinutes(Math.max(0, day.free))}</span> free
-              </span>
-            ) : (
-              <>
-                <RollingNumber value={formatMinutes(day.free - day.planned)} className="font-mono text-foreground" /> left of{" "}
-                <span className="font-mono">{formatMinutes(Math.max(0, day.free))}</span> free
-              </>
-            )}
-          </p>
-        </div>
+        <DayHeader day={day} isToday={isToday} actions={actions} onSpread={onSpread} />
         <AddTask
           label={`Add a Task to ${longDay(day.date)}`}
           onAdd={(title) => actions.addTask(title, { kind: "scheduled", date: day.date, evening: false }, daySlot(day.date))}
-          aside={day.planned > 0 && <TotalChip minutes={day.planned} over={over > 0} title="Planned time for this day" />}
+          aside={day.planned + day.guessed > 0 && <TotalChip minutes={day.planned + day.guessed} over={over > 0} title="Planned time for this day" />}
         />
       </header>
       <PlanList

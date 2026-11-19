@@ -6,6 +6,7 @@ import type { Id } from "@lifeos/backend/dataModel";
 import type { IsoDate } from "@lifeos/backend/date";
 import { blockMinutesFor, placeInDay } from "@lifeos/backend/plan";
 import type { PlannerTask, WorkBlockRow } from "@lifeos/backend/types";
+import type { OptimisticLocalStore } from "convex/browser";
 import { formatMinutes } from "@/components/lifeos/format";
 import { both, dropBlock, dropBlockAt, nothing, patchTask, patchTasks, putBlock, useChange } from "../changes";
 import { clockTime, momentAt, whenLabel } from "../dates";
@@ -18,6 +19,18 @@ let blockCount = 0;
 type When = PlannerTask["when"];
 
 const scheduledOn = (date: IsoDate, evening: boolean) => ({ kind: "scheduled", date, evening }) satisfies When;
+
+const patchPlanDay =
+  (date: IsoDate, fields: { goalMinutes: number; goalSet: boolean }) =>
+  (store: OptimisticLocalStore) => {
+    for (const { args, value } of store.getAllQueries(api.planner.plan.week)) {
+      if (!value?.ok) continue;
+      const days = value.value.days.map((day) => (day.date === date ? { ...day, ...fields } : day));
+      store.setQuery(api.planner.plan.week, args, { ok: true, value: { ...value.value, days } });
+    }
+  };
+
+export type SpreadPick = { task: PlannerTask; start: number; minutes: number };
 
 const isPlannedOn = (task: PlannerTask, date: IsoDate, today: IsoDate) =>
   task.when.kind === "scheduled" && (task.when.date === date || (date === today && task.when.date <= today));
@@ -120,6 +133,41 @@ export const usePlanActions = (today: IsoDate) => {
           args: { taskId: task._id, start, minutes, timeZone: localZone(), ...(stays ? {} : { date }) },
           apply: both(putBlock(block), stays ? nothing : patchTask(task._id, (current) => ({ ...current, when }))),
           revert: both(dropBlockAt(task._id, start), stays ? nothing : patchTask(task._id, (current) => ({ ...current, when: task.when }))),
+        });
+      },
+
+      setGoal: (date: IsoDate, minutes: number | null, before: { goal: number; goalSet: boolean; free: number }) =>
+        void change({
+          title: minutes === null ? "Goal is your free time again" : `Goal set to ${formatMinutes(minutes)}`,
+          mutation: api.planner.plan.setGoal,
+          args: { date, minutes },
+          apply: patchPlanDay(date, { goalMinutes: minutes ?? Math.max(0, before.free), goalSet: minutes !== null }),
+          revert: patchPlanDay(date, { goalMinutes: before.goal, goalSet: before.goalSet }),
+          slot: `goal:${date}`,
+        }),
+
+      spread: (date: IsoDate, picks: readonly SpreadPick[], unfit: number) => {
+        const placed = picks.map(({ task, start, minutes }) => {
+          blockCount += 1;
+          return {
+            _id: `${OPTIMISTIC_BLOCK}${blockCount}` as Id<"workBlocks">,
+            taskId: drafts.realId(task._id),
+            start: momentAt(date, start),
+            minutes,
+            done: false,
+            task,
+          } satisfies WorkBlockRow;
+        });
+        const count = `${placed.length} Work Block${placed.length === 1 ? "" : "s"}`;
+        void change({
+          title: unfit > 0 ? `${count} placed. ${unfit} did not fit` : `${count} placed across the day`,
+          mutation: api.planner.workBlocks.spread,
+          args: {
+            timeZone: localZone(),
+            blocks: placed.map(({ taskId, start, minutes }) => ({ taskId: taskId as Id<"tasks">, start, minutes })),
+          },
+          apply: both(...placed.map(putBlock)),
+          revert: both(...placed.map((block) => dropBlockAt(block.taskId, block.start))),
         });
       },
 

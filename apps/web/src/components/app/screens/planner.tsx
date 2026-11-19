@@ -16,6 +16,8 @@ import { planCommands } from "../planner/commands";
 import { PlannerDrag, usePlanCommit, usePlanRegistry } from "../planner/drag";
 import { BrainDump, DayColumn } from "../planner/lists";
 import { INBOX, dayContainer, nextFreeSlot, usePlanner, type PlannerModel } from "../planner/model";
+import { useSleep } from "../planner/sleep";
+import { previewSpread, sleepOn, type SpreadPreview } from "../planner/spread";
 import { TimeboxPane, type TimeboxView } from "../planner/timebox-pane";
 import { selection } from "../selection";
 import type { PlannerTab } from "../route";
@@ -98,6 +100,29 @@ const Panes = ({
   const registry = usePlanRegistry();
   const commit = usePlanCommit(today, actions);
   const week = view.mode === "week";
+  const dates = model.days.map((day) => day.date);
+  const nights = useSleep(dates, today);
+  const previewOn = (date: IsoDate) => {
+    const index = model.days.findIndex((day) => day.date === date);
+    const day = model.days[index];
+    return day ? previewSpread({ day, model, sleep: sleepOn(nights, index), today, now: Date.now() }) : null;
+  };
+  const [spread, setSpread] = useState<SpreadPreview | null>(() => (planCommands.pending ? previewOn(planCommands.pending) : null));
+
+  const startSpread = useEffectEvent((date: IsoDate) => {
+    const preview = previewOn(date);
+    if (!preview) return;
+    setSpread(preview);
+    setView(view.mode === "day" || startOfWeek(date) !== startOfWeek(view.anchor) ? { mode: view.mode, anchor: date } : view);
+    if (tabbed) setPane("timebox");
+  });
+
+  const applySpread = useEffectEvent(() => {
+    if (!spread || spread.picks.length === 0) return;
+    haptic("drop");
+    actions.spread(spread.date, spread.picks, spread.unfit.length);
+    setSpread(null);
+  });
 
   const addBlock = useEffectEvent((task: PlannerTask) => {
     const date = task.when.kind === "scheduled" && task.when.date > today ? (task.when.date as IsoDate) : today;
@@ -111,12 +136,27 @@ const Panes = ({
 
   useEffect(() => {
     planCommands.addBlock = addBlock;
+    planCommands.spread = startSpread;
+    planCommands.pending = null;
     return () => {
       planCommands.addBlock = null;
+      planCommands.spread = null;
     };
   }, []);
 
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (spread && !event.defaultPrevented && !isTyping(event.target) && !document.querySelector(BLOCKED_BY)) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSpread(null);
+        return;
+      }
+      if (event.key === "Enter" && !(event.target instanceof HTMLButtonElement)) {
+        event.preventDefault();
+        applySpread();
+        return;
+      }
+    }
     if (event.defaultPrevented || isTyping(event.target) || event.altKey || event.shiftKey) return;
     if (document.querySelector(BLOCKED_BY)) return;
     const command = event.metaKey || event.ctrlKey;
@@ -202,7 +242,7 @@ const Panes = ({
         )}
       >
         {model.days.map((day) => (
-          <DayColumn key={day.date} day={day} today={today} actions={actions} />
+          <DayColumn key={day.date} day={day} today={today} actions={actions} onSpread={startSpread} />
         ))}
       </div>
       </ViewTransition>
@@ -215,6 +255,9 @@ const Panes = ({
         workingHours={model.workingHours}
         actions={actions}
         onOpenTask={openTask}
+        spread={spread}
+        onApplySpread={applySpread}
+        onCancelSpread={() => setSpread(null)}
         className={cn("w-full", week ? "@4xl/planner:min-w-0 @4xl/planner:flex-1" : "@4xl/planner:w-[21rem] @4xl/planner:shrink-0", shows("timebox", pane, true))}
       />
       </ViewTransition>

@@ -101,47 +101,81 @@ export const DayColumnHeader = ({
 
 const HOUR_DOTS = 60 / DOT_MINUTES;
 
-export const CapacityDots = ({
-  capacity,
-  planned,
+export type MeterSlice = { id: string; colour: AreaColour | undefined; minutes: number; guess: boolean };
+
+type MeterDot = "planned" | "over" | "track" | "spare" | "short";
+
+export const meterTint = (colour: AreaColour | undefined) => (colour ? areaVar(colour) : "var(--muted-foreground)");
+
+const dotsFor = (minutes: number) => (minutes <= 0 ? 0 : Math.max(1, Math.round(minutes / DOT_MINUTES)));
+
+const DOT_TONE: Record<MeterDot, string> = {
+  planned: "",
+  over: "",
+  track: "bg-foreground/[0.11]",
+  spare: "bg-foreground/[0.045]",
+  short: "shadow-[inset_0_0_0_1px] shadow-negative/45",
+};
+
+export const DayMeter = ({
+  slices,
+  goal,
+  free,
   className,
 }: {
-  capacity: number;
-  planned: PlannedSlice[];
+  slices: readonly MeterSlice[];
+  goal: number;
+  free: number;
   className?: string;
 }) => {
-  const total = planned.reduce((sum, slice) => sum + slice.minutes, 0);
-  const colours = planned.flatMap((slice) =>
-    Array.from({ length: slice.minutes <= 0 ? 0 : Math.max(1, Math.round(slice.minutes / DOT_MINUTES)) }, () => areaVar(slice.colour)),
-  );
-  const freeDots = Math.round(Math.max(0, capacity) / DOT_MINUTES);
-  const dots = Array.from({ length: Math.max(freeDots, colours.length) }, (_, index) => ({ colour: colours[index], over: index >= freeDots }));
+  const filled = slices.flatMap((slice) => Array.from({ length: dotsFor(slice.minutes) }, () => slice));
+  const total = slices.reduce((sum, slice) => sum + slice.minutes, 0);
+  const goalDots = Math.round(Math.max(0, goal) / DOT_MINUTES);
+  const freeDots = Math.round(Math.max(0, free) / DOT_MINUTES);
+  const length = Math.max(goalDots, freeDots, filled.length);
+  const dots = Array.from({ length }, (_, index) => {
+    const slice = filled[index];
+    const kind: MeterDot = slice ? (index >= freeDots ? "over" : "planned") : index >= freeDots ? "short" : index >= goalDots ? "spare" : "track";
+    return { index, slice, kind };
+  });
   const hours = Array.from({ length: Math.ceil(dots.length / HOUR_DOTS) }, (_, hour) => dots.slice(hour * HOUR_DOTS, (hour + 1) * HOUR_DOTS));
+  const marksGoal = goalDots > 0 && goalDots < length;
   return (
-    <div
+    <span
       role="meter"
-      aria-label="Capacity"
+      aria-label="Planned against the goal"
       aria-valuemin={0}
-      aria-valuemax={Math.max(0, capacity)}
+      aria-valuemax={Math.max(goal, free, total)}
       aria-valuenow={total}
-      aria-valuetext={`${formatMinutes(total)} planned of ${formatMinutes(Math.max(0, capacity))} free`}
-      title="One dot is 15 minutes, grouped by the hour. A red dot is time past your free time."
+      aria-valuetext={`${formatMinutes(total)} planned, goal ${formatMinutes(goal)}, ${formatMinutes(Math.max(0, free))} free`}
       className={cn("flex flex-wrap gap-x-[7px] gap-y-1.5", className)}
     >
-      {hours.map((hour, index) => (
-        <span key={index} className="flex gap-[3px]">
-          {hour.map((dot, position) => (
-            <span
-              key={position}
-              className={cn(
-                "size-1.5 rounded-full transition-[background-color] duration-(--dur-base) ease-out",
-                dot.over ? "bg-negative" : !dot.colour && "bg-foreground/[0.11]",
-              )}
-              style={dot.over || !dot.colour ? undefined : { backgroundColor: dot.colour }}
-            />
-          ))}
+      {hours.map((hour, group) => (
+        <span key={group} className="flex items-center gap-[3px]">
+          {hour.map(({ index, slice, kind }) => {
+            const colour = kind === "over" ? "var(--negative)" : slice && meterTint(slice.colour);
+            return (
+              <span key={index} className="contents">
+                {marksGoal && index === goalDots && <span data-goal-mark="" className="-mx-px h-2.5 w-[1.5px] shrink-0 rounded-full bg-foreground/55" />}
+                <span
+                  data-dot={slice?.guess ? "guess" : kind}
+                  className={cn(
+                    "size-1.5 shrink-0 rounded-full transition-[background-color,box-shadow] duration-(--dur-base) ease-out",
+                    DOT_TONE[kind],
+                  )}
+                  style={
+                    colour
+                      ? slice?.guess
+                        ? { boxShadow: `inset 0 0 0 1.5px ${colour}` }
+                        : { backgroundColor: colour }
+                      : undefined
+                  }
+                />
+              </span>
+            );
+          })}
         </span>
       ))}
-    </div>
+    </span>
   );
 };

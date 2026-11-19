@@ -43,6 +43,7 @@ const SEEDED = [
   "estimateSuggestions",
   "preferences",
   "secrets",
+  "dayPlans",
 ] as const;
 
 export const seed = internalMutation({

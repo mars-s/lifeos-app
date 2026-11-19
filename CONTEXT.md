@@ -47,6 +47,13 @@ _Avoid_: event (in code), meeting.
 
 **Capacity**: free time inside Working Hours once External Commitments are taken out. Overlapping commitments count once. Compared with the sum of Estimates planned for that day.
 
+**Goal**: how much planned work Avi wants on one date. It defaults to that day's Capacity. He can set it per day (4:00 on a light day, 8:00 on a push) and reset it to the default. The day meter compares the day's load with the Goal and with Capacity.
+_Avoid_: target, quota.
+
+**Day Load**: everything planned for one date, in minutes: each Task's Work Blocks on that day, or else its Estimate, or else its Smart Estimate (shown as a guess). Tasks with none of these are counted as "not estimated". Tasks without an Area count like any other, in a neutral tint.
+
+**Spread**: placing the day's Tasks on the Timebox in one step, Sunsama style. Each Task without a Work Block that day gets one, in Day Plan order, in the free gaps inside Working Hours around External Commitments, the Sleep Window and existing Work Blocks, with ten minutes between them. It is previewed as ghost blocks first, and one undo removes the whole Spread. Tasks that do not fit stay unscheduled.
+
 **Focus Session**: a stretch of timed work on one Task. Only one runs at a time. It can be paused, and paused time does not count. A Stopwatch session counts up until it is stopped. A Pomodoro session has a planned length, then offers a Break.
 
 **Break**: the rest between two Pomodoro Focus Sessions on the same Task. It never counts as Actual Time.
@@ -68,7 +75,7 @@ _Avoid_: sleep block, sleep event.
 
 **Brain Dump**: fast, unsorted capture. In the data it is the Inbox.
 
-**Day Plan**: the Tasks Avi commits to for one date, in order, with the day's Capacity.
+**Day Plan**: the Tasks Avi commits to for one date, in order, with the day's Capacity and Goal.
 
 **Shutdown**: the end-of-day review of a Day Plan: what got done, Actual Time by Area, what rolls to tomorrow.
 
@@ -126,7 +133,7 @@ LifeOS is the home of Avi's Tasks (Avi, 18 November 2026). They live in Convex. 
 - Nothing is ever written to Things. LifeOS edits stay in LifeOS.
 - **LifeOS wins.** A Things Import never overwrites a field LifeOS has changed since the last import. A change made in Things flows in only when LifeOS has not touched that field.
 - A record that leaves Things is never deleted from LifeOS.
-- LifeOS alone holds the planning layer: Estimates, Work Blocks, Focus Sessions, Day Plans, Recurrence Rules, Templates, Area and Label colours, and Order Keys.
+- LifeOS alone holds the planning layer: Estimates, Work Blocks, Focus Sessions, Day Plans and their Goals, Recurrence Rules, Templates, Area and Label colours, and Order Keys.
 - Oura owns Health Days and Oura's Bedtime. LifeOS only reads them and never writes to Oura.
 - Apple Calendar owns External Commitments and Calendars. LifeOS only reads them. Which Calendars count and Working Hours belong to LifeOS.
 - Apple Calendar will own the timing of Work Blocks once they are written back (not built yet).

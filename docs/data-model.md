@@ -43,7 +43,7 @@ The changes inside one Activity row, in order. Each holds enough to invert itsel
 | --- | --- |
 | `activityId` | `Id<"activity">` |
 | `seq` | Position inside the action |
-| `entity` | Record reference (any Entity Reference, an `entityLinks` row, or a setting row: `calendars`, `workingHours`) |
+| `entity` | Record reference (any Entity Reference, an `entityLinks` row, or a setting row: `calendars`, `workingHours`, `preferences`, `dayPlans`) |
 | `change` | `insert { after }`, `patch { before, after }` or `delete { before }`. `before` and `after` hold only the changed fields. |
 
 | Index | Serves |
@@ -227,6 +227,10 @@ Index: `by_task` (the card's query and every request).
 - **Once per change.** `inputsHash` is the SHA-256 of the model name, the signal and the ratio. A run whose hash matches the stored `suggested` or `unclear` outcome makes no call. A failure is retried on the next real change.
 - `planner/smartEstimates:status` says whether the preference is on and whether a key is available from either source.
 
+### `dayPlans`
+
+One row per date that has a **Goal**: `date` (local date), optional `goalMinutes` (0 to 1440). Index: `by_date`. A date with no row, or a row without `goalMinutes`, takes its Capacity as the Goal. `planner/plan:setGoal` (`date`, `minutes` or `null` to reset) records `plan.goal` Activity and can be undone. Resetting keeps the row and removes `goalMinutes`. The Shutdown ritual adds its fields to this row later.
+
 ### `thingsSync`
 
 One row: `syncedAt`, the counts of the last Things Import per table, and `retiredAt` once Switch Day has run. Read by the "Synced from Things" note, which hides after Switch Day.
@@ -252,7 +256,7 @@ Each screen reads one query that returns exactly what it draws. All go through `
 | `planner/lists:area` (`areaId`) | An Area page: its open Tasks and its Projects with progress | `tasks.by_area_order`, `projects.by_area_order` |
 | `planner/lists:project` (`projectId`) | A Project page: open Tasks under their Headings, and progress over every Task | `headings.by_project_order`, `tasks.by_project_order` |
 | `planner/labels:list` | The Label picker on a Task card | `labels.by_order` |
-| `planner/plan:week` (`from`, `days` up to 31, `timeZone`) | The Planner's day columns: each day's open Tasks in Day Plan order, its planned minutes and its **Capacity**. Tasks scheduled before `from` roll into the first day | `tasks.by_trashed_status_when`, `workBlocks.by_removed_start`, and the Capacity reads |
+| `planner/plan:week` (`from`, `days` up to 31, `timeZone`) | The Planner's day columns: each day's open Tasks in Day Plan order, its **Day Load** (`plannedMinutes`, `guessedMinutes`, `unestimated`), its **Goal** (`goalMinutes`, `goalSet`) and its **Capacity**. `guesses` lists the Smart Estimates it counted, so the client can recount after an optimistic change. Tasks scheduled before `from` roll into the first day | `tasks.by_trashed_status_when`, `workBlocks.by_removed_start`, `dayPlans.by_date`, `estimateSuggestions.by_task`, and the Capacity reads |
 | `planner/workBlocks:range` (`from`, `to`, moments, up to 100 days) | The Timebox calendar: live Work Blocks with their Task rows. Blocks of completed Tasks stay (they show as done), blocks of trashed Tasks are left out | `workBlocks.by_removed_start` |
 | `planner/trash:list` | Trash: trashed Areas, Projects and Tasks, newest first. A record that went to Trash with its Area or Project is counted on that row, not listed again | `tasks.by_trashed_closed_at`, `projects.by_trashed`, `areas.by_trashed` |
 
@@ -264,7 +268,9 @@ Focus Sessions change through `planner/focus`. `start` (`taskId`, `plan`) ends w
 
 The Planner changes a day through `planner/plan:place` (`taskId`, `date`, `order`). `order` is the day's Task ids as Avi sees them after the drop, with the moved Task in its new place. The Task's When becomes that Scheduled date and it gets a `plan` key between its neighbours. When a neighbour has no key for that day yet, the whole day is keyed in the order given. One Activity row, so one undo restores the When and every key. `shared/plan.ts` holds the ordering (`byDayPlan`, `placeInDay`) and the planned total (`plannedMinutes`), and the web app runs the same code for its optimistic update.
 
-A day's planned total is the sum of its Tasks' Estimates, except that a Task with Work Blocks on that day counts those blocks instead. A Work Block for a Task planned on another day also counts on the day the block starts. Completed and trashed Tasks count nothing. `planner/workBlocks:create` takes an optional `date`: the Task's When becomes that Scheduled date in the same Activity row, which is how dropping an Inbox Task on the calendar plans it for that day. No Work Block change ever touches the Deadline.
+A day's load comes from `dayLoad` in `shared/plan.ts`, which the web app runs too. Each Task counts its Work Blocks on that day, or else its Estimate (`plannedMinutes`), or else its Smart Estimate (`guessedMinutes`, only while Smart Estimates is on and the suggestion would show on the card). A Task with none of these adds one to `unestimated`. Tasks without an Area count like any other. A Work Block for a Task planned on another day also counts on the day the block starts. Completed and trashed Tasks count nothing. `planner/workBlocks:create` takes an optional `date`: the Task's When becomes that Scheduled date in the same Activity row, which is how dropping an Inbox Task on the calendar plans it for that day. No Work Block change ever touches the Deadline.
+
+**Spread** works in two steps. The web app plans it with `spreadDay` in `shared/spread.ts` and shows the result as ghost blocks on the Timebox. It takes the day's open Tasks in Day Plan order, skips any that already have a Work Block that day, and sizes each by its Estimate, its Smart Estimate or 30 minutes, rounded to the 15 minute grid. Busy time is the day's External Commitments that take time, every Work Block on that day (done ones too) and the Sleep Window, each padded by 10 minutes. The window is Working Hours, starting no earlier than now on today. Each Task goes in the first gap after the previous one that fits it, on a 5 minute grid. A Task that fits nowhere is reported and the next one is tried. On confirm, `planner/workBlocks:spread` (`blocks` of `{ taskId, start, minutes }`, up to 100, and `timeZone`) inserts them all in one `workBlock.spread` Activity row, so one undo removes the Spread. It refuses the whole request when a block overlaps a live Work Block or another block in it (`invalid_block`, reason `overlap`), or names a Task that is closed or trashed. It never touches When or the Deadline.
 
 A selection of Tasks changes through `planner/selection` (`setWhen`, `setDeadline`, `setEstimate`, `setLabel`, `move`, `complete`, `reopen`, `trash`, `restore`). Each takes `taskIds` (up to 500), validates the whole request first, and records one Activity row, so one undo reverts every Task. A missing Task or an invalid value changes nothing.
 
@@ -400,7 +406,7 @@ Each slice adds these as new tables, or as variants of `vEntityRef` and `vJob`. 
 
 ### Rituals
 
-- **`dayPlans`**: `date`, `capacityMinutes`, optional `shutdown { at, note }`. Index: `by_date`. Added with the Shutdown ritual, to freeze what a day's plan was. Until then a Day Plan is read live from the Tasks scheduled on that date and their `plan` keys.
+- **`dayPlans`** gains `capacityMinutes` and optional `shutdown { at, note }` with the Shutdown ritual, to freeze what a day's plan was. Until then a Day Plan is read live from the Tasks scheduled on that date and their `plan` keys, and the row holds only the Goal.
 
 ### Recurrence and templates
 

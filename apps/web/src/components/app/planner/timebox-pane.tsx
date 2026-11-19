@@ -5,8 +5,9 @@ import { CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { useMemo } from "react";
 import { addDays, type IsoDate } from "@lifeos/backend/date";
 import type { PlannerTask } from "@lifeos/backend/types";
-import { Timebox, type TimeboxDay, type TimeboxGhost } from "@/components/lifeos/timebox";
-import { IconButton } from "@/components/ui/action-button";
+import { Timebox, type TimeboxDay, type TimeboxGhost, type TimeboxPreview } from "@/components/lifeos/timebox";
+import { Button, IconButton } from "@/components/ui/action-button";
+import { KeyCombo } from "@/components/ui/key-hint";
 import { MorphText } from "@/components/ui/morph-text";
 import { Segmented } from "@/components/ui/segmented-control";
 import { haptic } from "@/lib/haptics";
@@ -19,6 +20,7 @@ import type { PlanActions } from "./actions";
 import { useGhost } from "./drag";
 import { calContainer, useTimebox } from "./model";
 import { useSleep } from "./sleep";
+import type { SpreadPreview } from "./spread";
 
 export type TimeboxMode = "day" | "week";
 export type TimeboxView = { mode: TimeboxMode; anchor: IsoDate };
@@ -44,8 +46,14 @@ export const TimeboxPane = ({
   workingHours,
   actions,
   onOpenTask,
+  spread,
+  onApplySpread,
+  onCancelSpread,
   className,
 }: {
+  spread: SpreadPreview | null;
+  onApplySpread: () => void;
+  onCancelSpread: () => void;
   narrow: boolean;
   today: IsoDate;
   view: TimeboxView;
@@ -63,8 +71,8 @@ export const TimeboxPane = ({
       : Array.from({ length: 7 }, (_, index) => addDays(startOfWeek(anchor), index));
   }, [mode, anchor, narrow]);
   const data = useTimebox(dates);
-  const sleep = useSleep(dates, today);
   const tasksDo = useSelectionActions(today);
+  const sleep = useSleep(dates, today);
   const held = useGhost();
   const now = useNow();
   const first = dates[0] ?? anchor;
@@ -81,6 +89,14 @@ export const TimeboxPane = ({
     held && ghostDay !== -1
       ? ({ day: ghostDay, start: held.minute, minutes: held.minutes, title: held.task.title, colour: held.task.area?.colour } satisfies TimeboxGhost)
       : null;
+  const spreadDay = spread ? dates.indexOf(spread.date) : -1;
+  const previews =
+    spread && spreadDay !== -1
+      ? spread.picks.map(
+          ({ task, start, minutes }) =>
+            ({ id: `spread:${task._id}`, day: spreadDay, start, minutes, title: task.title, colour: task.area?.colour }) satisfies TimeboxPreview,
+        )
+      : [];
   const rowOf = (id: string) => data.rows.find((row) => row._id === id);
   const label = mode === "day" ? `${weekdayShort(anchor)} ${dayMonth(anchor)}` : first.slice(0, 7) === last.slice(0, 7) ? monthYear(first) : `${dayMonth(first)} to ${dayMonth(last)}`;
 
@@ -105,6 +121,7 @@ export const TimeboxPane = ({
         <SleepButton today={today} />
         <Segmented label="Timebox view" options={modes(narrow)} value={mode} onValueChange={(next) => onView({ mode: next, anchor })} className="ml-1" />
       </header>
+      {spread && <SpreadBar spread={spread} isToday={spread.date === today} onApply={onApplySpread} onCancel={onCancelSpread} />}
       <Timebox
         days={days}
         commitments={data.commitments}
@@ -112,6 +129,7 @@ export const TimeboxPane = ({
         blocks={data.blocks}
         sleep={sleep}
         ghost={ghost}
+        previews={previews}
         workingHours={workingHours}
         now={now !== null && showsToday ? { day: dates.indexOf(today), minute: minuteOfDay(now) } : null}
         scrollKey={`${mode}:${dates.length}`}
@@ -144,5 +162,54 @@ export const TimeboxPane = ({
         }}
       />
     </section>
+  );
+};
+
+const SpreadBar = ({
+  spread,
+  isToday,
+  onApply,
+  onCancel,
+}: {
+  spread: SpreadPreview;
+  isToday: boolean;
+  onApply: () => void;
+  onCancel: () => void;
+}) => {
+  const placed = spread.picks.length;
+  const unfit = spread.unfit.length;
+  const day = `${weekdayShort(spread.date)} ${dayMonth(spread.date)}`;
+  const headline =
+    spread.spreadable === 0
+      ? "Every Task already has a Work Block"
+      : placed === 0
+        ? `Nothing fits on ${day}`
+        : `${placed} Work Block${placed === 1 ? "" : "s"} for ${day}`;
+  return (
+    <div
+      role="region"
+      aria-label="Spread across the day"
+      className="mx-2 mb-2 shrink-0 animate-fade-in rounded-xl bg-popover px-3 py-2.5 shadow-float"
+    >
+      <p className="text-small font-medium" aria-live="polite">
+        {headline}
+      </p>
+      {unfit > 0 && (
+        <p className="mt-0.5 line-clamp-3 text-small text-muted-foreground">
+          {unfit} Task{unfit === 1 ? "" : "s"} did not fit {isToday ? "today" : `on ${day}`} and stay{unfit === 1 ? "s" : ""} unscheduled:{" "}
+          <span className="text-foreground/80">{spread.unfit.map((task) => task.title).join(", ")}</span>
+        </p>
+      )}
+      <div className="mt-2 flex items-center justify-end gap-1.5">
+        <Button variant="quiet" onClick={onCancel}>
+          Cancel <KeyCombo keys="escape" className="ml-0.5" />
+        </Button>
+        {placed > 0 && (
+          <Button variant="primary" onClick={onApply}>
+            Place blocks <KeyCombo keys="enter" className="ml-0.5" />
+          </Button>
+        )}
+      </div>
+    </div>
   );
 };

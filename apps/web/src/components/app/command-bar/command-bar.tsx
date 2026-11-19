@@ -20,6 +20,7 @@ import { useSelectionActions } from "../selection-actions";
 import { replayWelcome } from "../settings/welcome-replay";
 import { useShell } from "../shell-context";
 import { useSmartEstimates } from "../smart-estimate";
+import type { IsoDate } from "@lifeos/backend/date";
 import { BarDialog } from "./dialog";
 import { fuzzyScore, rank } from "./fuzzy";
 import {
@@ -41,6 +42,7 @@ import {
 } from "./items";
 import { readRecents, rememberRecent } from "./recents";
 import { bar } from "./store";
+import { planCommands } from "../planner/commands";
 
 const PAGE_TITLE: Record<Exclude<Page, "root">, string> = { when: "When", deadline: "Deadline", estimate: "Estimate", move: "Move to" };
 const PAGE_PLACEHOLDER: Record<Page, string> = {
@@ -161,6 +163,11 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
       shortcuts: () => bar.shortcuts(),
       smartEstimates: smart.status,
       setSmartEstimates: (enabled) => void smart.set(enabled),
+      spreadToday: () => {
+        if (planCommands.spread) return planCommands.spread(today as IsoDate);
+        planCommands.pending = today as IsoDate;
+        go({ kind: "planner" });
+      },
     });
     const containers = containerItems(sidebar, go);
     const review = inApp || import.meta.env.DEV ? [replayWelcomeItem(replayWelcome)] : [];
