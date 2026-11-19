@@ -18,7 +18,7 @@ const MIN_CALIBRATION_TASKS = 3;
 const MIN_COUNTED_ACTUAL_MINUTES = 5;
 const TITLE_SHOWN = 40;
 
-export const ESTIMATE_CHOICES = [
+const MINUTE_BUCKETS = [
   { minutes: 5, value: "5 minutes", description: "One tiny action: a quick reply, a payment, or a booking already decided." },
   { minutes: 10, value: "10 minutes", description: "A quick errand or message that needs a little thought, such as a short email, a phone call or a simple purchase." },
   { minutes: 15, value: "15 minutes", description: "A short admin job with a couple of steps: fill in a form, tidy a document, arrange a time." },
@@ -27,11 +27,27 @@ export const ESTIMATE_CHOICES = [
   { minutes: 45, value: "45 minutes", description: "A modest piece of work with several steps or some research." },
   { minutes: 60, value: "1 hour", description: "About an hour of focused work: a draft section, one assignment question, a meeting with preparation." },
   { minutes: 90, value: "1.5 hours", description: "A substantial session: a full short draft, several papers, a tricky bug." },
-  { minutes: 120, value: "2 hours", description: "A long deep-work block: a chapter section, a study session, building a feature." },
+  { minutes: 120, value: "2 hours", description: "A long deep-work block: a chapter section, a study session, building a small feature." },
   { minutes: 180, value: "3 hours", description: "Half a day on one piece of work: a large assignment part, a workshop, a complex build." },
-  { minutes: 240, value: "4 hours", description: "Most of a working day on one piece of work." },
-  { minutes: 360, value: "6 hours", description: "A full day or more: a whole milestone that could be split into smaller Tasks." },
+  { minutes: 240, value: "4 hours", description: "Most of a morning or afternoon on one piece of work." },
+  { minutes: 360, value: "6 hours", description: "Nearly a full working day on one piece of work." },
 ] as const;
+
+const DAY_BUCKETS = [
+  { days: 1, value: "1 working day", description: "A whole working day: a feature end to end, an essay draft, a big clean-up." },
+  { days: 2, value: "2 working days", description: "Two working days: a sizeable feature, a full report, a migration of one part of a system." },
+  { days: 3, value: "3 working days", description: "Most of a working week's first half: a large piece with several parts." },
+  { days: 5, value: "1 working week", description: "A full working week: a rewrite of a component, a thesis chapter, a small product." },
+  { days: 10, value: "2 working weeks", description: "Two working weeks or more: rewriting a whole system, a major project. Really a Project, not one Task." },
+] as const;
+
+export type Bucket = { minutes: number; value: string; description: string; days?: number };
+
+export const bucketsFor = (dayMinutes: number) =>
+  [
+    ...MINUTE_BUCKETS.map((bucket) => ({ ...bucket }) satisfies Bucket),
+    ...DAY_BUCKETS.map(({ days, value, description }) => ({ minutes: days * dayMinutes, value, description, days }) satisfies Bucket),
+  ] as readonly Bucket[];
 
 export type TaskSignal = {
   title: string;
@@ -131,20 +147,24 @@ export const calibrationOf = (examples: readonly Example[], history: readonly Pa
   return overall.length >= MIN_CALIBRATION_TASKS ? calibrationFrom(overall, "overall") : undefined;
 };
 
-const nearestChoice = (minutes: number) =>
-  ESTIMATE_CHOICES.map((choice) => choice.minutes).reduce((best, choice) =>
+const nearestChoice = (buckets: readonly Bucket[], minutes: number) =>
+  buckets.map((bucket) => bucket.minutes).reduce((best, choice) =>
     Math.abs(Math.log(choice / minutes)) < Math.abs(Math.log(best / minutes)) ? choice : best,
   );
 
-export const nudged = (pick: number, calibration: Calibration | undefined) =>
-  calibration && Math.abs(calibration.ratio - 1) > NUDGE_BAND ? nearestChoice(pick * calibration.ratio) : pick;
+export const nudged = (buckets: readonly Bucket[], pick: number, calibration: Calibration | undefined) =>
+  calibration && Math.abs(calibration.ratio - 1) > NUDGE_BAND ? nearestChoice(buckets, pick * calibration.ratio) : pick;
 
 const rounded = (probability: number) => Math.round(probability * 1000) / 1000;
 
-export const guessesFrom = (decision: Pick<Decision, "pick" | "confidence" | "probabilities">, calibration: Calibration | undefined) => {
+export const guessesFrom = (
+  buckets: readonly Bucket[],
+  decision: Pick<Decision, "pick" | "confidence" | "probabilities">,
+  calibration: Calibration | undefined,
+) => {
   const merged = new Map<number, number>();
   for (const { minutes, probability } of decision.probabilities) {
-    const bucket = nudged(minutes, calibration);
+    const bucket = nudged(buckets, minutes, calibration);
     merged.set(bucket, (merged.get(bucket) ?? 0) + probability);
   }
   const ranked = [...merged]
@@ -152,7 +172,7 @@ export const guessesFrom = (decision: Pick<Decision, "pick" | "confidence" | "pr
     .filter(({ probability }) => probability >= GUESS_FLOOR)
     .toSorted((a, b) => b.probability - a.probability)
     .slice(0, GUESS_LIMIT);
-  const guesses = ranked.length > 0 ? ranked : [{ minutes: nudged(decision.pick, calibration), probability: rounded(decision.confidence) }];
+  const guesses = ranked.length > 0 ? ranked : [{ minutes: nudged(buckets, decision.pick, calibration), probability: rounded(decision.confidence) }];
   return { guesses: guesses.toSorted((a, b) => a.minutes - b.minutes), likely: guesses[0]?.minutes ?? decision.pick };
 };
 
@@ -178,7 +198,7 @@ export const taskText = (task: TaskSignal) =>
     ...line("Labels", task.labels.join(", ")),
   ].join("\n");
 
-export const decisionRequest = (signal: EstimateSignal) => ({
+export const decisionRequest = (signal: EstimateSignal, buckets: readonly Bucket[]) => ({
   model: DECISIONS_MODEL,
   prompt_cache_key: PROMPT_CACHE_KEY,
   input: [
@@ -196,7 +216,7 @@ export const decisionRequest = (signal: EstimateSignal) => ({
       type: "choice",
       name: QUESTION_NAME,
       instructions: "How long will this Task take as focused work?",
-      choices: ESTIMATE_CHOICES.map(({ value, description }) => ({ value, description })),
+      choices: buckets.map(({ value, description }) => ({ value, description })),
     },
     {
       type: "predicate",
@@ -208,16 +228,16 @@ export const decisionRequest = (signal: EstimateSignal) => ({
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 
-const offeredMinutes = (value: unknown) => ESTIMATE_CHOICES.find((choice) => choice.value === value)?.minutes;
+const offeredMinutes = (buckets: readonly Bucket[], value: unknown) => buckets.find((bucket) => bucket.value === value)?.minutes;
 
-const probabilitiesOf = (value: unknown) =>
+const probabilitiesOf = (buckets: readonly Bucket[], value: unknown) =>
   (Array.isArray(value) ? value : []).flatMap((entry: unknown) => {
     if (!isRecord(entry) || typeof entry.probability !== "number") return [];
-    const minutes = offeredMinutes(entry.value);
+    const minutes = offeredMinutes(buckets, entry.value);
     return minutes === undefined ? [] : [{ minutes, probability: Math.round(entry.probability * 1000) / 1000 }];
   });
 
-export const parseDecision = (body: unknown) => {
+export const parseDecision = (buckets: readonly Bucket[], body: unknown) => {
   const invalid = err<Decision, SmartEstimateError>({ kind: "invalid_response" });
   if (!isRecord(body) || !Array.isArray(body.answers)) return invalid;
   const answers: unknown[] = body.answers;
@@ -225,13 +245,13 @@ export const parseDecision = (body: unknown) => {
   const answer = named(QUESTION_NAME);
   if (!answer) return invalid;
   if (answer.type === "refusal") return err<Decision, SmartEstimateError>({ kind: "refused" });
-  const pick = offeredMinutes(answer.choice);
+  const pick = offeredMinutes(buckets, answer.choice);
   if (answer.type !== "choice" || pick === undefined) return invalid;
   const vague = named(VAGUE_QUESTION);
   return ok<Decision, SmartEstimateError>({
     pick,
     confidence: typeof answer.confidence === "number" ? answer.confidence : 0,
-    probabilities: probabilitiesOf(answer.probabilities),
+    probabilities: probabilitiesOf(buckets, answer.probabilities),
     vague: vague?.type === "predicate" && typeof vague.probability === "number" ? vague.probability : 0,
     model: typeof body.model === "string" ? body.model : DECISIONS_MODEL,
   });

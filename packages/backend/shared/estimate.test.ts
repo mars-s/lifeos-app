@@ -9,11 +9,11 @@ test("a bare number is minutes, and hours can be written the ways people type th
   ).toEqual([45, 45, 45, 60, 120, 90, 90, 90, 90, 90, 10, 90]);
 });
 
-test("an Estimate must be between one minute and a day, and readable", () => {
-  expect(["", "0", "0h", "soon", "1h90x", "1:75", "25h", "1441", "-5", "1h30h"].map(minutes)).toEqual(
+test("an Estimate must be between one minute and 200 hours, and readable", () => {
+  expect(["", "0", "0h", "soon", "1h90x", "1:75", "201h", "12001", "-5", "1h30h"].map(minutes)).toEqual(
     Array.from({ length: 10 }, () => null),
   );
-  expect(minutes("24h")).toBe(1440);
+  expect([minutes("24h"), minutes("200h")]).toEqual([1440, 12_000]);
   expect(parseEstimateText("soon")._unsafeUnwrapErr()).toEqual({ kind: "unreadable_estimate", input: "soon" });
 });
 

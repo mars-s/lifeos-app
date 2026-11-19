@@ -6,11 +6,13 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { focusedMs, MINUTE_MS } from "../../shared/focus";
 import { ownerMutation, ownerQuery } from "../platform/access";
 import { preferencesOf } from "../platform/preferences";
+import { workingHoursOf } from "../calendar/workingHours";
 import { revealSecret, secretAvailable } from "../platform/secrets";
 import { sha256Hex } from "../platform/workers";
 import {
   calibrationOf,
   canonicalJson,
+  bucketsFor,
   guessesFrom,
   isPlaceholderTitle,
   DECISIONS_MODEL,
@@ -21,6 +23,7 @@ import {
   reasonFor,
   trimNotes,
   VAGUE_THRESHOLD,
+  type Bucket,
   type Calibration,
   type Decision,
   type EstimateSignal,
@@ -63,22 +66,24 @@ export const request = ownerMutation({
   handler: async (ctx, { taskId }) => ({ requested: await requestSuggestion(ctx, taskId, { onlyFirst: true }) }),
 });
 
+const workingDayMinutes = ({ startMinute, endMinute }: { startMinute: number; endMinute: number }) => endMinute - startMinute;
+
 const smartEstimatesOn = async (ctx: QueryCtx) =>
   (await preferencesOf(ctx)).smartEstimates && (await secretAvailable(ctx, "openai"));
 
 export type EstimateView =
   | { kind: "presets" }
   | { kind: "thinking" }
-  | { kind: "guesses"; guesses: Guess[]; likely: number; reason: string }
+  | { kind: "guesses"; guesses: Guess[]; likely: number; reason: string; dayMinutes: number }
   | { kind: "fallback"; why: "untitled" | "vague" | "failed"; error?: SmartEstimateError["kind"] };
 
-const viewOf = (task: Doc<"tasks">, row: Doc<"estimateSuggestions"> | null) => {
+const viewOf = (task: Doc<"tasks">, row: Doc<"estimateSuggestions"> | null, dayMinutes: number) => {
   const { outcome } = row ?? { outcome: null };
   if (outcome?.kind === "suggested") {
     const pending = task.estimateMinutes === undefined && row !== null && row.requestedAt > (row.answeredAt ?? 0);
     return pending
       ? ({ kind: "thinking" } satisfies EstimateView)
-      : ({ kind: "guesses", guesses: outcome.guesses, likely: outcome.minutes, reason: outcome.reason } satisfies EstimateView);
+      : ({ kind: "guesses", guesses: outcome.guesses, likely: outcome.minutes, reason: outcome.reason, dayMinutes } satisfies EstimateView);
   }
   if (task.estimateMinutes !== undefined) return { kind: "presets" } satisfies EstimateView;
   if (isPlaceholderTitle(task.title)) return { kind: "fallback", why: "untitled" } satisfies EstimateView;
@@ -93,7 +98,8 @@ export const forTask = ownerQuery({
   handler: async (ctx, { taskId }) => {
     const task = await ctx.db.get("tasks", taskId);
     if (!task || !(await smartEstimatesOn(ctx))) return { kind: "presets" } satisfies EstimateView;
-    return viewOf(task, await suggestionRow(ctx, taskId));
+    const [row, hours] = await Promise.all([suggestionRow(ctx, taskId), workingHoursOf(ctx)]);
+    return viewOf(task, row, workingDayMinutes(hours));
   },
 });
 
@@ -188,7 +194,7 @@ export type SuggestionPlan =
   | { kind: "skip" }
   | { kind: "settle" }
   | { kind: "gone" }
-  | { kind: "ask"; signal: EstimateSignal; calibration: Calibration | null; cachedHash: string | null };
+  | { kind: "ask"; signal: EstimateSignal; calibration: Calibration | null; dayMinutes: number; cachedHash: string | null };
 
 export const planFor = internalQuery({
   args: { taskId: v.id("tasks"), requestedAt: v.number() },
@@ -214,6 +220,7 @@ export const planFor = internalQuery({
       kind: "ask",
       signal: { task: taskSignal, examples },
       calibration: calibrationOf(examples, history) ?? null,
+      dayMinutes: workingDayMinutes(await workingHoursOf(ctx)),
       cachedHash: row.outcome.kind === "suggested" || row.outcome.kind === "unclear" ? row.outcome.inputsHash : null,
     } satisfies SuggestionPlan;
   },
@@ -246,7 +253,7 @@ const failureOf = (response: Response) => {
   return { kind: "unavailable", status: response.status } satisfies SmartEstimateError;
 };
 
-const askDecisions = (key: string | undefined, signal: EstimateSignal) => {
+const askDecisions = (key: string | undefined, signal: EstimateSignal, buckets: readonly Bucket[]) => {
   if (!key) return errAsync<Decision, SmartEstimateError>({ kind: "not_configured" });
   const unreachable: SmartEstimateError = { kind: "unavailable" };
   const unreadable: SmartEstimateError = { kind: "invalid_response" };
@@ -254,7 +261,7 @@ const askDecisions = (key: string | undefined, signal: EstimateSignal) => {
     fetch(DECISIONS_URL, {
       method: "POST",
       headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-      body: JSON.stringify(decisionRequest(signal)),
+      body: JSON.stringify(decisionRequest(signal, buckets)),
     }),
     () => unreachable,
   )
@@ -263,7 +270,7 @@ const askDecisions = (key: string | undefined, signal: EstimateSignal) => {
         ? ResultAsync.fromPromise(response.json() as Promise<unknown>, () => unreadable)
         : errAsync<unknown, SmartEstimateError>(failureOf(response)),
     )
-    .andThen(parseDecision);
+    .andThen((body) => parseDecision(buckets, body));
 };
 
 export const suggest = internalAction({
@@ -274,18 +281,19 @@ export const suggest = internalAction({
     if (plan.kind === "gone") await ctx.runMutation(internal.planner.smartEstimates.forget, { taskId: args.taskId });
     if (plan.kind === "settle") await ctx.runMutation(internal.planner.smartEstimates.record, args);
     if (plan.kind !== "ask") return null;
-    const { signal, calibration } = plan;
-    const inputsHash = await sha256Hex(canonicalJson({ model: DECISIONS_MODEL, signal, calibration }));
+    const { signal, calibration, dayMinutes } = plan;
+    const buckets = bucketsFor(dayMinutes);
+    const inputsHash = await sha256Hex(canonicalJson({ model: DECISIONS_MODEL, signal, calibration, buckets }));
     if (plan.cachedHash === inputsHash) {
       await ctx.runMutation(internal.planner.smartEstimates.record, args);
       return null;
     }
-    const result: Result<Decision, SmartEstimateError> = await askDecisions(await revealSecret(ctx, "openai"), signal);
+    const result: Result<Decision, SmartEstimateError> = await askDecisions(await revealSecret(ctx, "openai"), signal, buckets);
     const at = Date.now();
     const outcome: SuggestionOutcome = result.match(
       ({ pick, confidence, probabilities, vague, model }) => {
         if (vague >= VAGUE_THRESHOLD) return { kind: "unclear" as const, vague, inputsHash, at };
-        const { guesses, likely: minutes } = guessesFrom({ pick, confidence, probabilities }, calibration ?? undefined);
+        const { guesses, likely: minutes } = guessesFrom(buckets, { pick, confidence, probabilities }, calibration ?? undefined);
         return {
           kind: "suggested" as const,
           minutes,

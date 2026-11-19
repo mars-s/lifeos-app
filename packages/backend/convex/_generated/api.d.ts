@@ -36,6 +36,7 @@ import type * as planner_rows from "../planner/rows.js";
 import type * as planner_selection from "../planner/selection.js";
 import type * as planner_sidebar from "../planner/sidebar.js";
 import type * as planner_smartEstimateModel from "../planner/smartEstimateModel.js";
+import type * as planner_smartEstimateTrial from "../planner/smartEstimateTrial.js";
 import type * as planner_smartEstimates from "../planner/smartEstimates.js";
 import type * as planner_tables from "../planner/tables.js";
 import type * as planner_tasks from "../planner/tasks.js";
@@ -91,6 +92,7 @@ declare const fullApi: ApiFromModules<{
   "planner/selection": typeof planner_selection;
   "planner/sidebar": typeof planner_sidebar;
   "planner/smartEstimateModel": typeof planner_smartEstimateModel;
+  "planner/smartEstimateTrial": typeof planner_smartEstimateTrial;
   "planner/smartEstimates": typeof planner_smartEstimates;
   "planner/tables": typeof planner_tables;
   "planner/tasks": typeof planner_tasks;

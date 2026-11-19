@@ -62,7 +62,7 @@ test("a phrase of several words is one shortcut", () => {
 });
 
 test("an Estimate needs a unit, so a bare number stays in the title", () => {
-  expect(["30m", "1h", "1h30", "1h30m", "1.5h", "90min", "30", "0m", "25h", "h"].map(parseEstimateToken)).toEqual([
+  expect(["30m", "1h", "1h30", "1h30m", "1.5h", "90min", "30", "0m", "201h", "h"].map(parseEstimateToken)).toEqual([
     30, 60, 90, 90, 90, 90, undefined, undefined, undefined, undefined,
   ]);
   expect(capture("Buy 30 eggs")).toEqual({ title: "Buy 30 eggs", labels: [] });

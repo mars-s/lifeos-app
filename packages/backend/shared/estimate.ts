@@ -2,7 +2,7 @@ import { err, ok } from "neverthrow";
 
 export type EstimateTextError = { readonly kind: "unreadable_estimate"; readonly input: string };
 
-export const MAX_ESTIMATE_MINUTES = 24 * 60;
+export const MAX_ESTIMATE_MINUTES = 200 * 60;
 
 const MINUTES_ONLY = /^(\d+)\s*(?:m|min|mins|minutes?)?$/;
 const HOURS = /^(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hours?)\s*(?:(\d+)\s*(?:m|min|mins|minutes?)?)?$/;

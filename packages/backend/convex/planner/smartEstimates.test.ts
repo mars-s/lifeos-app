@@ -4,7 +4,9 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi 
 import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { newBackend, unwrap, type Backend } from "../backend.test-utils";
-import { calibrationOf, DECISIONS_URL, guessesFrom, isPlaceholderTitle, nearestExamples, nudged, parseDecision, type PastTask } from "./smartEstimateModel";
+import { bucketsFor, calibrationOf, DECISIONS_URL, guessesFrom, isPlaceholderTitle, nearestExamples, nudged, parseDecision, type PastTask } from "./smartEstimateModel";
+
+const BUCKETS = bucketsFor(510);
 
 type Asked = { authorization: string | null; body: Record<string, unknown> };
 
@@ -142,6 +144,11 @@ describe("guessing an Estimate", () => {
       "3 hours",
       "4 hours",
       "6 hours",
+      "1 working day",
+      "2 working days",
+      "3 working days",
+      "1 working week",
+      "2 working weeks",
     ]);
     const [text, json] = userParts(asked);
     expect(text).toEqual({
@@ -162,6 +169,7 @@ describe("guessing an Estimate", () => {
       ],
       likely: 45,
       reason: "Like “Write essay introduction”, which took 0:45. You usually run 33% over on Tasks like this, so not 0:30.",
+      dayMinutes: 510,
     });
     expect(await outcomeOf(t)).toMatchObject({ kind: "suggested", minutes: 45, modelMinutes: 30, confidence: 0.81, model: "gpt-6-luna" });
   });
@@ -180,6 +188,7 @@ describe("guessing an Estimate", () => {
       ],
       likely: 10,
       reason: "From the title and notes.",
+      dayMinutes: 510,
     });
 
     const { activityId } = unwrap(await t.mutation(api.planner.tasks.setEstimate, { taskId, minutes: 15 }));
@@ -280,6 +289,27 @@ describe("guessing an Estimate", () => {
   });
 });
 
+describe("big work", () => {
+  test("a massive Task can be guessed in days, follows the Working Hours, and the guess can be saved as the Estimate", async () => {
+    const t = await newBackend();
+    unwrap(await t.mutation(api.calendar.workingHours.set, { startMinute: 9 * 60, endMinute: 17 * 60 }));
+    choosing("1 working week", { runnerUp: "2 working weeks" });
+    const { taskId } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Rewrite the entire db in Rust" }));
+    await settle(t);
+    expect(await viewFor(t, taskId)).toMatchObject({
+      kind: "guesses",
+      guesses: [
+        { minutes: 2400, probability: 0.86 },
+        { minutes: 4800, probability: 0.1 },
+      ],
+      likely: 2400,
+      dayMinutes: 480,
+    });
+    unwrap(await t.mutation(api.planner.tasks.setEstimate, { taskId, minutes: 4800 }));
+    expect((await t.query(api.planner.tasks.card, { taskId }))?.estimateMinutes).toBe(4800);
+  });
+});
+
 describe("the Smart Estimates preference", () => {
   test("off means no OpenAI call and the presets, and the switch itself undoes", async () => {
     const t = await newBackend();
@@ -317,9 +347,9 @@ describe("the estimate model", () => {
     const overall = calibrationOf([], [...history, past("c", { estimateMinutes: 10, actualMinutes: 15 })]);
     expect(overall).toEqual({ ratio: 1.5, tasks: 3, scope: "overall" });
     expect(calibrationOf(history, history)).toEqual({ ratio: 1.5, tasks: 2, scope: "similar" });
-    expect(nudged(30, overall)).toBe(45);
-    expect(nudged(30, { ratio: 1.1, tasks: 5, scope: "overall" })).toBe(30);
-    expect(nudged(60, { ratio: 0.5, tasks: 5, scope: "similar" })).toBe(30);
+    expect(nudged(BUCKETS, 30, overall)).toBe(45);
+    expect(nudged(BUCKETS, 30, { ratio: 1.1, tasks: 5, scope: "overall" })).toBe(30);
+    expect(nudged(BUCKETS, 60, { ratio: 0.5, tasks: 5, scope: "similar" })).toBe(30);
   });
 
   test("guesses merge buckets the nudge folds together, drop tiny ones, keep the top three and sort by length", () => {
@@ -334,7 +364,7 @@ describe("the estimate model", () => {
         { minutes: 10, probability: 0.02 },
       ],
     };
-    expect(guessesFrom(decision, undefined)).toEqual({
+    expect(guessesFrom(BUCKETS, decision, undefined)).toEqual({
       guesses: [
         { minutes: 20, probability: 0.2 },
         { minutes: 30, probability: 0.5 },
@@ -342,7 +372,7 @@ describe("the estimate model", () => {
       ],
       likely: 30,
     });
-    expect(guessesFrom(decision, { ratio: 1.5, tasks: 4, scope: "similar" })).toEqual({
+    expect(guessesFrom(BUCKETS, decision, { ratio: 1.5, tasks: 4, scope: "similar" })).toEqual({
       guesses: [
         { minutes: 30, probability: 0.2 },
         { minutes: 45, probability: 0.5 },
@@ -350,7 +380,18 @@ describe("the estimate model", () => {
       ],
       likely: 45,
     });
-    expect(guessesFrom({ pick: 60, confidence: 0.4, probabilities: [] }, undefined)).toEqual({ guesses: [{ minutes: 60, probability: 0.4 }], likely: 60 });
+    expect(guessesFrom(BUCKETS, { pick: 60, confidence: 0.4, probabilities: [] }, undefined)).toEqual({ guesses: [{ minutes: 60, probability: 0.4 }], likely: 60 });
+  });
+
+  test("big buckets are working days and weeks of Avi's own Working Hours", () => {
+    expect(bucketsFor(510).filter((bucket) => bucket.days).map(({ value, minutes }) => [value, minutes])).toEqual([
+      ["1 working day", 510],
+      ["2 working days", 1020],
+      ["3 working days", 1530],
+      ["1 working week", 2550],
+      ["2 working weeks", 5100],
+    ]);
+    expect(bucketsFor(480).find((bucket) => bucket.value === "1 working week")?.minutes).toBe(2400);
   });
 
   test("placeholder titles are not worth classifying", () => {
@@ -370,11 +411,11 @@ describe("the estimate model", () => {
   });
 
   test("answers are read by their labels, and one outside the offered choices is refused", () => {
-    expect(parseDecision({ answers: [{ type: "choice", name: "estimate", choice: "37", confidence: 1 }] })._unsafeUnwrapErr()).toEqual({
+    expect(parseDecision(BUCKETS, { answers: [{ type: "choice", name: "estimate", choice: "37", confidence: 1 }] })._unsafeUnwrapErr()).toEqual({
       kind: "invalid_response",
     });
     expect(
-      parseDecision({
+      parseDecision(BUCKETS, {
         answers: [{ type: "choice", name: "estimate", choice: "1.5 hours", confidence: 0.6, probabilities: [{ value: "1.5 hours", probability: 0.6 }] }],
         model: "gpt-6-luna",
       })._unsafeUnwrap(),
