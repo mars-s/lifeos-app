@@ -22,6 +22,8 @@ Ids come from the read tools. Dates are `YYYY-MM-DD`. Times are in Avi's time zo
 | `list_areas` | Every open Area with its open Projects, Projects without an Area, and the Label names |
 | `get_day_plan` | The Planner for a date: Day Plan Tasks in order, the Goal and the day meter (planned, guessed, working, busy and free minutes), Work Blocks, External Commitments and the Sleep Window either side |
 | `list_repeats_and_templates` | Recurrence Rules due in the next `days` with a readable schedule, and every Template |
+| `list_smart_blocks` | Smart Blocks on a date and the `days` after it (max 14): window, repeat, filters, and how many Work Blocks fill each |
+| `preview_smart_block_fill` | Which Tasks would fill one Smart Block occurrence, with times, size source and a reason each, what stays, what is freed and what was skipped. Writes nothing. `exclude` and `prefer` take Task ids |
 | `recent_activity` | Recent changes, newest first, with the actor, the Agent Run, what they touched and whether they were undone. Filter by `runId`, page with `cursor` |
 
 ### Write (`lifeos:write`)
@@ -41,9 +43,13 @@ Ids come from the read tools. Dates are `YYYY-MM-DD`. Times are in Avi's time zo
 | `stop_focus` | Stop the running Focus Session | `focus.stop` |
 | `set_repeat` | Make a Task repeat, or stop it with `schedule: null` | `recurrence.setRepeat`, `stopRepeat` |
 | `create_task_from_template` | A Task from a Template, with its own Checklist Items | `templates.createTask` |
+| `create_smart_block` | A Smart Block on a date, `start` and `end` as HH:mm, optional Area, Project and Label filters and a repeat. It starts empty | `smartBlocks.create` |
+| `accept_smart_block_fill` | Works out the same fill as the preview and places its Work Blocks inside the block in one change | `smartBlocks.fill` |
 | `undo` | Undo one of this connection's changes, one of its runs, or its current run | `platform/undo` |
 
 `When` is written the way the tools read it back: `inbox`, `anytime`, `someday`, `today`, `tomorrow` or a date, with ` evening` for This Evening.
+
+The Smart Block tools refuse while the Smart Blocks Feature is off.
 
 A bad id, date, When or Label name comes back as a tool error that says what to do next, and nothing is written: each write tool runs in one transaction.
 

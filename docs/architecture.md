@@ -165,6 +165,15 @@ The page shows the switch, then the two keys, then one row per capability: its s
 
 Smart Estimates was its own Feature, on by default, with no settings. `ai/migrations:fromSmartEstimates` (run once after deploy) switches AI on with every capability at its default when there is no AI row yet, so Avi keeps Smart Estimates and Places exactly as they were. It is idempotent.
 
+### Smart Blocks
+
+Decided with Avi on 19 November 2026 (#59), replacing whole-calendar auto-scheduling. Avi reserves a window (a Smart Block) and LifeOS fills only that window, so the rest of the calendar stays his.
+
+- **One engine.** `packages/backend/shared/smartBlocks.ts` (`@lifeos/backend/smartBlocks`) is pure and deterministic. The web app runs it on every edit for the live preview, and the server runs the same code for the MCP preview and accept tools. Its input is one snapshot per date from `planner/smartBlocks:fillInputs`. No AI is involved; an AI hint can join later through the AI capability router as one more ranking input.
+- **Data.** A `smartBlocks` row is a one-off or a series (`repeat` holds a calendar schedule and skipped dates, `until` its last date). Editing one day skips that date on the series and inserts a one-off with `detachedFrom`, the same shape as a recurring calendar event with an exception. Fill Work Blocks carry `smartBlock { blockId, date }`, so a later fill knows which Work Blocks are its own and pins them.
+- **Settings.** Area Priority is the Feature's own setting (`areaOrder`). Switching the Feature off hides every Smart Block and refuses changes; the rows stay.
+- **Calendar later.** Phase one stays in LifeOS. A later phase can publish Smart Blocks, not every Task, to one dedicated Google calendar: a series maps to a recurring event, `skipped` to its exceptions, and a detached occurrence to an instance override.
+
 ## Notes: local-first
 
 Notes are local-first, like Anytype. The Mac, the iPhone and the Home Server each keep a full copy and can edit offline. Edits merge automatically with a CRDT (Loro, Automerge or Yjs; choose in a dedicated spike). The Home Server is the always-on peer and the archive on the 2 TB SSD. Peers sync directly over Tailscale, and Core can relay changes between peers that cannot reach each other.

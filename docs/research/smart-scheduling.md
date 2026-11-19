@@ -1,5 +1,30 @@
 # Smart scheduling for LifeOS
 
+> **Direction changed on 19 November 2026.** Avi chose Morgen's model over Motion-style scheduling of the whole calendar: "a smart block that lets me put down a block of time and fit tasks in there depending on priority and size … that way it doesn't mess with my calendar too much." LifeOS now builds **Smart Blocks** (see the next section, `CONTEXT.md` and `docs/data-model.md`). The ranking, engine and Google advice below still apply, scoped to one Smart Block at a time.
+
+## Smart Blocks: what Morgen does and where LifeOS differs
+
+What Morgen's own guides say, read on 19 November 2026:
+
+- **A Frame is a calendar event that templates "when you want to work on which type of task".** Click a slot, choose Frame, name it for the kind of work. It repeats like any event (no repeat, daily, weekdays, weekly, monthly, yearly, or a custom rule), defaulting to weekdays. It can be busy or free to others, and lives on a chosen calendar. [How to use Frames](https://www.morgen.so/guides/how-to-use-frames)
+- **A filter decides which tasks are eligible**: task integrations, lists, projects and tags, combinable across sources. Due dates and importance count without being in the filter. [How to use Frames](https://www.morgen.so/guides/how-to-use-frames)
+- **The AI Planner chooses by importance, due dates, available time, estimates and the Frame's filter**, with a Priority Factor that discounts tasks long past their due date. Estimates come from the task, a `[30m]` tag or a default duration; an optional 20% padding counters the planning fallacy. Breaks are tuned with a slider; long tasks can split across Frames. [Plan your day](https://www.morgen.so/guides/plan-your-day-using-the-ai-planner)
+- **What does not fit**: Frames full, a task longer than the Frame ("a 6-hour task will never fit into a 4-hour Frame"), filtered out, or busy events on another visible calendar overlapping the Frame. Time-sensitive tasks that missed out are listed. [Troubleshooting](https://www.morgen.so/guides/troubleshooting-the-ai-planner)
+- **Preview and approval**: proposals pulse over Frames; Schedule all books them; Esc discards. Delete ("Ignore task") lets other tasks fill the space; dragging a task in reshuffles the rest; resizing changes its duration. Tasks are not embedded in Frames, so moving a Frame leaves its tasks. Rescheduling suggestions always wait for approval. [Plan your day](https://www.morgen.so/guides/plan-your-day-using-the-ai-planner) · [Rescheduling assistant](https://changelog.morgen.so/rescheduling-assistant-rsvp-inbox-more-308543)
+
+| Morgen | LifeOS Smart Block | Why |
+| --- | --- | --- |
+| A Frame is an event on a chosen calendar | A Smart Block lives in LifeOS only, for now | Avi asked not to write to Google or Apple yet. The shape (series, skipped dates, detached occurrences) maps onto one recurring Google event later |
+| Filter by integration, list, project, tag, size | Filter by Area, Project and Label | Those are LifeOS's containers. Size is not a filter: packing decides what fits |
+| Importance from the task's own priority field | Area Priority, set once in the Feature's settings | LifeOS Tasks have no priority field; Avi ranks Areas instead |
+| Priority Factor fades long-overdue tasks | Overdue stays most urgent | Avi trashes or reschedules a stale Task himself; a silent fade would hide a missed Deadline |
+| Estimate, `[30m]` tag or default | Estimate, else Smart Estimate marked as a guess, else 30 minutes | Smart Estimates already exist; one source of duration |
+| Optional 20% padding, a breaks slider | A fixed 5 minutes between Tasks inside the block | Simple and visible; padding can become a setting if Avi misses it |
+| Splitting across Frames | Too long is skipped with a note | Splitting is a follow-up |
+| AI Planner (a model) proposes | A deterministic engine, same inputs give the same fill | Previews answer within a frame and cost nothing; AI hints can join later through the capability router |
+| Remove, drag in, resize, Schedule all, Esc | Leave out, put in first, drag to reorder, resize the window, Enter, Escape | The same verbs, plus one undo for the whole fill |
+| Tasks are not embedded in a Frame | Fill Work Blocks are linked and pinned | A refill keeps them and frees only done, removed or ineligible Tasks |
+
 Give Avi a weekly preview built by a small, deterministic scheduler. Let Area order decide between Tasks with room to spare. Give scarce time to work that will otherwise miss its Deadline. Keep accepted Work Blocks still unless there is a reason to move them. A new meeting can displace a flexible tennis session, but a court booking stays put. Show Avi the proposed move and its reason before writing anything. Publish accepted blocks to one Google-owned LifeOS calendar. Use AI only for optional hints about the work. The first version needs no model calls. [Research issue](https://github.com/mars-s/lifeos-app/issues/59)
 
 ## 1. What the planners actually do

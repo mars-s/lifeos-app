@@ -38,6 +38,11 @@ _Avoid_: AI estimate, auto-estimate.
 **Work Block**: a slot on the calendar reserved for one Task, with a start and an end. A Task can have several. Creating one never changes the Task's Deadline.
 _Avoid_: timebox in code (fine in UI copy), event.
 
+**Smart Block**: a window Avi reserves on the Timebox for a kind of work, such as Focus from 4 to 6, with a title, a colour and optionally the Areas, Projects or Labels whose Tasks may fill it (every Task when none are chosen). It can repeat daily, on weekdays, weekly on chosen days, fortnightly or monthly, using the Recurrence Rule schedules. **Filling** it ranks the eligible Tasks (Deadline, Area Priority, the Day Plan, age), sizes each by its Estimate, else its Smart Estimate as a guess, else 30 minutes, and packs them inside the window around busy time, five minutes apart. The fill is previewed as ghost Work Blocks with a reason each, and Enter places them. Those Work Blocks stay put: a later fill only frees the ones whose Task is done, removed or no longer eligible. A repeating Smart Block shows on later days as an empty zone until Avi fills it. Editing one day detaches that occurrence from the series. It is a Feature that Avi can switch off.
+_Avoid_: focus zone, frame, time slot (fine in UI copy).
+
+**Area Priority**: Avi's order of Areas for Smart Blocks, set by dragging in the Smart Blocks settings. Higher Areas win when there is room for only some Tasks. A Task without an Area sits in the middle. Until Avi sets it, it follows the sidebar order.
+
 **External Commitment**: a calendar event LifeOS did not create, read from Apple Calendar by the Mac app. One occurrence of a repeating event is one External Commitment. It uses up time but is not a Task. A free event, one Avi declined, or an all-day event not marked busy shows but takes no time.
 _Avoid_: event (in code), meeting.
 
@@ -52,7 +57,7 @@ _Avoid_: target, quota.
 
 **Day Load**: everything planned for one date, in minutes: each Task's Work Blocks on that day, or else its Estimate, or else its Smart Estimate (shown as a guess). Tasks with none of these are counted as "not estimated". Tasks without an Area count like any other, in a neutral tint.
 
-**Spread**: placing the day's Tasks on the Timebox in one step, Sunsama style. Each Task without a Work Block that day gets one, in Day Plan order, in the free gaps inside Working Hours around External Commitments, the Sleep Window and existing Work Blocks, with ten minutes between them. It is previewed as ghost blocks first, and one undo removes the whole Spread. Tasks that do not fit stay unscheduled.
+**Spread**: placing the day's Tasks on the Timebox in one step, Sunsama style. Each Task without a Work Block that day gets one, in Day Plan order, in the free gaps inside Working Hours around External Commitments, the Sleep Window and existing Work Blocks, with ten minutes between them. It is previewed as ghost blocks first, and one undo removes the whole Spread. Tasks that do not fit stay unscheduled. Spread never places a Task inside a Smart Block, filled or not: that time is reserved, and Tasks get there by filling the Smart Block.
 
 **Focus Session**: a stretch of timed work on one Task. Only one runs at a time. It can be paused, and paused time does not count. A Stopwatch session counts up until it is stopped. A Pomodoro session has a planned length, then offers a Break.
 
@@ -165,7 +170,7 @@ LifeOS is the home of Avi's Tasks (Avi, 18 November 2026). They live in Convex. 
 - Nothing is ever written to Things. LifeOS edits stay in LifeOS.
 - **LifeOS wins.** A Things Import never overwrites a field LifeOS has changed since the last import. A change made in Things flows in only when LifeOS has not touched that field.
 - A record that leaves Things is never deleted from LifeOS.
-- LifeOS alone holds the planning layer: Estimates, Work Blocks, Focus Sessions, Day Plans and their Goals, Recurrence Rules, Templates, Area and Label colours, and Order Keys.
+- LifeOS alone holds the planning layer: Estimates, Work Blocks, Smart Blocks, Area Priority, Focus Sessions, Day Plans and their Goals, Recurrence Rules, Templates, Area and Label colours, and Order Keys. Smart Blocks are not written to any calendar yet.
 - Oura owns Health Days and Oura's Bedtime. LifeOS only reads them and never writes to Oura.
 - Apple Calendar owns External Commitments and Calendars. LifeOS only reads them. Which Calendars count and Working Hours belong to LifeOS.
 - OpenStreetMap owns the shops and places a Trip points at. LifeOS caches what it found per Task and never writes to OpenStreetMap.

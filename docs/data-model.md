@@ -95,9 +95,9 @@ One row per **Feature** Avi has changed, absent until then. The registry in `sha
 
 | Field | Type |
 | --- | --- |
-| `feature` | `ai`, `places` or `templates` |
+| `feature` | `ai`, `places`, `templates` or `smartBlocks` |
 | `enabled` | Boolean |
-| `settings` | The Feature's own settings, checked by its validator: `{ routes }` for AI, `{ travelMode: "drive" | "walk" | "cycle" }` for Places, `{}` for Templates |
+| `settings` | The Feature's own settings, checked by its validator: `{ routes }` for AI, `{ travelMode: "drive" | "walk" | "cycle" }` for Places, `{}` for Templates, `{ areaOrder: Id<"areas">[] }` (Area Priority) for Smart Blocks |
 
 The table is a union with one member per Feature, so a Places row cannot hold AI settings. Index: `by_feature`.
 
@@ -190,7 +190,7 @@ No indexes: the guard reads the row by the id the session holds.
 
 ### `workBlocks`
 
-`taskId`, `start` (moment), `minutes`, `timeZone`, `done`, optional `removedAt`. The end is `start + minutes`, so a block cannot end before it starts. Removing sets `removedAt`, so undo restores the same row and earlier actions on it stay undoable.
+`taskId`, `start` (moment), `minutes`, `timeZone`, `done`, optional `removedAt`, optional `smartBlock { blockId, date }`. The end is `start + minutes`, so a block cannot end before it starts. Removing sets `removedAt`, so undo restores the same row and earlier actions on it stay undoable. `smartBlock` marks a Work Block placed by filling that Smart Block occurrence; a later fill keeps it.
 
 | Index | Serves |
 | --- | --- |
@@ -198,6 +198,37 @@ No indexes: the guard reads the row by the id the session holds.
 | `by_removed_start` (`removedAt`, `start`) | The Timebox calendar for a range |
 
 Apple Calendar write-back adds an optional `calendarEvent { calendarId, eventKey }` field.
+
+### `smartBlocks`
+
+A **Smart Block**: a reserved window that LifeOS fills with Tasks. `shared/smartBlocks.ts` holds the fill engine and the occurrence rule as pure functions, shared with the web app as `@lifeos/backend/smartBlocks`.
+
+| Field | Type |
+| --- | --- |
+| `title`, `colour` | The label on the Timebox (Focus, Admin, Errands) and one of the eight colour tokens |
+| `date` | The local date of a one-off, or the first date of a series (the anchor `every` counts from) |
+| `until` | The last date it can occur: `date` for a one-off, the end date of a series, or `9999-12-31` for a series that never ends |
+| `startMinute`, `endMinute` | The window in minutes after local midnight, at least 15 minutes and ending by midnight. Wall-clock times, so a 16:00 block stays at 16:00 across daylight saving |
+| `timeZone` | The IANA zone the window is read in |
+| `filter` | `areaIds`, `projectIds`, `labelIds`. A Task is eligible when its Area or Project is listed (or both lists are empty) and it has one of the Labels (or the list is empty) |
+| `repeat` | Optional `{ schedule, skipped }`: a Recurrence Rule calendar schedule (`days`, `weekdays`, `weeks`, `months`, `years`; not after-completion) and the dates skipped |
+| `detachedFrom` | Optional `{ blockId, date }`: the series occurrence this one-off replaced when Avi edited only that day |
+| `removedAt` | Optional moment. Deleting sets it, so undo restores the same row |
+
+| Index | Serves |
+| --- | --- |
+| `by_removed_until` (`removedAt`, `until`) | Every live Smart Block that can still occur on or after a date: the Timebox range and the fill |
+
+**Filling one occurrence.** `planner/smartBlocks:fillInputs` (`date`, `timeZone`) returns one snapshot for the date: open, untrashed Tasks whose When is Anytime or Scheduled on or before the date (with their Area, Project, Labels, Deadline, Day Plan key, Estimate and Smart Estimate), the live Work Blocks starting that day (with their `smartBlock` link), the External Commitments that take time, the Areas in priority order and 31 days of Capacity. `fillSmartBlock` then:
+
+1. Keeps the occurrence's own Work Blocks whose Task is still open and eligible and which sit inside the window, plus any that started before now. The rest are released.
+2. Ranks the eligible Tasks that have no other Work Block that day: `45 × urgency + 35 × area + 15 × committed + 5 × age`, each from 0 to 1. Urgency is the larger of Deadline nearness (1 when due or overdue, falling to 0 a week out) and scarcity (the Task's size over the free Capacity before its Deadline). Area is the Area's place in Area Priority, 1 for the first and 0 for the last; a Task without an Area gets 0.5. Committed is 1 when the Task is Scheduled on or before the date. Age counts days since creation, capped at 30. Ties go by Day Plan key, then Task id. Tasks Avi picked come first in his order; Tasks he left out are skipped.
+3. Sizes each Task by its Estimate, else its Smart Estimate (a guess), else 30 minutes, rounded up to 5 minutes.
+4. Packs in rank order, best fit: each Task goes in the smallest free gap that holds it, at the gap's start, then the gap shrinks by the Task plus 5 minutes. Free gaps are the window from now on, minus busy commitments and other Work Blocks, each padded by 5 minutes. A Task longer than the widest gap is skipped as too long. One that would fit an empty block but finds no room is skipped as no room, and listed as waiting.
+
+The same inputs give the same fill. `planner/smartBlocks:fill` (`blockId`, `date`, `blocks`, `release`, optional `edit`) checks the occurrence exists, that each block sits inside its window, does not overlap another live Work Block and belongs to an open Task, and that each released block belongs to this occurrence, then writes everything in one `smartBlock.fill` Activity row. `edit` saves changes to this day (`scope: "one"`, detaching it) or to every one (`scope: "all"`, including the repeat) in the same row, so one undo reverts both.
+
+Changes: `create` (with an optional first fill, one undo), `edit` (one date or the series), `skip` (one occurrence of a series, or deletes a one-off), `remove` (the series). Each refuses with `feature_off` while the Smart Blocks Feature is off, and `invalid_smart_block` with a reason (`window`, `time_zone`, `occurrence`, `outside`, `overlap`, `release`, `too_many`).
 
 ### `focusSessions`
 
@@ -305,6 +336,8 @@ Each screen reads one query that returns exactly what it draws. All go through `
 | `planner/lists:project` (`projectId`) | A Project page: open Tasks under their Headings, and progress over every Task | `headings.by_project_order`, `tasks.by_project_order` |
 | `planner/labels:list` | The Label picker on a Task card | `labels.by_order` |
 | `planner/plan:week` (`from`, `days` up to 31, `timeZone`) | The Planner's day columns: each day's open Tasks in Day Plan order, its **Day Load** (`plannedMinutes`, `guessedMinutes`, `unestimated`), its **Goal** (`goalMinutes`, `goalSet`) and its **Capacity**. `guesses` lists the Smart Estimates it counted, so the client can recount after an optimistic change. Tasks scheduled before `from` roll into the first day | `tasks.by_trashed_status_when`, `workBlocks.by_removed_start`, `dayPlans.by_date`, `estimateSuggestions.by_task`, and the Capacity reads |
+| `planner/smartBlocks:range` (`from`, `days` up to 62, `timeZone`) | The Timebox zones: each Smart Block occurrence in the range with its window as moments and minutes, filters, repeat and how many Work Blocks (and minutes) fill it. `{ on: false }` while the Feature is off | `smartBlocks.by_removed_until`, `workBlocks.by_removed_start` |
+| `planner/smartBlocks:priority` | Area Priority in the Smart Blocks settings | `areas.by_order`, `features.by_feature` |
 | `planner/workBlocks:range` (`from`, `to`, moments, up to 100 days) | The Timebox calendar: live Work Blocks with their Task rows. Blocks of completed Tasks stay (they show as done), blocks of trashed Tasks are left out | `workBlocks.by_removed_start` |
 | `planner/recurrence:upcoming` (`date`, `days`) | The next occurrence of each Recurrence Rule after `date`, up to 366 days, with its title, Estimate, Area, Project, schedule, end and the rule's latest Task (so Upcoming can stop the rule from the row). One row per rule | `recurrenceRules.by_next`, `tasks.by_repeat` |
 | `planner/templates:list` | Templates in order, with their Labels, Area, Project and Checklist count | `templates.by_order` |
@@ -320,7 +353,7 @@ The Planner changes a day through `planner/plan:place` (`taskId`, `date`, `order
 
 A day's load comes from `dayLoad` in `shared/plan.ts`, which the web app runs too. Each Task counts its Work Blocks on that day, or else its Estimate (`plannedMinutes`), or else its Smart Estimate (`guessedMinutes`, only while Smart Estimates is on and the suggestion would show on the card). A Task with none of these adds one to `unestimated`. Tasks without an Area count like any other. A Work Block for a Task planned on another day also counts on the day the block starts. Completed and trashed Tasks count nothing. `planner/workBlocks:create` takes an optional `date`: the Task's When becomes that Scheduled date in the same Activity row, which is how dropping an Inbox Task on the calendar plans it for that day. No Work Block change ever touches the Deadline.
 
-**Spread** works in two steps. The web app plans it with `spreadDay` in `shared/spread.ts` and shows the result as ghost blocks on the Timebox. It takes the day's open Tasks in Day Plan order, skips any that already have a Work Block that day, and sizes each by its Estimate, its Smart Estimate or 30 minutes, rounded to the 15 minute grid. Busy time is the day's External Commitments that take time, every Work Block on that day (done ones too) and the Sleep Window, each padded by 10 minutes. The window is Working Hours, starting no earlier than now on today. Each Task goes in the first gap after the previous one that fits it, on a 5 minute grid. A Task that fits nowhere is reported and the next one is tried. On confirm, `planner/workBlocks:spread` (`blocks` of `{ taskId, start, minutes }`, up to 100, and `timeZone`) inserts them all in one `workBlock.spread` Activity row, so one undo removes the Spread. It refuses the whole request when a block overlaps a live Work Block or another block in it (`invalid_block`, reason `overlap`), or names a Task that is closed or trashed. It never touches When or the Deadline.
+**Spread** works in two steps. The web app plans it with `spreadDay` in `shared/spread.ts` and shows the result as ghost blocks on the Timebox. It takes the day's open Tasks in Day Plan order, skips any that already have a Work Block that day, and sizes each by its Estimate, its Smart Estimate or 30 minutes, rounded to the 15 minute grid. Busy time is the day's External Commitments that take time, every Work Block on that day (done ones too) and the Sleep Window, each padded by 10 minutes. The window is Working Hours, starting no earlier than now on today. Each Task goes in the first gap after the previous one that fits it, on a 5 minute grid. A Task that fits nowhere is reported and the next one is tried. On confirm, `planner/workBlocks:spread` (`blocks` of `{ taskId, start, minutes }`, up to 100, and `timeZone`) inserts them all in one `workBlock.spread` Activity row, so one undo removes the Spread. It refuses the whole request when a block overlaps a live Work Block or another block in it (`invalid_block`, reason `overlap`), or names a Task that is closed or trashed. It never touches When or the Deadline. The web preview also treats every Smart Block window that day as busy, filled or not.
 
 A selection of Tasks changes through `planner/selection` (`setWhen`, `setDeadline`, `setEstimate`, `setLabel`, `move`, `complete`, `reopen`, `trash`, `restore`). Each takes `taskIds` (up to 500), validates the whole request first, and records one Activity row, so one undo reverts every Task. A missing Task or an invalid value changes nothing.
 
