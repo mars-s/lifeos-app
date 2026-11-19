@@ -44,6 +44,9 @@ const SEEDED = [
   "preferences",
   "secrets",
   "dayPlans",
+  "features",
+  "savedPlaces",
+  "taskTrips",
 ] as const;
 
 export const seed = internalMutation({
@@ -111,6 +114,42 @@ export const storeSecret = internalMutation({
     for (const row of await ctx.db.query("secrets").collect()) await ctx.db.delete("secrets", row._id);
     await ctx.db.insert("secrets", { name: "openai", iv: "c2VlZGVk", ciphertext: "c2VlZGVk", last4, savedAt: Date.now() });
     return null;
+  },
+});
+
+const HOME = { lat: -33.8786, lon: 151.2036 };
+
+const OFFICEWORKS = [
+  { key: "node/1", name: "Officeworks", suburb: "Ultimo", position: { lat: -33.8813, lon: 151.1988 }, straightMetres: 540, travel: { seconds: 300, metres: 1900 } },
+  { key: "node/2", name: "Officeworks", suburb: "Alexandria", position: { lat: -33.9105, lon: 151.1938 }, straightMetres: 3650, travel: { seconds: 720, metres: 4800 } },
+  { key: "node/3", name: "Officeworks", suburb: "Bondi Junction", position: { lat: -33.8915, lon: 151.2489 }, straightMetres: 4400, travel: { seconds: 900, metres: 6100 } },
+  { key: "node/4", name: "Officeworks", suburb: "Leichhardt", position: { lat: -33.8836, lon: 151.1566 }, straightMetres: 4400, travel: { seconds: 960, metres: 5900 } },
+];
+
+export const seedPlaces = internalMutation({
+  args: { title: v.string(), home: v.optional(v.boolean()) },
+  handler: async (ctx, { title, home = true }) => {
+    for (const table of ["features", "savedPlaces", "taskTrips"] as const) for (const row of await ctx.db.query(table).collect()) await ctx.db.delete(table, row._id);
+    await ctx.db.insert("features", { feature: "places", enabled: true, settings: { travelMode: "drive" } });
+    if (home) await ctx.db.insert("savedPlaces", { label: "home", address: "12 Harbour Street, Haymarket NSW 2000", position: HOME, found: "12 Harbour Street, Haymarket", savedAt: Date.now() });
+    const area = (await ctx.db.query("areas").collect())[0];
+    const taskId = await ctx.db.insert("tasks", {
+      title,
+      notes: "",
+      when: { kind: "scheduled", date: localIsoDate(new Date()), evening: false },
+      parent: area ? { kind: "area", areaId: area._id } : { kind: "loose" },
+      labelIds: [],
+      status: { kind: "open" },
+      order: "a0",
+    });
+    const at = Date.now();
+    await ctx.db.insert("taskTrips", {
+      taskId,
+      requestedAt: at,
+      outcome: { kind: "found", query: "officeworks", mode: "drive", from: { lat: -33.879, lon: 151.204 }, places: OFFICEWORKS, inputsHash: "seeded", at },
+      choice: { kind: "nearest" },
+    });
+    return taskId;
   },
 });
 

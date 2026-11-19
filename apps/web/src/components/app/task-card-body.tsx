@@ -18,6 +18,7 @@ import { useQuietView } from "./hooks";
 import { Linkified, TitleLinks } from "./linkified";
 import { TaskEstimateField } from "./smart-estimate";
 import { isOptimistic, useTaskActions } from "./task-actions";
+import { TaskTrip } from "./trip";
 
 type KnownKeys = ReadonlyMap<string, { key: string; order: string }>;
 
@@ -180,6 +181,7 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
           })}
         />
       )}
+      <TaskTrip task={task} />
       <TaskEstimateField task={task} onChange={(minutes) => void actions.setEstimate(minutes)} onSteps={() => setComposing(true)} />
       <FocusSection task={task} today={today} />
       <div className="-ml-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1.5">

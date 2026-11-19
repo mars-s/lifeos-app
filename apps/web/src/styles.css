@@ -370,6 +370,26 @@ li[data-selected]:has(+ li[data-selected]) .task-selected {
       scroll-behavior: auto !important;
     }
   }
+  .maplibregl-popup-content {
+    @apply bg-transparent! shadow-none! p-0! rounded-none!;
+  }
+  .maplibregl-popup-tip {
+    @apply hidden!;
+  }
+  .maplibregl-ctrl-attrib {
+    @apply bg-popover/80! text-muted-foreground! rounded-full! backdrop-blur-sm;
+    font-size: 10px;
+    line-height: 14px;
+  }
+  .maplibregl-ctrl-attrib a {
+    @apply text-muted-foreground!;
+  }
+  .maplibregl-ctrl-attrib a:hover {
+    @apply text-foreground!;
+  }
+  .maplibregl-ctrl-attrib-button {
+    @apply bg-transparent! dark:invert;
+  }
 }
 
 [data-toaster] {
@@ -476,4 +496,12 @@ li[data-selected]:has(+ li[data-selected]) .task-selected {
   ::view-transition-new(*) {
     animation: none !important;
   }
+}
+
+.trip-map .maplibregl-ctrl-attrib:not(:hover, :focus-within) .maplibregl-ctrl-attrib-inner {
+  display: none;
+}
+
+.trip-map canvas {
+  filter: saturate(0.55) contrast(0.96);
 }
