@@ -8,7 +8,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { generateKeyBetween } from "fractional-indexing";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Result } from "neverthrow";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import type { PlannerTask, TaskRepeat } from "@lifeos/backend/types";
 import { AreaDot, areaVar } from "@/components/lifeos/area";
 import { formatMinutes } from "@/components/lifeos/format";
@@ -26,7 +26,7 @@ import { PanelBoundary } from "./panel-boundary";
 import { routeHref } from "./route";
 import { selection, useLingering, useSelected } from "./selection";
 import { useSelectionActions } from "./selection-actions";
-import { useShell } from "./shell-context";
+import { useShell, type OpenCard } from "./shell-context";
 import { Linkified, TitleLinks } from "./linkified";
 import { TaskCardBody, TitleField } from "./task-card-body";
 import { TaskEstimateField } from "./smart-estimate";
@@ -289,38 +289,75 @@ export type TaskItemShow = {
 const ROW_HIDDEN = { height: 0, opacity: 0, overflow: "hidden" };
 const ROW_SHOWN = { height: "auto", opacity: 1, transitionEnd: { overflow: "visible" } };
 
-export const TaskItem = ({
-  task,
-  itemKey,
-  show = {},
-  sortable,
-}: {
+const NO_SHOW: TaskItemShow = {};
+
+type CardState = "closed" | "snapped" | "open" | "instant";
+
+type TaskItemProps = {
   task: PlannerTask;
   itemKey: string;
   show?: TaskItemShow;
   sortable: boolean;
-}) => {
+  today: string;
+  card: CardState;
+  onCard: (card: OpenCard | null) => void;
+};
+
+const isShut = (card: CardState) => card === "closed" || card === "snapped";
+
+export const useCardHost = () => {
   const { today, openCard, setOpenCard } = useShell();
+  const latest = useRef(setOpenCard);
+  useEffect(() => {
+    latest.current = setOpenCard;
+  }, [setOpenCard]);
+  const onCard = useCallback((card: OpenCard | null) => latest.current(card), []);
+  const cardOf = (key: string) =>
+    (openCard?.key === key ? (openCard.instant ? "instant" : "open") : openCard?.instant ? "snapped" : "closed") satisfies CardState;
+  return { today, onCard, cardOf };
+};
+
+const SortableRow = ({ id, disabled, children }: { id: string; disabled: boolean; children: ReactNode }) => {
+  const { setNodeRef, listeners, transform, transition, isDragging } = useSortable({ id, disabled });
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      data-dragging={isDragging ? "" : undefined}
+      className="group/sort"
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+    >
+      {children}
+    </div>
+  );
+};
+
+const sameFields = (a: object, b: object) => {
+  const keys = Object.keys(a) as (keyof typeof a)[];
+  return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
+};
+
+const sameRow = (before: TaskItemProps, after: TaskItemProps) =>
+  sameFields({ ...before, show: null, card: isShut(before.card) || before.card }, { ...after, show: null, card: isShut(after.card) || after.card }) &&
+  sameFields(before.show ?? NO_SHOW, after.show ?? NO_SHOW);
+
+const TaskItemRow = ({ task, itemKey, show = NO_SHOW, sortable, today, card, onCard: setOpenCard }: TaskItemProps) => {
   const reduce = useReducedMotion();
   const container = useRef<HTMLLIElement>(null);
   const [closedByKey, setClosedByKey] = useState(false);
-  const open = openCard?.key === itemKey;
+  const open = !isShut(card);
+  const quick = card === "instant" || card === "snapped";
   const selected = useSelected(itemKey) && !open;
   const lingering = useLingering(task._id);
 
   useEffect(() => selection.register(itemKey, task), [itemKey, task]);
   useEffect(() => () => selection.forget(itemKey), [itemKey]);
-  const transition = reduce || openCard?.instant || (!open && closedByKey) ? instant : springLayout;
+  const transition = reduce || quick || (!open && closedByKey) ? instant : springLayout;
   const closed = task.status.kind !== "open";
   const editable = open && !closed;
   const tile = show.tileOn !== undefined;
   const plannedToday = task.workBlocks.find((block) => !block.done && localDate(block.start) === (show.tileOn || today));
   const unsaved = isDraftTask(task._id);
-  const { setNodeRef, listeners, transform: dragOffset, transition: dragTransition, isDragging } = useSortable({
-    id: itemKey,
-    disabled: !sortable || open || unsaved,
-  });
-
   const close = (byKey: boolean) => {
     const active = document.activeElement;
     if (active instanceof HTMLElement && container.current?.contains(active)) active.blur();
@@ -366,17 +403,13 @@ export const TaskItem = ({
       initial={ROW_HIDDEN}
       animate={ROW_SHOWN}
       exit={ROW_HIDDEN}
-      transition={reduce || (unsaved && openCard?.instant) ? instant : springLayout}
+      transition={reduce || (unsaved && quick) ? instant : springLayout}
       onAnimationComplete={() => {
         if (open && unsaved) container.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
       }}
-      className={cn(isDragging && "relative z-10", tile && "pb-1.5")}
+      className={cn("has-[>[data-dragging]]:relative has-[>[data-dragging]]:z-10", tile && "pb-1.5")}
     >
-      <div
-        ref={setNodeRef}
-        {...listeners}
-        style={{ transform: CSS.Translate.toString(dragOffset), transition: dragTransition }}
-      >
+      <SortableRow id={itemKey} disabled={!sortable || open || unsaved}>
       <motion.div
         initial={false}
         animate={{ marginTop: open ? 8 : 0, marginBottom: open ? 8 : 0 }}
@@ -392,12 +425,13 @@ export const TaskItem = ({
           }
         }}
         className={cn(
-          "group/row @container rounded-xl transition-[background-color,box-shadow] duration-(--dur-fast) ease-out",
-          open || (isDragging && !tile)
+          "group/row @container rounded-xl transition-[background-color,box-shadow] duration-(--dur-fast) ease-out group-data-[dragging]/sort:rounded-xl!",
+          tile
+            ? "group-data-[dragging]/sort:bg-foreground/[0.04]! group-data-[dragging]/sort:opacity-40"
+            : "group-data-[dragging]/sort:bg-popover! group-data-[dragging]/sort:shadow-lift!",
+          open
             ? "bg-popover shadow-lift"
-            : isDragging
-              ? "bg-foreground/[0.04] opacity-40"
-              : selected
+            : selected
               ? "task-selected bg-brand/[0.12] dark:bg-brand/[0.17]"
               : tile
                 ? "bg-foreground/[0.035] hover:bg-foreground/[0.06] has-[[data-arrow-item]:focus-visible]:bg-foreground/[0.085]"
@@ -513,10 +547,12 @@ export const TaskItem = ({
           )}
         </AnimatePresence>
       </motion.div>
-      </div>
+      </SortableRow>
     </motion.li>
   );
 };
+
+export const TaskItem = memo(TaskItemRow, sameRow);
 
 const DRAG_START_PX = 6;
 const DRAG_MODIFIERS = [restrictToVerticalAxis];
@@ -555,7 +591,8 @@ export const TaskItems = ({
   slot?: string;
   sortable?: boolean;
 }) => {
-  const { route, today, openCard } = useShell();
+  const { route, openCard } = useShell();
+  const { today, onCard, cardOf } = useCardHost();
   const actions = useSelectionActions(today);
   const shown = useHostedRows(tasks, hostsDrafts ? (slot ?? routeHref(route)) : undefined, hostsDrafts === "inline");
   const sensors = useSensors(useSensor(MouseSensor, { activationConstraint: { distance: DRAG_START_PX } }), useSensor(KeyboardSensor));
@@ -593,7 +630,7 @@ export const TaskItems = ({
         >
           <AnimatePresence initial={false}>
             {shown.map(({ key, task }) => (
-              <TaskItem key={key} itemKey={key} task={task} show={show} sortable={sortable} />
+              <TaskItem key={key} itemKey={key} task={task} show={show} sortable={sortable} today={today} card={cardOf(key)} onCard={onCard} />
             ))}
           </AnimatePresence>
         </ul>

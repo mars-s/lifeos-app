@@ -13,6 +13,18 @@ let registered = 0;
 const listeners = new Set<() => void>();
 const tasks = new Map<string, PlannerTask>();
 
+let announcing = false;
+
+const announce = () => {
+  if (announcing) return;
+  announcing = true;
+  queueMicrotask(() => {
+    announcing = false;
+    registered += 1;
+    listeners.forEach((listener) => listener());
+  });
+};
+
 const publish = (next: Selection) => {
   current = next;
   listeners.forEach((listener) => listener());
@@ -66,8 +78,7 @@ export const selection = {
   task: (key: string) => tasks.get(key),
   register: (key: string, task: PlannerTask) => {
     tasks.set(key, task);
-    registered += 1;
-    listeners.forEach((listener) => listener());
+    announce();
   },
   forget: (key: string) => {
     tasks.delete(key);

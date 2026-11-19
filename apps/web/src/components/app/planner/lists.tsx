@@ -15,7 +15,7 @@ import { RollingNumber } from "@/components/ui/rolling-number";
 import { cn } from "@/lib/utils";
 import { longDay } from "../dates";
 import { placeAttr } from "../new-task-place";
-import { TaskItem, useHostedRows } from "../task-item";
+import { TaskItem, useCardHost, useHostedRows } from "../task-item";
 import type { PlanActions } from "./actions";
 import { DayHeader } from "./day-header";
 import { usePlacedRows } from "./drag";
@@ -113,6 +113,7 @@ const PlanList = ({
 }) => {
   const rows = usePlacedRows(container, useHostedRows(tasks, slot, true));
   const { setNodeRef, isOver } = useDroppable({ id: container });
+  const { today, onCard, cardOf } = useCardHost();
   return (
     <SortableContext id={container} items={rows.map((row) => row.key)} strategy={verticalListSortingStrategy}>
       <ul
@@ -126,7 +127,16 @@ const PlanList = ({
       >
         <AnimatePresence initial={false}>
           {rows.map(({ key, task }) => (
-            <TaskItem key={key} itemKey={key} task={task} show={{ context: true, tileOn, tileLeft: left }} sortable />
+            <TaskItem
+              key={key}
+              itemKey={key}
+              task={task}
+              show={{ context: true, tileOn, tileLeft: left }}
+              sortable
+              today={today}
+              card={cardOf(key)}
+              onCard={onCard}
+            />
           ))}
         </AnimatePresence>
         {ghosts.map((ghost) => (
@@ -186,7 +196,7 @@ export const DayColumn = ({
       aria-label={longDay(day.date)}
       data-plan-day={day.date}
       {...placeAttr({ slot: daySlot(day.date), when: { kind: "scheduled", date: day.date, evening: false } })}
-      className="flex min-h-0 w-[17.5rem] shrink-0 snap-start flex-col @max-4xl/planner:w-full">
+      className="flex min-h-0 w-[17.5rem] shrink-0 snap-start flex-col [content-visibility:auto] @max-4xl/planner:w-full">
       <header className="space-y-2 px-2 pb-2">
         <DayHeader day={day} isToday={isToday} actions={actions} onSpread={onSpread} />
         <AddTask
