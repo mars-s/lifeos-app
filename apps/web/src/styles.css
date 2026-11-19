@@ -399,6 +399,33 @@ li[data-selected]:has(+ li[data-selected]) .task-selected {
   animation-timing-function: var(--ease-out);
 }
 
+::view-transition-group(.mark-travel) {
+  animation-duration: 460ms;
+  animation-timing-function: var(--ease-drawer);
+}
+
+::view-transition-old(.stage-out) {
+  animation: stage-out 160ms var(--ease-out) both;
+}
+
+::view-transition-new(.stage-in) {
+  animation: stage-in 300ms var(--ease-out) 140ms both;
+}
+
+@keyframes stage-out {
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes stage-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*),
   ::view-transition-old(*),

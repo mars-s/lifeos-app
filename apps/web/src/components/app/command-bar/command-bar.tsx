@@ -17,6 +17,7 @@ import type { Route } from "../route";
 import { UPCOMING_DAYS } from "../screens/upcoming";
 import { selection } from "../selection";
 import { useSelectionActions } from "../selection-actions";
+import { replayWelcome } from "../settings/welcome-replay";
 import { useShell } from "../shell-context";
 import { useSmartEstimates } from "../smart-estimate";
 import { BarDialog } from "./dialog";
@@ -29,6 +30,7 @@ import {
   goItems,
   moreItems,
   moveItems,
+  replayWelcomeItem,
   targetItems,
   targetLabel,
   taskItem,
@@ -161,6 +163,7 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
       setSmartEstimates: (enabled) => void smart.set(enabled),
     });
     const containers = containerItems(sidebar, go);
+    const review = inApp || import.meta.env.DEV ? [replayWelcomeItem(replayWelcome)] : [];
 
     if (wanted === "") {
       const recent = readRecents().flatMap<BarItem>((entry) => {
@@ -192,7 +195,7 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
       rank(wanted, containers.projects, (item) => item.text, CONTAINER_LIMIT),
       rank(wanted, containers.areas, (item) => item.text, CONTAINER_LIMIT),
       rank(wanted, goTo, (item) => item.text, CONTAINER_LIMIT),
-      rank(wanted, [...create, ...more], (item) => item.text, CONTAINER_LIMIT),
+      rank(wanted, [...create, ...more, ...review], (item) => item.text, CONTAINER_LIMIT),
     ].filter((pool) => pool.length > 0);
     const [first, ...rest] = pools;
     const leads = targets.length > 0 && first?.[0]?.item.group === onTargets[0]?.group;

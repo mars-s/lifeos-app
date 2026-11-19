@@ -2,17 +2,19 @@
 
 import { Moon, type Icon } from "@phosphor-icons/react";
 import { Dialog } from "radix-ui";
-import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
-import { LifeosMark } from "@/components/lifeos/mark";
+import { ViewTransition, startTransition, useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/action-button";
 import { KeyCombo } from "@/components/ui/key-hint";
-import { PERMISSIONS, useMac, type Mac, type Permission } from "@/lib/mac";
+import { haptic } from "@/lib/haptics";
+import { PERMISSIONS, demoMac, useMac, type Mac, type Permission } from "@/lib/mac";
 import { cn } from "@/lib/utils";
 import { useOura } from "../oura";
 import { useShell } from "../shell-context";
 import { askFor, useMacState, type MacState } from "./mac-state";
 import { PERMISSION_COPY, actionLabel, statusHint, statusTone, statusWord } from "./permission-copy";
 import { StatusLamp, type LampTone } from "./rows";
+import { Closing, OnboardingMark, Welcome } from "./welcome";
+import { endWelcomeReplay, useWelcomeReplay } from "./welcome-replay";
 
 type Step = { kind: "permission"; permission: Permission } | { kind: "oura" } | { kind: "ready" };
 
@@ -162,9 +164,9 @@ const OuraStep = ({ count, next }: { count: string; next: Advance }) => {
   );
 };
 
-const ReadyStep = ({ outcomes, finish }: { outcomes: readonly Outcome[]; finish: () => void }) => (
+const ReadyStep = ({ outcomes, finish }: { outcomes: readonly Outcome[]; finish: Advance }) => (
   <>
-    <LifeosMark fill="enter" className="size-12" />
+    <OnboardingMark className="size-12" />
     <Dialog.Title className="mt-6 text-title font-semibold text-balance">This Mac is ready</Dialog.Title>
     <Dialog.Description className="mt-2 text-body text-pretty text-muted-foreground">
       LifeOS will not ask again. Change any of these in Settings
@@ -186,7 +188,7 @@ const ReadyStep = ({ outcomes, finish }: { outcomes: readonly Outcome[]; finish:
   </>
 );
 
-const Flow = ({ mac, state, finish }: { mac: Mac; state: MacState; finish: () => void }) => {
+const Flow = ({ mac, state, finish }: { mac: Mac; state: MacState; finish: Advance }) => {
   const { today } = useShell();
   const oura = useOura(today).status?.setup;
   const [at, setAt] = useState(0);
@@ -197,8 +199,13 @@ const Flow = ({ mac, state, finish }: { mac: Mac; state: MacState; finish: () =>
     ouraOutcome(oura),
   ];
   const next: Advance = (event) => {
-    setGlide(event.detail !== 0);
-    setAt((current) => Math.min(current + 1, STEPS.length - 1));
+    const pointer = event.detail !== 0;
+    const forward = () => {
+      setGlide(pointer);
+      setAt((current) => Math.min(current + 1, STEPS.length - 1));
+    };
+    if (pointer && at === ASKING_STEPS - 1) startTransition(forward);
+    else forward();
   };
   const count = `${at + 1} of ${ASKING_STEPS}`;
   return (
@@ -206,7 +213,7 @@ const Flow = ({ mac, state, finish }: { mac: Mac; state: MacState; finish: () =>
       {step.kind !== "ready" && (
         <header className="mb-10 flex items-center justify-between">
           <span className="flex items-center gap-2 text-small font-medium">
-            <LifeosMark />
+            <OnboardingMark />
             Setting up this Mac
           </span>
           <StepDots at={at} outcomes={outcomes} />
@@ -225,12 +232,42 @@ const Flow = ({ mac, state, finish }: { mac: Mac; state: MacState; finish: () =>
   );
 };
 
+type Stage = "welcome" | "steps" | "closing";
+
+const LEAVE_MS = 320;
+
+const Run = ({ mac, state, stored, leave }: { mac: Mac; state: MacState; stored: boolean; leave: () => void }) => {
+  const [stage, setStage] = useState<Stage>("welcome");
+  const move = (next: Stage) => startTransition(() => setStage(next));
+  const finish: Advance = (event) => {
+    if (event.detail !== 0) haptic("complete");
+    if (stored) void mac.finishOnboarding();
+    move("closing");
+  };
+  return stage === "welcome" ? (
+    <ViewTransition key="welcome" exit="stage-out" default="none">
+      <Welcome start={() => move("steps")} />
+    </ViewTransition>
+  ) : stage === "steps" ? (
+    <ViewTransition key="steps" enter="stage-in" exit="stage-out" default="none">
+      <Flow mac={mac} state={state} finish={finish} />
+    </ViewTransition>
+  ) : (
+    <ViewTransition key="closing" enter="stage-in" default="none">
+      <Closing leave={leave} />
+    </ViewTransition>
+  );
+};
+
 type Phase = "unknown" | "needed" | "done";
 
 export const Onboarding = () => {
-  const mac = useMac();
+  const replay = useWelcomeReplay();
+  const real = useMac();
+  const mac = real ?? (replay ? demoMac() : null);
   const state = useMacState(mac);
   const [phase, setPhase] = useState<Phase>("unknown");
+  const [leaving, setLeaving] = useState(false);
   useEffect(() => {
     if (!mac) return;
     let live = true;
@@ -242,11 +279,16 @@ export const Onboarding = () => {
       live = false;
     };
   }, [mac]);
-  if (!mac || phase === "done") return null;
-  const finish = () => {
-    void mac.finishOnboarding();
-    setPhase("done");
-  };
+  useEffect(() => {
+    if (!leaving) return;
+    const timer = setTimeout(() => {
+      setLeaving(false);
+      if (replay) endWelcomeReplay();
+      else setPhase("done");
+    }, LEAVE_MS);
+    return () => clearTimeout(timer);
+  }, [leaving, replay]);
+  if (!mac || phase === "unknown" || (phase === "done" && !replay)) return null;
   return (
     <Dialog.Root open>
       <Dialog.Portal>
@@ -257,11 +299,15 @@ export const Onboarding = () => {
           onKeyDown={(event) => {
             if (!event.metaKey && !event.ctrlKey) event.stopPropagation();
           }}
-          className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-surface outline-none select-none"
+          className={cn(
+            "fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-surface outline-none select-none",
+            "transition-opacity duration-(--dur-slow) ease-out",
+            leaving && "pointer-events-none opacity-0",
+          )}
         >
           <div data-tauri-drag-region aria-hidden="true" className="fixed inset-x-0 top-0 h-7" />
-          {phase === "needed" && state ? (
-            <Flow mac={mac} state={state} finish={finish} />
+          {state ? (
+            <Run mac={mac} state={state} stored={!replay} leave={() => setLeaving(true)} />
           ) : (
             <>
               <Dialog.Title className="sr-only">Setting up this Mac</Dialog.Title>

@@ -9,6 +9,7 @@ import {
   CheckSquare,
   Circle,
   Flag,
+  HandWaving,
   Hourglass,
   Keyboard,
   Lightning,
@@ -316,6 +317,9 @@ export const moreItems = (deps: {
     item("shortcuts", "Keyboard shortcuts", <Keyboard weight="fill" aria-hidden="true" className={muted} />, deps.shortcuts, "shift+/", "help keys"),
   ];
 };
+
+export const replayWelcomeItem = (replay: () => void) =>
+  plain("More", "replay-welcome", "Replay Welcome", <HandWaving weight="fill" aria-hidden="true" className={MUTED} />, replay, undefined, "onboarding first run setup intro");
 
 export const taskItem = (hit: TaskHit, today: string, open: (hit: TaskHit) => void, group = "Tasks") =>
   ({

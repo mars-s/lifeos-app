@@ -62,6 +62,10 @@ const previewMac = (name: keyof typeof PREVIEWS) => {
   } satisfies Mac;
 };
 
+let demo: Mac | undefined;
+
+export const demoMac = () => (demo ??= previewMac("fresh"));
+
 const previewName = () => {
   if (!import.meta.env.DEV) return null;
   const name = new URLSearchParams(window.location.search).get("__mac");
