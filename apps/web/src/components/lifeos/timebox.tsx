@@ -537,6 +537,7 @@ export const Timebox = ({
                   role="group"
                   tabIndex={0}
                   data-block-id={block.id}
+                  data-no-select=""
                   aria-label={`Work Block, ${block.title}, ${range}${block.done ? ", done" : ""}. Arrow keys move it, Shift and arrow keys resize it, Backspace removes it.`}
                   onPointerDown={begin(block, "move")}
                   onPointerMove={track(block)}
