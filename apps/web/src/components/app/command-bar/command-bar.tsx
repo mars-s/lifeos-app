@@ -54,7 +54,7 @@ import { planCommands } from "../planner/commands";
 
 const PAGE_TITLE: Record<Exclude<Page, "root">, string> = { when: "When", deadline: "Deadline", estimate: "Estimate", move: "Move to", repeat: "Repeat" };
 const PAGE_PLACEHOLDER: Record<Page, string> = {
-  root: "Search Tasks, Projects, Areas and actions…",
+  root: "Search Tasks or run an action…",
   when: "Today, fri, next week, 12 dec…",
   deadline: "fri, next week, 12 dec…",
   estimate: "45, 1h30, 2h…",

@@ -7,7 +7,7 @@ Needs the throwaway backend from local-backend.sh and the web app running:
     WAKU_PUBLIC_CONVEX_URL=http://127.0.0.1:3210 npx waku dev --port 4061 &
     SCRATCH=/tmp/lifeos-local-backend uv run --with playwright python scripts/check-day-goal.py <output folder>
 
-It reseeds the backend first. BASE, CONVEX_URL and THEME (light or dark) change the run. It exits non-zero on a failure.
+It reseeds the backend first and fixes the browser clock at 9 am today, so Spread has a working day to fill at any hour. BASE, CONVEX_URL and THEME (light or dark) change the run. It exits non-zero on a failure.
 """
 
 import json
@@ -15,7 +15,7 @@ import os
 import re
 import subprocess
 import sys
-from datetime import date
+from datetime import date, datetime, time
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
@@ -27,6 +27,7 @@ THEME = os.environ.get("THEME", "light")
 OUT = Path(sys.argv[1] if len(sys.argv) > 1 else sys.exit(__doc__))
 NAMESPACE = re.sub(r"[^a-zA-Z0-9]", "", CONVEX_URL)
 TODAY = date.today().isoformat()
+NINE_AM = datetime.combine(date.today(), time(9)).astimezone()
 ZONE = subprocess.check_output(["node", "-e", "console.log(Intl.DateTimeFormat().resolvedOptions().timeZone)"], text=True).strip()
 GUESSED = "Pick up the parcel from the post office"
 failed = []
@@ -54,6 +55,7 @@ def main():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         context = browser.new_context(viewport={"width": 1440, "height": 900}, color_scheme=THEME, device_scale_factor=2)
+        context.clock.set_system_time(NINE_AM)
         page = context.new_page()
         page.on("pageerror", lambda error: failed.append(f"page error: {error}") or print(f"FAIL  page error: {error}"))
         page.goto(f"{BASE}/design")
