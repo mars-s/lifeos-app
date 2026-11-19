@@ -92,8 +92,16 @@ const dependentsOf = async (ctx: MutationCtx, entity: RecordRef) => {
   return [...links, ...items, ...blocks, ...sessions].map(({ _id }) => _id as string);
 };
 
-const insertedIn = (changes: Doc<"activityChanges">[]) =>
-  new Set(changes.flatMap(({ entity, change }) => (change.kind === "insert" ? [entity.id as string] : [])));
+const OWNER_KEYS = ["taskId", "from", "to"];
+
+const releasedIn = (changes: Doc<"activityChanges">[]) =>
+  new Set(
+    changes.flatMap(({ entity, change }) =>
+      change.kind === "insert" || (change.kind === "patch" && OWNER_KEYS.some((key) => key in change.before))
+        ? [entity.id as string]
+        : [],
+    ),
+  );
 
 const transientIn = (changes: Doc<"activityChanges">[]) => {
   const first = new Map<string, string>();
@@ -106,7 +114,7 @@ const transientIn = (changes: Doc<"activityChanges">[]) => {
 };
 
 const firstConflict = async (ctx: MutationCtx, changes: Doc<"activityChanges">[]) => {
-  const removedByUndo = insertedIn(changes);
+  const removedByUndo = releasedIn(changes);
   for (const { entity, fields, exact } of expectedState(changes)) {
     const doc = await ctx.db.get(entity.id);
     if (fields === null) {

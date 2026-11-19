@@ -116,6 +116,7 @@ const sampleArgs: Record<string, Record<string, unknown>> = {
   update_checklist: { taskId: "nothing", add: ["Stolen"] },
   save_area: { title: "Stolen" },
   save_project: { title: "Stolen" },
+  convert_task_to_project: { taskId: "nothing" },
   set_day_goal: { date: "2026-11-20", minutes: 60 },
   save_work_block: { taskId: "nothing", start: "2026-11-20T09:00", minutes: 30 },
   remove_work_block: { blockId: "nothing" },
@@ -371,6 +372,22 @@ describe("writes", () => {
       ["University", ["Run a half", "Thesis"]],
       ["Health and Fitness", []],
     ]);
+  });
+
+  test("convert_task_to_project turns the Checklist into Tasks of a new Project", async () => {
+    const { t, key } = await setup();
+    const { task } = await ok<TaskReceipt>(t, key, "create_task", { title: "Plan the Japan trip", checklist: ["Flights", "Hotel"] });
+    const { projectId, taskIds } = await ok<{ projectId: string; taskIds: string[] }>(t, key, "convert_task_to_project", {
+      taskId: task.id,
+    });
+    const rows = await t.run(async (ctx) => ({
+      project: await ctx.db.get(projectId as Id<"projects">),
+      tasks: await Promise.all(taskIds.map((taskId) => ctx.db.get(taskId as Id<"tasks">))),
+      original: await ctx.db.get(task.id as Id<"tasks">),
+    }));
+    expect(rows.project?.title).toBe("Plan the Japan trip");
+    expect(rows.tasks.map((each) => each?.title)).toEqual(["Flights", "Hotel"]);
+    expect(rows.original?.trashedAt).toEqual(expect.any(Number));
   });
 
   test("save_work_block adds and moves a block, and remove_work_block removes it", async () => {

@@ -36,6 +36,7 @@ Ids come from the read tools. Dates are `YYYY-MM-DD`. Times are in Avi's time zo
 | `update_checklist` | Add items, tick and untick items of that Task | `checklist.add`, `checklist.tick` |
 | `save_area` | Create an Area, or rename one | `areas.create`, `areas.rename` |
 | `save_project` | Create a Project (in an Area or not), or rename and move one | `projects.create`, `rename`, `move` |
+| `convert_task_to_project` | Turn a Task into a Project: its Checklist Items become Tasks in it, its Work Blocks, Focus Sessions and links move to the first open new Task, and the Task goes to Trash | `convert.toProject` |
 | `set_day_goal` | Set a date's Goal in minutes, or `null` to reset it | `plan.setGoal` |
 | `save_work_block` | Add a Work Block for a Task, or move and resize one | `workBlocks.create`, `move`, `resize` |
 | `remove_work_block` | Remove one Work Block | `workBlocks.remove` |

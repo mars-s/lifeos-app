@@ -11,6 +11,7 @@ import { addDays, parseIsoDate, type IsoDate } from "../../shared/date";
 import type { SerialisedResult } from "../../shared/result";
 import * as areas from "./areas";
 import * as checklist from "./checklist";
+import * as convert from "./convert";
 import * as focus from "./focus";
 import * as plan from "./plan";
 import * as projects from "./projects";
@@ -255,6 +256,15 @@ export const saveProject = agentMutation({
   },
 });
 
+export const convertTaskToProject = agentMutation({
+  args: { taskId: v.string() },
+  handler: async (ctx, args, run) => {
+    const write = await writer(ctx, run);
+    const { projectId, taskIds } = await write.change(convert.toProject, { taskId: agentId(ctx, "tasks", args.taskId, "Task") });
+    return { ...write.receipt(), projectId: projectId as string, taskIds: taskIds.map(String) };
+  },
+});
+
 export const setDayGoal = agentMutation({
   args: { date: v.string(), minutes: v.union(v.number(), v.null()) },
   handler: async (ctx, args, run) => {
@@ -441,6 +451,15 @@ export const plannerWriteTools: Record<string, ToolDefinition> = {
     returns: v.object({ ...vReceipt, projectId: v.string(), title: v.string() }),
     ...write(false),
     handler: (ctx, args, caller) => ctx.runMutation(internal.planner.agentWrites.saveProject, { ...args, caller }),
+  }),
+  convert_task_to_project: tool({
+    title: "Turn a Task into a Project",
+    description:
+      "Turn a Task into a Project with its title, notes, Area, When, Deadline and Labels. Each Checklist Item becomes a Task in the Project, in order. Its Work Blocks, Focus Sessions and links move to the first open new Task (one is made with the Task's title if it has no Checklist). The original Task goes to the Trash. Returns the new projectId and the new taskIds.",
+    args: { taskId: v.string() },
+    returns: v.object({ ...vReceipt, projectId: v.string(), taskIds: v.array(v.string()) }),
+    ...write(true),
+    handler: (ctx, args, caller) => ctx.runMutation(internal.planner.agentWrites.convertTaskToProject, { ...args, caller }),
   }),
   set_day_goal: tool({
     title: "Set Day Goal",
