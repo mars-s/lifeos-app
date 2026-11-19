@@ -184,7 +184,9 @@ export const modelChain = (capability: CapabilityId, chosen: ModelId, keyed: Rea
 export const modelsFor = (capability: CapabilityId, keyed: ReadonlySet<ProviderId>) =>
   MODEL_IDS.filter((model) => keyed.has(MODELS[model].provider) && canAnswer(model, CAPABILITIES[capability].asks));
 
-const usd = (amount: number) => (amount < 0.01 ? "under US$0.01" : `US$${amount.toFixed(2)}`);
+const cents = new Intl.NumberFormat("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const usd = (amount: number) => (amount < 0.01 ? "under US$0.01" : `US$${cents.format(amount)}`);
 
 export const costPerThousand = (capability: CapabilityId, model: ModelId) => {
   const { tokens } = CAPABILITIES[capability];

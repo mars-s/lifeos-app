@@ -119,7 +119,9 @@ const Draft = ({ steps, project, answeredBy, onAccept, onAgain, onDismiss }: {
         <Button variant="quiet" onClick={onDismiss}>
           Dismiss
         </Button>
-        <span className="ml-auto pr-1 text-micro text-faint-foreground">{model}</span>
+        <span translate="no" className="ml-auto pr-1 text-micro text-faint-foreground">
+          {model}
+        </span>
       </div>
     </>
   );

@@ -48,6 +48,7 @@ const SEEDED = [
   "features",
   "savedPlaces",
   "taskTrips",
+  "stepSuggestions",
 ] as const;
 
 export const seed = internalMutation({
@@ -110,11 +111,34 @@ export const suggestEstimate = internalMutation({
 });
 
 export const storeSecret = internalMutation({
-  args: { last4: v.string() },
-  handler: async (ctx, { last4 }) => {
-    for (const row of await ctx.db.query("secrets").collect()) await ctx.db.delete("secrets", row._id);
-    await ctx.db.insert("secrets", { name: "openai", iv: "c2VlZGVk", ciphertext: "c2VlZGVk", last4, savedAt: Date.now() });
+  args: { last4: v.string(), name: v.optional(v.union(v.literal("openai"), v.literal("opencodeGo"))) },
+  handler: async (ctx, { last4, name = "openai" }) => {
+    for (const row of await ctx.db.query("secrets").collect()) if (row.name === name) await ctx.db.delete("secrets", row._id);
+    await ctx.db.insert("secrets", { name, iv: "c2VlZGVk", ciphertext: "c2VlZGVk", last4, savedAt: Date.now() });
     return null;
+  },
+});
+
+export const switchAi = internalMutation({
+  args: { on: v.optional(v.boolean()) },
+  handler: async (ctx, { on = true }) => {
+    for (const row of await ctx.db.query("features").collect()) if (row.feature === "ai") await ctx.db.delete("features", row._id);
+    await ctx.db.insert("features", { feature: "ai", enabled: on, settings: { routes: {} } });
+    return null;
+  },
+});
+
+export const suggestSteps = internalMutation({
+  args: { title: v.string(), steps: v.array(v.string()), project: v.optional(v.boolean()) },
+  handler: async (ctx, { title, steps, project = false }) => {
+    const task = (await ctx.db.query("tasks").collect()).find((row) => row.title === title);
+    if (!task) throw new Error(`No Task called ${title}`);
+    const at = Date.now();
+    const outcome = { kind: "suggested" as const, steps, project, answeredBy: "opencodeGo/deepseek-v4.1-flash", inputsHash: "seeded", at };
+    const row = await ctx.db.query("stepSuggestions").withIndex("by_task", (q) => q.eq("taskId", task._id)).unique();
+    if (row) await ctx.db.replace("stepSuggestions", row._id, { taskId: task._id, requestedAt: at, answeredAt: at, outcome });
+    else await ctx.db.insert("stepSuggestions", { taskId: task._id, requestedAt: at, answeredAt: at, outcome });
+    return task._id;
   },
 });
 
@@ -132,6 +156,7 @@ export const seedPlaces = internalMutation({
   handler: async (ctx, { title, home = true }) => {
     for (const table of ["features", "savedPlaces", "taskTrips"] as const) for (const row of await ctx.db.query(table).collect()) await ctx.db.delete(table, row._id);
     await ctx.db.insert("features", { feature: "places", enabled: true, settings: { travelMode: "drive" } });
+    await ctx.db.insert("features", { feature: "ai", enabled: true, settings: { routes: {} } });
     if (home) await ctx.db.insert("savedPlaces", { label: "home", address: "12 Harbour Street, Haymarket NSW 2000", position: HOME, found: "12 Harbour Street, Haymarket", savedAt: Date.now() });
     const area = (await ctx.db.query("areas").collect())[0];
     const taskId = await ctx.db.insert("tasks", {

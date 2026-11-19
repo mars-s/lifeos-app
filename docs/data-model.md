@@ -95,23 +95,26 @@ One row per **Feature** Avi has changed, absent until then. The registry in `sha
 
 | Field | Type |
 | --- | --- |
-| `feature` | `smartEstimates` or `places` |
+| `feature` | `ai`, `places` or `templates` |
 | `enabled` | Boolean |
-| `settings` | The Feature's own settings, checked by its validator: `{}` for Smart Estimates, `{ travelMode: "drive" | "walk" | "cycle" }` for Places |
+| `settings` | The Feature's own settings, checked by its validator: `{ routes }` for AI, `{ travelMode: "drive" | "walk" | "cycle" }` for Places, `{}` for Templates |
 
-The table is a union with one member per Feature, so a Places row cannot hold Smart Estimates settings. Index: `by_feature`.
+The table is a union with one member per Feature, so a Places row cannot hold AI settings. Index: `by_feature`.
+
+- AI's `routes` is a record from AI Capability id to `{ on, model }`. A missing route means the registry default. A `model` LifeOS no longer offers, or one that cannot answer what the capability asks, reads as the default, so removing a model never breaks a stored row. `ai/routing:setRoute` is the `changeMutation` that changes one route; `ai/routing:overview` returns each capability's switch, chosen model and the model that will actually answer (`answering`, the first of the chain whose provider has a key).
 
 - `platform/features:list` returns every Feature with its effective `enabled`, `settings` and Feature Status.
 - `setEnabled` and `configure` are `changeMutation`s. Undoing the first change deletes the row, which brings the defaults back.
 - It replaced the old one-row `preferences` table (one `smartEstimates` boolean) on 19 November 2026. That table was empty on the live deployment, so no value had to move.
+- The `smartEstimates` Feature became the AI Capability Smart Estimates on 19 November 2026 (#58). The live deployment had no `smartEstimates` row (it was on by default), so `ai/migrations:fromSmartEstimates` inserts an enabled `ai` row once, and Avi keeps Smart Estimates and Places as they were.
 
 ### `secrets`
 
-One row per named API key Avi saves in Settings. Only `openai` exists today. The key itself is never stored in the clear and no query returns it.
+One row per named API key Avi saves in Settings: `openai` and `opencodeGo`, one per AI Provider. The key itself is never stored in the clear and no query returns it.
 
 | Field | Type |
 | --- | --- |
-| `name` | `openai` |
+| `name` | `openai` or `opencodeGo` |
 | `iv` | Base64 of the 12-byte AES-GCM nonce |
 | `ciphertext` | Base64 of the key sealed with AES-GCM under `LIFEOS_SECRETS_KEY`, with `lifeos-secret:<name>` as additional data so a row cannot be moved to another name |
 | `last4` | The key's last four characters, for "Key saved, ends in abcd" |
@@ -119,9 +122,9 @@ One row per named API key Avi saves in Settings. Only `openai` exists today. The
 
 Index: `by_name`.
 
-- **Saving.** `platform/secrets:save` is an `ownerAction`. It refuses an empty paste, refuses with `not_set_up` when `LIFEOS_SECRETS_KEY` is missing or is not 32 bytes of base64, then checks the key with `GET https://api.openai.com/v1/models`. A 401 or 403 is `refused`. Only a key OpenAI accepts is sealed and stored, replacing any earlier one. It returns `{ last4, savedAt }`.
+- **Saving.** `platform/secrets:save` is an `ownerAction`. It refuses an empty paste, refuses with `not_set_up` when `LIFEOS_SECRETS_KEY` is missing or is not 32 bytes of base64, then checks the key with its provider's cheapest authenticated call: `GET https://api.openai.com/v1/models` for OpenAI, `GET https://opencode.ai/inference/go/v1/models` for OpenCode Go. A 401 or 403 is `refused`. Only a key the provider accepts is sealed and stored, replacing any earlier one. It returns `{ last4, savedAt }`.
 - **No Activity.** Saving and removing write through the internal `store` and `forget` mutations, not `changeMutation`, so neither the key nor its ciphertext reaches Activity or undo. Removing asks Avi to confirm instead.
-- **Reading.** `platform/secrets:status` returns `{ last4, savedAt }` or `null`. Only the internal action path unseals the key (`revealSecret`, used by `planner/smartEstimates:suggest`). It uses the saved key first and falls back to the `OPENAI_API_KEY` env var. Mutations only ask `secretAvailable`, which never decrypts.
+- **Reading.** `platform/secrets:status` returns `{ last4, savedAt }` or `null`. Only the internal action path unseals a key (`revealSecret`, through `ai/routing:attemptsFor`, for every AI call). It uses the saved key first and falls back to the `OPENAI_API_KEY` or `OPENCODE_GO_API_KEY` env var. Mutations only ask `secretAvailable`, which never decrypts.
 
 ### `users`
 
@@ -228,20 +231,20 @@ One row per Task that has asked for a **Smart Estimate**. The suggestion never t
 | `taskId` | `Id<"tasks">` |
 | `requestedAt` | The latest request. A scheduled run with an older value has been replaced and does nothing |
 | optional `answeredAt` | The `requestedAt` of the last run that finished, including one that found nothing to ask. The card shows thinking while `requestedAt` is newer |
-| `outcome` | `waiting`; `suggested { minutes, guesses, modelMinutes, reason, confidence, probabilities, model, inputsHash, at }`; `unclear { vague, inputsHash, at }`; or `failed { error, inputsHash, at }`. `minutes` is the most likely guess and `guesses` are the up to three shown, each `{ minutes, probability }`, shortest first |
+| `outcome` | `waiting`; `suggested { minutes, guesses, modelMinutes, reason, confidence, probabilities, model, answeredBy?, inputsHash, at }`; `unclear { vague, answeredBy?, inputsHash, at }`; or `failed { error, inputsHash, at }`. `minutes` is the most likely guess and `guesses` are the up to three shown, each `{ minutes, probability }`, shortest first. `model` is what the provider reported; `answeredBy` is the LifeOS Model id that answered, such as `openai/decisions/gpt-6-luna` (absent on rows from before #58) |
 
 Index: `by_task` (the card's query and every request).
 
 ### How a Smart Estimate lands
 
-- **Asking.** A placeholder title (New Task, Untitled, To do, or one with no word of three letters or more) is never sent. `tasks:create` and a real `tasks:rename` call `requestSuggestion`, and so does opening the card of a Task with no row yet (`planner/smartEstimates:request`, an `ownerMutation` because it changes none of Avi's data). Nothing happens when the Task already has an Estimate, is closed or trashed, or the Smart Estimates Feature is not `ready` (switched off, or no OpenAI key (neither a saved one in `secrets` nor `OPENAI_API_KEY`)). Otherwise it bumps `requestedAt` and schedules `suggest` two seconds later, so a burst of edits makes one call.
+- **Asking.** A placeholder title (New Task, Untitled, To do, or one with no word of three letters or more) is never sent. `tasks:create` and a real `tasks:rename` call `requestSuggestion`, and so does opening the card of a Task with no row yet (`planner/smartEstimates:request`, an `ownerMutation` because it changes none of Avi's data). Nothing happens when the Task already has an Estimate, is closed or trashed, or the Smart Estimates capability has no model to ask (AI off or not `ready`, Smart Estimates switched off on the AI page, or no provider key that can answer). Otherwise it bumps `requestedAt` and schedules `suggest` two seconds later, so a burst of edits makes one call.
 - **The signal.** `planFor` builds the title, notes (whitespace collapsed, cut at 600 characters), Checklist size, Area, Project and Label names, and up to 6 nearest past Tasks. Past Tasks are the last 300 closed Tasks plus any Task in the last 600 Focus Sessions. They rank by shared title words, then same Project, same Area and shared Labels. Each example sends only its title, Area, Project, Labels, Estimate and Actual Time. Other Tasks' notes and every id stay home.
-- **The call.** `POST https://api.openai.com/v1/decisions` with `gpt-6-luna`: one `choice` question (`estimate`) and one `predicate` (`too_vague`). The choices are seventeen buckets with readable values, each with a description of the kind of work that fits it, because the model reads both: `5 minutes` to `6 hours`, then `1 working day`, `2 working days`, `3 working days`, `1 working week` and `2 working weeks`. A working day is Avi's Working Hours (8.5 hours by default), so those buckets are stored as that many minutes. One long list beat a two-step ask (a coarse size, then the bucket inside it) in a live trial on 19 November 2026: they agreed on most titles, but the coarse step read "Plan a two-week Japan trip" as a day of work, and it costs two calls. `planner/smartEstimateTrial:compare` reruns that trial on any titles (`npx convex run`, nothing is stored). The fixed instructions come first in a developer message. The user message holds the Task as plain text (`Task:`, `Description:` from the notes, `Checklist:`, `Area:`, `Project:`, `Labels:`) and then the similar past Tasks as `input_json`. The title and notes are prose, so they go in as prose. The history is a list of records, which is what `input_json` is for. The request carries `prompt_cache_key`, but the prefix is under the 1,024 tokens caching needs, so every call is billed in full (about 300 to 900 input tokens, a fraction of a cent).
+- **The call.** On the default model, `POST https://api.openai.com/v1/decisions` with `gpt-6-luna`. On a chat model it is the same questions over Chat Completions with a strict JSON schema (`docs/architecture.md`, AI), read back into the same shape. The ask is one `choice` question (`estimate`) and one `predicate` (`too_vague`). The choices are seventeen buckets with readable values, each with a description of the kind of work that fits it, because the model reads both: `5 minutes` to `6 hours`, then `1 working day`, `2 working days`, `3 working days`, `1 working week` and `2 working weeks`. A working day is Avi's Working Hours (8.5 hours by default), so those buckets are stored as that many minutes. One long list beat a two-step ask (a coarse size, then the bucket inside it) in a live trial on 19 November 2026: they agreed on most titles, but the coarse step read "Plan a two-week Japan trip" as a day of work, and it costs two calls. `planner/smartEstimateTrial:compare` reruns that trial on any titles (`npx convex run`, nothing is stored). The fixed instructions come first in a developer message. The user message holds the Task as plain text (`Task:`, `Description:` from the notes, `Checklist:`, `Area:`, `Project:`, `Labels:`) and then the similar past Tasks as `input_json`. The title and notes are prose, so they go in as prose. The history is a list of records, which is what `input_json` is for. The request carries `prompt_cache_key`, but the prefix is under the 1,024 tokens caching needs, so every call is billed in full (about 300 to 900 input tokens, a fraction of a cent).
 - **The answer.** A `too_vague` probability of 0.95 or more stores `unclear`. So does 0.7 or more while the model is under 0.6 sure of the size. The model also marks big, clear work as fairly vague (0.81 for "rewrite the entire db in rust", sure of its size at 0.99), so a confident size wins below 0.95. Otherwise the pick is nudged by Avi's run ratio: the median of Actual Time over Estimate across the examples (2 or more pairs), or else across all history (3 or more). A ratio outside 0.85 to 1.15 moves every option to the bucket nearest `minutes × ratio`, adding together options that land in the same bucket. The guesses are the three most likely buckets at 3% or more. The reason is written in LifeOS, not by the model: the closest example and, when it applies, the over-run.
-- **Showing it.** `planner/smartEstimates:forTask` returns what the card's Estimate row draws: `presets` (Smart Estimates off, no key, or an Estimate set before any guess), `thinking` (three ghost chips), `guesses { guesses, likely, reason }` (these replace the preset chips, and stay after Avi picks one), or `fallback { why }` for a placeholder title, a vague Task or a failed call, which shows the presets with a quiet line saying why. The card gives up on thinking after 15 seconds and shows the presets. Guesses of a working day or more read as days and weeks ("3 days", "1 week"), and when the best guess is that big the row adds "Big one. Split it into a Project?" with a button that opens the Checklist composer.
-- **Once per change.** `inputsHash` is the SHA-256 of the model name, the signal and the ratio. A run whose hash matches the stored `suggested` or `unclear` outcome makes no call. A failure is retried on the next real change.
-- **With Places.** Smart Estimates `uses` Places. When Places is `ready`, the Task text sent to the Decisions API gains a `Travel` line saying the trip is added separately, so the model guesses only the time at the place. At read time `forTask` and the day load add the chosen Trip there and back (twice the travel time, rounded up to the minute) to every guess, and the reason starts "0:10 at Officeworks plus 0:10 there and back." Picking another branch or dismissing the Trip changes the guesses at once, with no new call.
-- Whether Smart Estimates is on and has a key is its Feature Status in `platform/features:list`.
+- **Showing it.** `planner/smartEstimates:forTask` returns what the card's Estimate row draws: `presets` (Smart Estimates off, no key, or an Estimate set before any guess), `thinking` (three ghost chips), `guesses { guesses, likely, reason }` (these replace the preset chips, and stay after Avi picks one), or `fallback { why }` for a placeholder title, a vague Task or a failed call, which shows the presets with a quiet line saying why. The card gives up on thinking after 15 seconds and shows the presets. Guesses of a working day or more read as days and weeks ("3 days", "1 week"), and when the best guess is that big the row adds "Big one. Split it into a Project?" with a Break it into steps button: it asks the Break into steps capability when that is on, and opens the Checklist composer otherwise.
+- **Once per change.** `inputsHash` is the SHA-256 of the chosen Model id, the signal and the ratio. A run whose hash matches the stored `suggested` or `unclear` outcome makes no call. A failure is retried on the next real change.
+- **With Places.** AI `uses` Places. When Places is `ready`, the Task text sent to the Decisions API gains a `Travel` line saying the trip is added separately, so the model guesses only the time at the place. At read time `forTask` and the day load add the chosen Trip there and back (twice the travel time, rounded up to the minute) to every guess, and the reason starts "0:10 at Officeworks plus 0:10 there and back." Picking another branch or dismissing the Trip changes the guesses at once, with no new call.
+- Whether AI is on and has a key is its Feature Status in `platform/features:list`. Whether Smart Estimates is on, and which model answers, is in `ai/routing:overview`.
 
 ### `dayPlans`
 
@@ -274,7 +277,7 @@ The Task shape (`vTaskShape`, shared with `templates`) is `title`, `notes`, opti
 
 ### `templates`
 
-The Task shape plus `order` (Order Key). Index: `by_order`. A Template is deleted outright, because nothing points at it, and undo puts it back as a new row.
+The Task shape plus `order` (Order Key). Index: `by_order`. A Template is deleted outright, because nothing points at it, and undo puts it back as a new row. With the Templates Feature off, `saveFromTask`, `createTask`, `update` and `remove` refuse with `feature_off` and the rows stay.
 
 ### `thingsSync`
 
@@ -468,7 +471,7 @@ One row per Task Places has looked at.
 | --- | --- |
 | `taskId` | `Id<"tasks">` |
 | `requestedAt` | The latest request. A scheduled run with an older value has been replaced and does nothing |
-| `outcome` | `waiting`; `none` (needs no trip); `unfound { query, mode, from }`; `found { query, mode, from, places }`; or `failed { error }`. Every outcome but `waiting` has `inputsHash` and `at` |
+| `outcome` | `waiting`; `none` (needs no trip); `unfound { query, mode, from }`; `found { query, mode, from, places }`; or `failed { error }`. Every outcome but `waiting` has `inputsHash`, `at` and, from #58, `answeredBy` |
 | `choice` | `nearest`, `picked { key }` or `dismissed`. Changed only by `places/trips:choose` and `dismiss`, which are `changeMutation`s |
 
 `from` is Home rounded to three decimal places, the position that was sent out. Each place is `{ key, name, suburb?, position, straightMetres, travel? { seconds, metres } }`, where `key` is the OpenStreetMap element (`node/123`). Index: `by_task`.
@@ -476,10 +479,31 @@ One row per Task Places has looked at.
 ### How a Trip lands
 
 - **Asking.** `tasks:create` and a real `tasks:rename` call `requestTrip`, and so does opening the card (`places/trips:request`, an `ownerMutation`, which asks again only when there is no row, the last run failed, or Home or the Travel Mode changed since). Nothing happens unless Places is `ready`. It schedules `locate` two seconds later.
-- **The call.** `POST /v1/decisions` with `gpt-6-luna`: a `needs_trip` predicate and a `place` choice over up to 24 phrases cut from the title (one to three words, not starting or ending with a small word or an errand verb), 14 kinds of place, and "no particular place". Only the title is sent.
+- **The call.** The Trip detection capability's model (by default `POST /v1/decisions` with `gpt-6-luna`): a `needs_trip` predicate and a `place` choice over up to 24 phrases cut from the title (one to three words, not starting or ending with a small word or an errand verb), 14 kinds of place, and "no particular place". Only the title is sent.
 - **The search.** A `needs_trip` probability under 0.5 or no place stores `none`. Otherwise Overpass searches 15 km around the rounded Home, by tag for a kind of place, or by `brand` (starts with) and `name` (contains) for anything else. The nearest five by straight-line distance go to one OSRM `table` call on `routing.openstreetmap.de` (`routed-car`, `routed-foot` or `routed-bike`), and are ordered by travel time. If routing fails, the five are kept without travel time.
 - **Once per change.** `inputsHash` is the SHA-256 of the model name, title, phrases, rounded Home and Travel Mode. A run whose hash matches the stored outcome makes no call. A new place query resets `choice` to `nearest`.
 - `places/trips:forTask` returns the Trip only when Places is `ready`: `{ kind: "trip", query, mode, from, chosen, places }`, `{ kind: "unfound", query, mode }`, or `null` (no trip, dismissed, waiting or failed).
+
+## AI module (`convex/ai`)
+
+Providers, Models and AI Capabilities are declared in `shared/ai.ts`. The module holds the transports (`ai/transport`), the routing (`ai/routing`) and the one table below.
+
+### `stepSuggestions`
+
+One row per Task Avi asked to **Break into steps**.
+
+| Field | Type |
+| --- | --- |
+| `taskId` | `Id<"tasks">` |
+| `requestedAt` | The latest request. A scheduled run with an older value has been replaced and does nothing |
+| optional `answeredAt` | The `requestedAt` of the last run that finished |
+| `outcome` | `waiting`; `suggested { steps, project, answeredBy, inputsHash, at }`; or `failed { error, inputsHash, at }`. `steps` are up to 8 cleaned, de-duplicated titles; `project` says the model thinks the work is big enough for a Project |
+
+Index: `by_task`.
+
+- `ai/steps:request` (an `ownerMutation`) bumps `requestedAt` and schedules `suggest` at once. `again: true` forgets the cached answer so the model is asked afresh. A run whose `inputsHash` (chosen Model id, title, notes, Estimate and current Checklist titles) matches the stored answer makes no call.
+- `ai/steps:forTask` returns `off`, `idle`, `thinking`, `steps { steps, project, answeredBy }` or `failed { error }`.
+- `ai/steps:accept` is a `changeMutation`: it inserts the titles Avi kept, in his order, after the last Checklist Item, then deletes the row. One undo removes every inserted item. `dismiss` deletes the row. Neither the row nor the model's text is in Activity.
 
 ## Tables later slices add
 

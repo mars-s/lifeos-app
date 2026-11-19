@@ -11,7 +11,7 @@ import { askToConfirm } from "../confirm";
 import { useQuietView } from "../hooks";
 import { Problem } from "./rows";
 
-const KEY_PLACEHOLDERS = { openai: "sk-…", opencodeGo: "Your OpenCode Go key" } as const satisfies Record<ProviderId, string>;
+const KEY_PLACEHOLDERS = { openai: "sk-…", opencodeGo: "Paste your key…" } as const satisfies Record<ProviderId, string>;
 
 const SECRET_PROBLEMS = {
   empty: () => "Paste a key first.",

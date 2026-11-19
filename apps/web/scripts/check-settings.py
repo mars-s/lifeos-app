@@ -94,8 +94,8 @@ def main():
         expect("a browser has no Import now button", page.get_by_role("button", name="Import now").count(), 0)
         expect("the Things Import shows its counts", "Tasks" in row("Things Import").inner_text(), True)
         expect("calendars can be switched from Settings", row("Apple Calendar").get_by_role("switch").count() > 0, True)
-        smart = row("Smart Estimates").get_by_role("switch")
-        expect("Smart Estimates has its switch under Features", smart.count(), 1)
+        smart = row("Templates").get_by_role("switch")
+        expect("Templates has its switch under Features", smart.count(), 1)
         if smart.is_enabled():
             before = smart.get_attribute("aria-checked")
             smart.click()

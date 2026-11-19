@@ -56,16 +56,17 @@ def main():
             " localStorage.setItem(`__convexAuthRefreshToken_${namespace}`, s.refreshToken); }",
             [NAMESPACE, session],
         )
-        page.goto(f"{BASE}/settings/features/smartEstimates")
+        convex("scratch:switchAi", json.dumps({"on": True}))
+        page.goto(f"{BASE}/settings/features/ai")
         field = page.get_by_label("OpenAI API key")
         field.wait_for()
-        section = page.locator("section", has=page.get_by_role("heading", name="OpenAI key")).first
+        section = page.locator("section", has=page.get_by_role("heading", name="Keys")).first
         status = page.locator("#main header [role=status]")
-        save = section.get_by_role("button", name="Save")
+        save = section.get_by_role("button", name="Save").first
 
         expect("the key field hides what is typed", field.get_attribute("type"), "password")
         expect("browsers do not autofill it", field.get_attribute("autocomplete"), "off")
-        expect("the page says Smart Estimates needs a key", status.inner_text().split("\n")[0], "Needs an OpenAI key")
+        expect("the page says AI needs a key", status.inner_text().split("\n")[0], "Needs a key")
         section.screenshot(path=str(OUT / f"openai-key-empty-{THEME}.png"))
         save.click()
         expect("Save with nothing pasted asks for a key", section.get_by_role("alert").inner_text(), "Paste a key first.")

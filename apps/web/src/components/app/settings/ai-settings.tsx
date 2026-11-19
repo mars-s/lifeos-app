@@ -1,6 +1,6 @@
 "use client";
 
-import { CaretUpDown, Key, MapPin, Hourglass, ListChecks, type Icon } from "@phosphor-icons/react";
+import { CaretUpDown, Check, Key, MapPin, Hourglass, ListChecks, type Icon } from "@phosphor-icons/react";
 import type { OptimisticLocalStore } from "convex/browser";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "@lifeos/backend/api";
@@ -45,7 +45,7 @@ const useRoutes = () => {
       }),
     setModel: (state: CapabilityState, model: ModelId) =>
       change({
-        title: `${CAPABILITIES[state.capability].title} uses ${MODELS[model].title}`,
+        title: "Model changed",
         mutation: api.ai.routing.setRoute,
         args: { capability: state.capability, model },
         apply: withRoute(state.capability, (current) => ({ ...current, model, answering: model })),
@@ -63,13 +63,11 @@ const modelGroups = (state: CapabilityState, keyed: ReadonlySet<(typeof PROVIDER
           {
             id: provider,
             label: PROVIDERS[provider].title,
-            items: models.map((model) => ({
-              type: "checkbox" as const,
-              id: model,
-              label: MODELS[model].title,
-              checked: state.answering === model,
-              onCheckedChange: () => pick(model),
-            })),
+            items: models.map((model) =>
+              state.answering === model
+                ? { id: model, label: MODELS[model].title, icon: Check, description: "In use" }
+                : { id: model, label: MODELS[model].title, leading: <span aria-hidden="true" className="size-4" />, onSelect: () => pick(model) },
+            ),
           } satisfies MenuGroup,
         ];
   });
@@ -90,8 +88,12 @@ const ModelPicker = ({ state, keyed }: { state: CapabilityState; keyed: Readonly
             aria-label={`Model for ${CAPABILITIES[state.capability].title}: ${model.title} on ${PROVIDERS[model.provider].title}`}
             className="inline-flex h-8 items-center gap-2 rounded-lg bg-foreground/[0.05] pr-2 pl-2.5 text-small transition-[background-color,scale] duration-(--dur-fast) ease-out outline-none hover:bg-foreground/[0.08] focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-[0.97]"
           >
-            <span className="font-medium">{model.title}</span>
-            <span className="text-muted-foreground">{PROVIDERS[model.provider].title}</span>
+            <span translate="no" className="font-medium">
+              {model.title}
+            </span>
+            <span translate="no" className="text-muted-foreground">
+              {PROVIDERS[model.provider].title}
+            </span>
             <CaretUpDown weight="bold" className="size-3.5 text-faint-foreground" aria-hidden="true" />
           </button>
         }
