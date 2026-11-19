@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuthActions } from "@convex-dev/auth/react";
-import { CalendarDots, Desktop, DownloadSimple, GearSix, GithubLogo, Keyboard, Moon, SignOut } from "@phosphor-icons/react";
+import { CalendarDots, Desktop, DownloadSimple, GearSix, GithubLogo, Keyboard, Moon, SignOut, Stamp } from "@phosphor-icons/react";
 import { useState } from "react";
 import { api } from "@lifeos/backend/api";
 import { formatClock } from "@/components/lifeos/format";
@@ -204,6 +204,19 @@ const OuraRow = () => {
   );
 };
 
+const TemplatesSection = () => {
+  const { navigate } = useShell();
+  return (
+    <SettingsGroup title="Templates">
+      <SettingsRow icon={Stamp} label="Templates" hint="Saved Task shapes you start new Tasks from.">
+        <Button variant="secondary" onClick={() => navigate({ kind: "templates" }, "pointer")}>
+          Open
+        </Button>
+      </SettingsRow>
+    </SettingsGroup>
+  );
+};
+
 export const SettingsScreen = () => {
   const mac = useMac();
   const state = useMacState(mac);
@@ -217,6 +230,7 @@ export const SettingsScreen = () => {
         <OuraRow />
       </SettingsGroup>
       <FeaturesSection />
+      <TemplatesSection />
       <SettingsGroup title="Keyboard">
         <SettingsRow icon={Keyboard} label="Keyboard shortcuts" hint="Every key that works where you are.">
           <KeyCombo keys="?" />

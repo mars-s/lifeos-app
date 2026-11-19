@@ -1,16 +1,13 @@
 "use client";
 
-import { CalendarCheck, CaretRight } from "@phosphor-icons/react";
+import { CaretRight } from "@phosphor-icons/react";
 import type { OptimisticLocalStore } from "convex/browser";
 import { api } from "@lifeos/backend/api";
 import { useState } from "react";
 import type { CalendarsView } from "@lifeos/backend/types";
-import { Popover } from "@/components/ui/popover-panel";
 import { Switch } from "@/components/ui/choice-controls";
-import { formatClock } from "@/components/lifeos/format";
 import { useChange } from "./changes";
-import { timeAgo } from "./dates";
-import { useNow, useQuietView } from "./hooks";
+import { useQuietView } from "./hooks";
 
 type CalendarRow = CalendarsView["calendars"][number];
 
@@ -36,17 +33,6 @@ const groupBySource = (calendars: readonly CalendarRow[]) => {
   const groups = new Map<string, CalendarRow[]>();
   for (const calendar of calendars) groups.set(calendar.source, [...(groups.get(calendar.source) ?? []), calendar]);
   return [...groups];
-};
-
-const SyncLine = ({ syncedAt }: { syncedAt: number | null }) => {
-  const now = useNow();
-  return (
-    <p className="px-2.5 pb-2 text-small text-pretty text-muted-foreground">
-      {syncedAt === null
-        ? "Open LifeOS on your Mac and allow calendar access to bring in Apple Calendar."
-        : `Read from Apple Calendar on your Mac ${now === null ? "" : timeAgo(syncedAt, Math.max(now, syncedAt))}. Calendars that are on count against your free time.`}
-    </p>
-  );
 };
 
 export const CalendarSwitches = ({ className }: { className?: string }) => {
@@ -119,39 +105,5 @@ const CalendarGroup = ({
         </ul>
       </div>
     </section>
-  );
-};
-
-export const CalendarsButton = () => {
-  const view = useQuietView(api.calendar.calendars.list, {});
-  const hours = useQuietView(api.calendar.workingHours.get, {});
-  return (
-    <Popover
-      side="top"
-      align="end"
-      title="Calendars"
-      className="w-[18.5rem] p-1.5"
-      trigger={
-        <button
-          type="button"
-          aria-label="Calendars"
-          title="Calendars"
-          className="grid size-8 shrink-0 place-items-center rounded-lg text-faint-foreground transition-[background-color,color,scale] duration-(--dur-press) ease-out hover:bg-foreground/[0.06] hover:text-foreground active:scale-[0.94] aria-expanded:bg-foreground/[0.06] aria-expanded:text-foreground"
-        >
-          <CalendarCheck weight="fill" className="size-4" aria-hidden="true" />
-        </button>
-      }
-    >
-      <SyncLine syncedAt={view?.syncedAt ?? null} />
-      <CalendarSwitches className="max-h-80 overflow-y-auto overscroll-contain" />
-      {hours && (
-        <p className="px-2.5 pt-1 pb-1.5 text-small text-muted-foreground">
-          Working hours{" "}
-          <span className="font-mono text-foreground tabular-nums">
-            {formatClock(hours.startMinute)} to {formatClock(hours.endMinute)}
-          </span>
-        </p>
-      )}
-    </Popover>
   );
 };
