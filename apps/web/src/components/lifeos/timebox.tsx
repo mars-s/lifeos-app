@@ -566,11 +566,11 @@ export const Timebox = ({
           {now && (
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute z-10 flex items-center"
+              className="pointer-events-none absolute z-10 flex h-0 items-center"
               style={{ top: toPx(now.minute), left: `${(now.day * 100) / count}%`, width: `${100 / count}%` }}
             >
-              <span className="-ml-1 size-2 -translate-y-1/2 rounded-full bg-brand" />
-              <span className="h-[1.5px] flex-1 -translate-y-1/2 bg-brand" />
+              <span className="-ml-1 size-2 shrink-0 rounded-full bg-brand" />
+              <span className="h-[1.5px] flex-1 bg-brand" />
             </div>
           )}
         </div>
