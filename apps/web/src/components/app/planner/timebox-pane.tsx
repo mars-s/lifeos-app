@@ -12,7 +12,7 @@ import { MorphText } from "@/components/ui/morph-text";
 import { Segmented } from "@/components/ui/segmented-control";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
-import { dayMonth, dayNumber, localDate, minuteOfDay, momentAt, monthYear, startOfWeek, weekdayShort } from "../dates";
+import { dayMonth, dayNumber, localDate, minuteOfDay, momentAt, monthShort, monthYear, monthYearShort, startOfWeek, weekdayShort } from "../dates";
 import { useNow } from "../hooks";
 import { useSelectionActions } from "../selection-actions";
 import { SleepButton } from "../sleep-setting";
@@ -129,28 +129,41 @@ export const TimeboxPane = ({
     ...(pendingDay === -1 || !smart.pending ? [] : fillPreviews(smart.pending.fill, pendingDay)),
   ];
   const rowOf = (id: string) => data.rows.find((row) => row._id === id);
-  const label = mode === "day" ? `${weekdayShort(anchor)} ${dayMonth(anchor)}` : first.slice(0, 7) === last.slice(0, 7) ? monthYear(first) : `${dayMonth(first)} to ${dayMonth(last)}`;
+  const sameMonth = first.slice(0, 7) === last.slice(0, 7);
+  const [label, shortLabel] =
+    mode === "day"
+      ? [`${weekdayShort(anchor)} ${dayMonth(anchor)}`, dayMonth(anchor)]
+      : sameMonth
+        ? [monthYear(first), monthYearShort(first)]
+        : [`${dayMonth(first)} to ${dayMonth(last)}`, `${monthShort(first)} to ${monthShort(last)}`];
 
   return (
     <section aria-label="Timebox" className={cn("relative min-h-0 flex-col", className)}>
-      <header className="mb-2 flex h-8 shrink-0 items-center gap-1 pr-3 pl-4">
-        <h2 className="min-w-0 flex-1 truncate text-heading font-semibold">
+      <header className="@container mb-2 flex min-h-8 shrink-0 flex-wrap items-center gap-x-1 gap-y-1.5 pr-3 pl-4">
+        <h2 className="min-w-0 truncate text-heading font-semibold">
           <span className="sr-only">Timebox, </span>
-          <MorphText>{label}</MorphText>
+          <span className="hidden @lg:inline">
+            <MorphText>{label}</MorphText>
+          </span>
+          <span className="@lg:hidden">
+            <MorphText>{shortLabel}</MorphText>
+          </span>
         </h2>
-        {!showsToday && (
-          <button
-            type="button"
-            onClick={() => onView({ mode, anchor: today })}
-            className="h-7 rounded-full px-2.5 text-small font-medium text-brand transition-[background-color,scale] duration-(--dur-press) ease-out hover:bg-brand/[0.1] active:scale-[0.97]"
-          >
-            Today
-          </button>
-        )}
-        <IconButton icon={CaretLeft} iconWeight="bold" label={`Previous ${span}`} onClick={() => onView({ mode, anchor: addDays(anchor, -step) })} />
-        <IconButton icon={CaretRight} iconWeight="bold" label={`Next ${span}`} onClick={() => onView({ mode, anchor: addDays(anchor, step) })} />
-        <SleepButton today={today} />
-        <Segmented label="Timebox view" options={modes(narrow)} value={mode} onValueChange={(next) => onView({ mode: next, anchor })} className="ml-1" />
+        <div className="ml-auto flex items-center gap-1">
+          {!showsToday && (
+            <button
+              type="button"
+              onClick={() => onView({ mode, anchor: today })}
+              className="h-7 rounded-full px-2.5 text-small font-medium text-brand transition-[background-color,scale] duration-(--dur-press) ease-out hover:bg-brand/[0.1] active:scale-[0.97]"
+            >
+              Today
+            </button>
+          )}
+          <IconButton icon={CaretLeft} iconWeight="bold" label={`Previous ${span}`} onClick={() => onView({ mode, anchor: addDays(anchor, -step) })} />
+          <IconButton icon={CaretRight} iconWeight="bold" label={`Next ${span}`} onClick={() => onView({ mode, anchor: addDays(anchor, step) })} />
+          <SleepButton today={today} />
+          <Segmented label="Timebox view" options={modes(narrow)} value={mode} onValueChange={(next) => onView({ mode: next, anchor })} className="ml-1" />
+        </div>
       </header>
       {spread && <SpreadBar spread={spread} isToday={spread.date === today} onApply={onApplySpread} onCancel={onCancelSpread} />}
       {smart.draft && (
