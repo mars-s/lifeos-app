@@ -242,7 +242,7 @@ One stretch of timed work, or one Pomodoro Break, on one Task.
 | `plannedMinutes` | Optional. Missing on a Stopwatch session, which counts up |
 | `pausedMs` | Milliseconds spent paused so far, not counting a pause still open |
 | `state` | `running`, `paused { at }` or `ended { at }` |
-| `pomodoro` | Optional `{ focusMinutes, breakMinutes }`: the lengths the next step of the cycle uses |
+| `pomodoro` | Optional `{ focusMinutes, breakMinutes, longBreakMinutes?, round? }`: the lengths the next step of the cycle uses, and which Pomodoro of four this is (1 when missing). The Break after round 4 is the Long Break |
 | `removedAt` | Optional moment. Set when a session is removed from a Task's history, so undo restores the same row |
 
 | Index | Serves |
@@ -252,6 +252,10 @@ One stretch of timed work, or one Pomodoro Break, on one Task.
 | `by_state` (`state.kind`) | The one running or paused session |
 
 The clock is never stored and no server tick runs. `shared/focus.ts` works every figure out from these fields and the current time: focused time is the end (or now) minus `start` minus `pausedMs`, capped at `plannedMinutes`. The web app and the backend share that file (`@lifeos/backend/focus`), so a pill in two tabs and the stored Actual Time always agree. A session whose planned time has run out stays as it is until Avi finishes it, extends it or starts a Break. It gains no more time while it waits.
+
+### `focusPlan`
+
+One row, absent until Avi chooses: `mode` (`open` for Stopwatch, or `pomodoro`), `focusMinutes`, `breakMinutes`, `longBreakMinutes`. It is the Focus Plan the next session starts with, kept in Convex so the Mac app, the web and the iPhone agree. The default is a Stopwatch, with 25, 5 and 15 minutes ready for Pomodoro. `planner/focus:plan` reads it and `choosePlan` changes it (an undoable change, like any other). An agent's `start_focus` with `minutes` uses its Break and Long Break lengths.
 
 ### `estimateSuggestions`
 

@@ -180,3 +180,50 @@ test("completing or trashing the Task ends its Focus Session, and a closed Task 
     ok: false,
   });
 });
+
+test("every fourth Pomodoro is followed by the long break, then the count starts again", async () => {
+  const { t, first, current, begin } = await setup();
+  const plan = { kind: "pomodoro", focusMinutes: 25, breakMinutes: 5, longBreakMinutes: 20 } as const;
+  let { sessionId } = await begin(first, plan);
+  const breaks: number[] = [];
+  for (let step = 0; step < 10; step += 1) {
+    after(1);
+    sessionId = unwrap(await t.mutation(api.planner.focus.advance, { sessionId })).sessionId;
+    const session = await current();
+    if (session?.kind === "break") breaks.push(session.plannedMinutes ?? 0);
+  }
+  expect(breaks).toEqual([5, 5, 5, 20, 5]);
+  expect(await current()).toMatchObject({ kind: "focus", plannedMinutes: 25, pomodoro: { round: 2 } });
+
+  unwrap(await t.mutation(api.planner.focus.stop, { sessionId }));
+  let { sessionId: plain } = await begin(first, pomodoro);
+  const plainBreaks: number[] = [];
+  for (let step = 0; step < 8; step += 1) {
+    after(1);
+    plain = unwrap(await t.mutation(api.planner.focus.advance, { sessionId: plain })).sessionId;
+    const session = await current();
+    if (session?.kind === "break") plainBreaks.push(session.plannedMinutes ?? 0);
+  }
+  expect(plainBreaks).toEqual([5, 5, 5, 5]);
+});
+
+test("the last Focus plan lives in Convex, so every device starts the same way, and choosing can be undone", async () => {
+  const { t } = await setup();
+  expect(await t.query(api.planner.focus.plan, {})).toEqual({ mode: "open", focusMinutes: 25, breakMinutes: 5, longBreakMinutes: 15 });
+
+  const chosen = { mode: "pomodoro", focusMinutes: 40, breakMinutes: 8, longBreakMinutes: 25 } as const;
+  unwrap(await t.mutation(api.planner.focus.choosePlan, chosen));
+  expect(await t.query(api.planner.focus.plan, {})).toEqual(chosen);
+
+  const again = unwrap(await t.mutation(api.planner.focus.choosePlan, { ...chosen, mode: "open" }));
+  expect(await t.query(api.planner.focus.plan, {})).toMatchObject({ mode: "open", focusMinutes: 40 });
+  unwrap(await t.mutation(api.platform.undo.undo, { activityId: again.activityId! }));
+  expect(await t.query(api.planner.focus.plan, {})).toEqual(chosen);
+
+  expect(await t.mutation(api.planner.focus.choosePlan, { ...chosen, breakMinutes: 2.5 })).toEqual({
+    ok: false,
+    error: { kind: "invalid_focus", reason: "minutes" },
+  });
+  expect(await t.mutation(api.planner.focus.choosePlan, { ...chosen, longBreakMinutes: 0 })).toMatchObject({ ok: false });
+  expect(await t.query(api.planner.focus.plan, {})).toEqual(chosen);
+});

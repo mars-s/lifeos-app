@@ -7,17 +7,22 @@ import { ownerQuery } from "../platform/access";
 import type { Recorder } from "../platform/activity";
 import { changeMutation } from "../platform/change";
 import {
+  DEFAULT_FOCUS_PLAN,
   MAX_EXTEND_MINUTES,
   MAX_FOCUS_MINUTES,
   MINUTE_MS,
   endInstant,
   focusedMs,
   isTimeUp,
+  nextStep,
   overtimeMs,
+  stepMinutes,
   type FocusPlan,
+  type FocusPlanChoice,
+  type Pomodoro,
 } from "../../shared/focus";
 import { load, type PlannerError } from "./model";
-import { vFocusPlan } from "./tables";
+import { vFocusPlan, vFocusPlanChoice } from "./tables";
 
 type Session = Doc<"focusSessions">;
 type SessionFields = Partial<WithoutSystemFields<Session>>;
@@ -29,10 +34,15 @@ const refuse = <T>(reason: FocusRefusal) => err<T, PlannerError>({ kind: "invali
 
 const isMinutes = (minutes: number, max: number) => Number.isInteger(minutes) && minutes > 0 && minutes <= max;
 
+const isLength = (minutes: number | undefined) => minutes === undefined || isMinutes(minutes, MAX_FOCUS_MINUTES);
+
 const parsePlan = (plan: FocusPlan) =>
-  plan.kind === "open" || (isMinutes(plan.focusMinutes, MAX_FOCUS_MINUTES) && isMinutes(plan.breakMinutes, MAX_FOCUS_MINUTES))
+  plan.kind === "open" || (isMinutes(plan.focusMinutes, MAX_FOCUS_MINUTES) && isLength(plan.breakMinutes) && isLength(plan.longBreakMinutes))
     ? ok<FocusPlan, PlannerError>(plan)
     : refuse<FocusPlan>("minutes");
+
+const lengthsOf = ({ focusMinutes, breakMinutes, longBreakMinutes }: Pomodoro) =>
+  ({ focusMinutes, breakMinutes, ...(longBreakMinutes === undefined ? {} : { longBreakMinutes }) }) satisfies Pomodoro;
 
 export const activeSession = async (ctx: QueryCtx) =>
   (await ctx.db
@@ -78,19 +88,14 @@ const loadEnded = async (ctx: QueryCtx, sessionId: Id<"focusSessions">) =>
     session.state.kind === "ended" ? ok<Session, PlannerError>(session) : refuse<Session>("not_ended"),
   );
 
-const sessionFor = (taskId: Id<"tasks">, plan: FocusPlan, kind: Session["kind"], now: number) =>
+const sessionFor = (taskId: Id<"tasks">, pomodoro: Pomodoro | undefined, kind: Session["kind"], now: number) =>
   ({
     taskId,
     kind,
     start: now,
     pausedMs: 0,
     state: { kind: "running" },
-    ...(plan.kind === "pomodoro"
-      ? {
-          plannedMinutes: kind === "focus" ? plan.focusMinutes : plan.breakMinutes,
-          pomodoro: { focusMinutes: plan.focusMinutes, breakMinutes: plan.breakMinutes },
-        }
-      : {}),
+    ...(pomodoro ? { plannedMinutes: stepMinutes(pomodoro, kind), pomodoro } : {}),
   }) satisfies WithoutSystemFields<Session>;
 
 export const start = changeMutation({
@@ -106,7 +111,8 @@ export const start = changeMutation({
     if (current?.taskId === taskId && current.kind === "focus" && !isTimeUp(current, now))
       return ok<Started, PlannerError>({ sessionId: current._id, replaced: null });
     if (current) await end(record, current, now);
-    const sessionId = await record.insert("focusSessions", sessionFor(taskId, valid.value, "focus", now));
+    const pomodoro = valid.value.kind === "pomodoro" ? { ...lengthsOf(valid.value), round: 1 } : undefined;
+    const sessionId = await record.insert("focusSessions", sessionFor(taskId, pomodoro, "focus", now));
     return ok<Started, PlannerError>({ sessionId, replaced: current?._id ?? null });
   },
 });
@@ -169,9 +175,11 @@ export const setPlan = changeMutation({
       const valid = parsePlan(plan);
       if (valid.isErr()) return refuse<SessionFields>("minutes");
       if (valid.value.kind === "open") return ok<SessionFields, PlannerError>({ plannedMinutes: undefined, pomodoro: undefined });
-      const { focusMinutes, breakMinutes } = valid.value;
       const worked = Math.ceil(focusedMs({ ...session, plannedMinutes: undefined }, now) / MINUTE_MS);
-      return ok<SessionFields, PlannerError>({ plannedMinutes: Math.max(focusMinutes, worked), pomodoro: { focusMinutes, breakMinutes } });
+      return ok<SessionFields, PlannerError>({
+        plannedMinutes: Math.max(valid.value.focusMinutes, worked),
+        pomodoro: { ...lengthsOf(valid.value), round: session.pomodoro?.round ?? 1 },
+      });
     }),
 });
 
@@ -194,12 +202,12 @@ export const advance = changeMutation({
     if (session.isErr()) return err<Started, PlannerError>(session.error);
     const { taskId, kind, pomodoro } = session.value;
     if (!pomodoro) return refuse<Started>("not_pomodoro");
-    const next = kind === "focus" ? "break" : "focus";
-    const task = next === "focus" ? await loadOpenTask(ctx, taskId) : await load(ctx, "tasks", taskId);
+    const next = nextStep(pomodoro, kind);
+    const task = next.kind === "focus" ? await loadOpenTask(ctx, taskId) : await load(ctx, "tasks", taskId);
     if (task.isErr()) return err<Started, PlannerError>(task.error);
     const now = Date.now();
     await end(record, session.value, now);
-    const nextId = await record.insert("focusSessions", sessionFor(taskId, { kind: "pomodoro", ...pomodoro }, next, now));
+    const nextId = await record.insert("focusSessions", sessionFor(taskId, next.pomodoro, next.kind, now));
     return ok<Started, PlannerError>({ sessionId: nextId, replaced: sessionId });
   },
 });
@@ -230,6 +238,31 @@ export const remove = changeMutation({
     const session = await loadEnded(ctx, sessionId);
     if (session.isErr()) return err<Changed, PlannerError>(session.error);
     return ok<Changed, PlannerError>({ changed: await record.patch("focusSessions", sessionId, { removedAt: Date.now() }) });
+  },
+});
+
+export const planChoiceOf = async (ctx: QueryCtx) => {
+  const row = await ctx.db.query("focusPlan").first();
+  if (!row) return DEFAULT_FOCUS_PLAN;
+  const { mode, focusMinutes, breakMinutes, longBreakMinutes } = row;
+  return { mode, focusMinutes, breakMinutes, longBreakMinutes } satisfies FocusPlanChoice;
+};
+
+export const plan = ownerQuery({
+  args: {},
+  handler: planChoiceOf,
+});
+
+export const choosePlan = changeMutation({
+  action: "focus.choosePlan",
+  args: vFocusPlanChoice.fields,
+  handler: async (ctx, choice, record) => {
+    const lengths = [choice.focusMinutes, choice.breakMinutes, choice.longBreakMinutes];
+    if (!lengths.every((minutes) => isMinutes(minutes, MAX_FOCUS_MINUTES))) return refuse<Changed>("minutes");
+    const row = await ctx.db.query("focusPlan").first();
+    if (row) return ok<Changed, PlannerError>({ changed: await record.patch("focusPlan", row._id, choice) });
+    await record.insert("focusPlan", choice);
+    return ok<Changed, PlannerError>({ changed: true });
   },
 });
 

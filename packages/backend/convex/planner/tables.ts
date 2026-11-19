@@ -30,12 +30,18 @@ export const vFocusState = v.union(
   v.object({ kind: v.literal("ended"), at: v.number() }),
 );
 
-export const vPomodoro = v.object({ focusMinutes: v.number(), breakMinutes: v.number() });
+const pomodoroLengths = { focusMinutes: v.number(), breakMinutes: v.number(), longBreakMinutes: v.optional(v.number()) };
 
-export const vFocusPlan = v.union(
-  v.object({ kind: v.literal("open") }),
-  v.object({ kind: v.literal("pomodoro"), ...vPomodoro.fields }),
-);
+export const vPomodoro = v.object({ ...pomodoroLengths, round: v.optional(v.number()) });
+
+export const vFocusPlan = v.union(v.object({ kind: v.literal("open") }), v.object({ kind: v.literal("pomodoro"), ...pomodoroLengths }));
+
+export const vFocusPlanChoice = v.object({
+  mode: v.union(v.literal("open"), v.literal("pomodoro")),
+  focusMinutes: v.number(),
+  breakMinutes: v.number(),
+  longBreakMinutes: v.number(),
+});
 
 export const vSmartEstimateError = v.union(
   v.object({ kind: v.literal("not_configured") }),
@@ -287,6 +293,7 @@ export const plannerTables = {
     .index("by_task_start", ["taskId", "start"])
     .index("by_start", ["start"])
     .index("by_state", ["state.kind"]),
+  focusPlan: defineTable(vFocusPlanChoice),
   estimateSuggestions: defineTable({
     taskId: v.id("tasks"),
     requestedAt: v.number(),

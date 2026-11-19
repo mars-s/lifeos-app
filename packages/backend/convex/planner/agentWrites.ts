@@ -24,7 +24,6 @@ import { agentDate, agentId, agentTimeZone, detail, loadTaskRow, vTaskDetail } f
 import { vRepeatEnd, vSchedule, type Parent, type When } from "./tables";
 
 const MAX_CHECKLIST_ADD = 50;
-const POMODORO_BREAK_MINUTES = 5;
 
 const refusals: Record<string, (error: Record<string, unknown>) => string> = {
   not_found: (error) => `No ${String(error.table)} has the id "${String(error.id)}".`,
@@ -312,12 +311,10 @@ export const startFocus = agentMutation({
   args: { taskId: v.string(), minutes: v.optional(v.number()) },
   handler: async (ctx, args, run) => {
     const write = await writer(ctx, run);
+    const { breakMinutes, longBreakMinutes } = await focus.planChoiceOf(ctx);
     const { sessionId } = await write.change(focus.start, {
       taskId: agentId(ctx, "tasks", args.taskId, "Task"),
-      plan:
-        args.minutes === undefined
-          ? { kind: "open" }
-          : { kind: "pomodoro", focusMinutes: args.minutes, breakMinutes: POMODORO_BREAK_MINUTES },
+      plan: args.minutes === undefined ? { kind: "open" } : { kind: "pomodoro", focusMinutes: args.minutes, breakMinutes, longBreakMinutes },
     });
     return { ...write.receipt(), sessionId: sessionId as string };
   },

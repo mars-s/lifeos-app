@@ -31,6 +31,7 @@ const SEEDED = [
   "checklistItems",
   "workBlocks",
   "focusSessions",
+  "focusPlan",
   "recurrenceRules",
   "templates",
   "thingsSync",
@@ -69,6 +70,15 @@ export const rewindFocus = internalMutation({
   handler: async (ctx, { minutes }) => {
     const session = await activeSession(ctx);
     if (session) await ctx.db.patch("focusSessions", session._id, { start: session.start - minutes * 60_000 });
+    return null;
+  },
+});
+
+export const focusPlan = internalMutation({
+  args: { mode: v.union(v.literal("open"), v.literal("pomodoro")) },
+  handler: async (ctx, { mode }) => {
+    for (const row of await ctx.db.query("focusPlan").collect()) await ctx.db.delete("focusPlan", row._id);
+    await ctx.db.insert("focusPlan", { mode, focusMinutes: 25, breakMinutes: 5, longBreakMinutes: 15 });
     return null;
   },
 });

@@ -61,7 +61,9 @@ _Avoid_: target, quota.
 
 **Focus Session**: a stretch of timed work on one Task. Only one runs at a time. It can be paused, and paused time does not count. A Stopwatch session counts up until it is stopped. A Pomodoro session has a planned length, then offers a Break.
 
-**Break**: the rest between two Pomodoro Focus Sessions on the same Task. It never counts as Actual Time.
+**Break**: the rest between two Pomodoro Focus Sessions on the same Task. It never counts as Actual Time. Every fourth Break is a **Long Break**, with its own length. Stopping the Pomodoro starts the count of four again.
+
+**Focus Plan**: the way the next Focus Session runs, Stopwatch or Pomodoro, with its focus, Break and Long Break lengths. It is stored once, so every device starts the same way.
 
 **Actual Time**: the sum of a Task's Focus Sessions, without Breaks, pauses or time past a planned length. Compared with its Estimate.
 
