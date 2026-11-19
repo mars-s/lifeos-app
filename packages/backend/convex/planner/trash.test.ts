@@ -113,3 +113,21 @@ test("a Task deleted forever does not come back with the next Things Import", as
   expect(await rows()).toEqual([]);
   expect(await t.run(async (ctx) => (await ctx.db.query("tasks").withIndex("by_things_id", (q) => q.eq("things.id", "things-task-1")).collect()).length)).toBe(0);
 });
+
+test("deleting a Task forever also forgets its Smart Estimate, steps and Trip", async () => {
+  const { t, loose } = await setup();
+  await t.run(async (ctx) => {
+    const at = Date.now();
+    await ctx.db.insert("estimateSuggestions", { taskId: loose, requestedAt: at, outcome: { kind: "waiting" } });
+    await ctx.db.insert("stepSuggestions", { taskId: loose, requestedAt: at, outcome: { kind: "waiting" } });
+    await ctx.db.insert("taskTrips", { taskId: loose, requestedAt: at, outcome: { kind: "waiting", query: "dentist" }, choice: { kind: "nearest" } });
+  });
+  unwrap(await t.mutation(api.planner.selection.trash, { taskIds: [loose] }));
+  unwrap(await t.mutation(api.planner.trash.deleteForever, { items: [{ kind: "task", id: loose }] }));
+  const left = await t.run(async (ctx) => [
+    (await ctx.db.query("estimateSuggestions").collect()).length,
+    (await ctx.db.query("stepSuggestions").collect()).length,
+    (await ctx.db.query("taskTrips").collect()).length,
+  ]);
+  expect(left).toEqual([0, 0, 0]);
+});

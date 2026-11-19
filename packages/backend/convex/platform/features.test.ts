@@ -87,3 +87,37 @@ describe("the Feature registry", () => {
     ).rejects.toThrow(/not your LifeOS/);
   });
 });
+
+describe("changing a Feature", () => {
+  test("configuring a Feature Avi never touched keeps its default switch, records once, and undo leaves no row", async () => {
+    const t = await newBackend();
+    const walk = unwrap(await t.mutation(api.platform.features.configure, { choice: { feature: "places", settings: { travelMode: "walk" } } }));
+    expect(await stateOf(t, "places")).toMatchObject({ enabled: false, settings: { travelMode: "walk" }, status: { kind: "off" } });
+    expect(unwrap(await t.mutation(api.platform.features.configure, { choice: { feature: "places", settings: { travelMode: "walk" } } }))).toEqual({
+      changed: false,
+      activityId: null,
+    });
+    unwrap(await t.mutation(api.platform.undo.undo, { activityId: walk.activityId! }));
+    expect(await t.run((ctx) => ctx.db.query("features").collect())).toEqual([]);
+    expect(await stateOf(t, "places")).toEqual({ feature: "places", enabled: false, settings: { travelMode: "drive" }, status: { kind: "off" } });
+  });
+
+  test("switching a Feature off keeps its settings, and switching it back on finds them", async () => {
+    const t = await newBackend();
+    unwrap(await t.mutation(api.platform.features.configure, { choice: { feature: "places", settings: { travelMode: "cycle" } } }));
+    unwrap(await t.mutation(api.platform.features.setEnabled, { feature: "places", enabled: true }));
+    unwrap(await t.mutation(api.platform.features.setEnabled, { feature: "places", enabled: false }));
+    unwrap(await t.mutation(api.platform.features.setEnabled, { feature: "places", enabled: true }));
+    expect(await stateOf(t, "places")).toMatchObject({ enabled: true, settings: { travelMode: "cycle" } });
+  });
+
+  test("a saved key counts for AI only while the sealing key is set", async () => {
+    vi.stubEnv("OPENAI_API_KEY", undefined);
+    const t = await newBackend();
+    unwrap(await t.mutation(api.platform.features.setEnabled, { feature: "ai", enabled: true }));
+    await t.run((ctx) => ctx.db.insert("secrets", { name: "openai", iv: "aXY=", ciphertext: "Y2lwaGVy", last4: "abcd", savedAt: 1 }));
+    expect((await stateOf(t, "ai"))?.status).toEqual({ kind: "needs_key" });
+    vi.stubEnv("LIFEOS_SECRETS_KEY", "c2VhbGluZw==");
+    expect((await stateOf(t, "ai"))?.status).toEqual({ kind: "ready" });
+  });
+});

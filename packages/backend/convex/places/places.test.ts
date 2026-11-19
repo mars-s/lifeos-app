@@ -337,3 +337,261 @@ describe("only Avi", () => {
     await expect(stranger.mutation(api.places.trips.dismiss, { taskId })).rejects.toThrow(/not your LifeOS/);
   });
 });
+
+const tripRow = (t: Backend, taskId: Id<"tasks">) =>
+  t.run((ctx) =>
+    ctx.db
+      .query("taskTrips")
+      .withIndex("by_task", (q) => q.eq("taskId", taskId))
+      .unique(),
+  );
+
+describe("Saved Places when the geocoder fails", () => {
+  test.each([
+    ["is unreachable", () => HttpResponse.error(), { kind: "unreachable" }],
+    ["answers 500", () => HttpResponse.json({}, { status: 500 }), { kind: "unavailable", status: 500 }],
+    ["rate limits", () => HttpResponse.json({}, { status: 429 }), { kind: "unavailable", status: 429 }],
+    ["sends malformed JSON", () => new HttpResponse("{not json", { headers: { "content-type": "application/json" } }), { kind: "invalid_response" }],
+    ["sends an object instead of a list", () => HttpResponse.json({ error: "Bad" }), { kind: "invalid_response" }],
+    ["sends a match without coordinates", () => HttpResponse.json([{ lat: "north", lon: "151.2" }]), { kind: "invalid_response" }],
+    ["sends a match that is not an object", () => HttpResponse.json(["Haymarket"]), { kind: "invalid_response" }],
+  ])("a geocoder that %s is a typed error and nothing is stored", async (_, answer, error) => {
+    const t = await newBackend();
+    world();
+    outside.use(http.get(NOMINATIM_URL, answer));
+    expect(await t.action(api.places.saved.save, { label: "home", address: ADDRESS })).toEqual({ ok: false, error });
+    expect(await t.query(api.places.saved.list, {})).toEqual([]);
+  });
+
+  test("forgetting a place that was never saved changes nothing, and forgetting Home makes Places ask for it again", async () => {
+    const t = await newBackend();
+    world();
+    await placesReady(t);
+    expect(await t.action(api.places.saved.remove, { label: "uni" })).toBeNull();
+    expect((await t.query(api.places.saved.list, {})).map(({ label }) => label)).toEqual(["home"]);
+    const taskId = await newTask(t, "Get moleskine notebooks from officeworks");
+    expect(await tripOf(t, taskId)).toMatchObject({ kind: "trip" });
+
+    await t.action(api.places.saved.remove, { label: "home" });
+    const places = (await t.query(api.platform.features.list, {})).find(({ feature }) => feature === "places");
+    expect(places?.status).toEqual({ kind: "needs_setup", setup: "home" });
+    expect(await tripOf(t, taskId)).toBeNull();
+    expect(await t.mutation(api.places.trips.request, { taskId })).toEqual({ requested: false });
+  });
+});
+
+describe("a Trip when a provider fails", () => {
+  test.each([
+    ["is rate limited", () => HttpResponse.json({}, { status: 429 }), { kind: "rate_limited" }],
+    ["refuses the request", () => HttpResponse.json({}, { status: 403 }), { kind: "unauthorised" }],
+    ["is unreachable", () => HttpResponse.error(), { kind: "unavailable" }],
+    ["sends malformed JSON", () => new HttpResponse("<html>", { headers: { "content-type": "application/json" } }), { kind: "invalid_response" }],
+    ["sends no elements", () => HttpResponse.json({ remark: "nothing" }), { kind: "invalid_response" }],
+  ])("a search that %s fails with a typed error and names the place it looked for", async (_, answer, error) => {
+    const t = await newBackend();
+    world();
+    await placesReady(t);
+    outside.use(http.post(OVERPASS_URL, answer));
+    const taskId = await newTask(t, "Get moleskine notebooks from officeworks");
+    expect(await tripOf(t, taskId)).toEqual({ kind: "failed", query: "officeworks" });
+    expect((await tripRow(t, taskId))?.outcome).toMatchObject({ kind: "failed", error });
+  });
+
+  test.each([
+    ["a refusal", { answers: [{ type: "refusal", name: "needs_trip", refusal: "No." }] }, { kind: "refused" }],
+    ["no answers", { model: "gpt-6-luna" }, { kind: "invalid_response" }],
+    ["a list", [], { kind: "invalid_response" }],
+    ["a predicate without odds", { answers: [{ type: "predicate", name: "needs_trip" }] }, { kind: "invalid_response" }],
+  ])("a model that sends %s is a typed failure and no search is made", async (_, answer, error) => {
+    const t = await newBackend();
+    const { counts } = world();
+    await placesReady(t);
+    outside.use(
+      http.post(DECISIONS_URL, async ({ request }) =>
+        (await request.text()).includes("needs_trip") ? HttpResponse.json(answer) : HttpResponse.json({}, { status: 503 }),
+      ),
+    );
+    const taskId = await newTask(t, "Get moleskine notebooks from officeworks");
+    expect(await tripOf(t, taskId)).toBeNull();
+    expect((await tripRow(t, taskId))?.outcome).toMatchObject({ kind: "failed", error });
+    expect(counts.overpass).toBe(0);
+  });
+
+  test("when routing fails the nearest branches are still shown, by straight-line distance and without a travel time", async () => {
+    const t = await newBackend();
+    world();
+    await placesReady(t);
+    outside.use(http.get(`${ROUTING_URL}/:profile/table/v1/driving/:points`, () => HttpResponse.json({ code: "InvalidQuery" }, { status: 400 })));
+    const taskId = await newTask(t, "Get moleskine notebooks from officeworks");
+    const trip = await tripOf(t, taskId);
+    if (trip?.kind !== "trip") throw new Error("expected a Trip");
+    expect(trip.chosen).toMatchObject({ key: "node/2", suburb: "Ultimo" });
+    expect(trip.chosen.travel).toBeUndefined();
+    expect(trip.places.map((place) => place.straightMetres)).toEqual(trip.places.map((place) => place.straightMetres).toSorted((a, b) => a - b));
+  });
+
+  test("routing that answers Ok without a duration table keeps the branches without travel time", async () => {
+    const t = await newBackend();
+    world();
+    await placesReady(t);
+    outside.use(http.get(`${ROUTING_URL}/:profile/table/v1/driving/:points`, () => HttpResponse.json({ code: "Ok", durations: [] })));
+    const taskId = await newTask(t, "Get moleskine notebooks from officeworks");
+    expect(await tripOf(t, taskId)).toMatchObject({ kind: "trip", chosen: { key: "node/2" } });
+  });
+
+  test("elements without a name or a position are left out", () => {
+    const body = {
+      elements: [
+        null,
+        { type: "node", id: 1, lat: -33.88, lon: 151.2 },
+        { type: "node", id: 2, tags: { name: "No position" } },
+        { type: "node", id: "3", lat: -33.88, lon: 151.2, tags: { name: "Odd id" } },
+        { type: "node", id: 4, lat: -33.88, lon: 151.2, tags: { brand: "Officeworks", "addr:city": "Officeworks" } },
+      ],
+    };
+    expect(nearestPlaces(body, HOME)._unsafeUnwrap()).toEqual([
+      { key: "node/4", name: "Officeworks", position: { lat: -33.88, lon: 151.2 }, straightMetres: expect.any(Number) },
+    ]);
+    expect(nearestPlaces([], HOME)._unsafeUnwrapErr()).toEqual({ kind: "invalid_response" });
+  });
+});
+
+describe("a Trip when the Task changes under it", () => {
+  test("a Task renamed while the model is answering gets the Trip for its new title, not the old one", async () => {
+    const t = await newBackend();
+    world();
+    await placesReady(t);
+    let taskId: Id<"tasks"> | undefined;
+    const asked: string[] = [];
+    outside.use(
+      http.post(DECISIONS_URL, async ({ request }) => {
+        const body = await request.text();
+        if (!body.includes("needs_trip")) return HttpResponse.json({}, { status: 503 });
+        asked.push(body);
+        if (asked.length === 1 && taskId) unwrap(await t.mutation(api.planner.tasks.rename, { taskId, title: "Buy paint at Bunnings" }));
+        const place = body.includes("Bunnings") ? "Bunnings" : "officeworks";
+        return HttpResponse.json({ answers: [{ type: "predicate", name: "needs_trip", probability: 0.9 }, { type: "choice", name: "place", choice: place }] });
+      }),
+    );
+    taskId = unwrap(await t.mutation(api.planner.tasks.create, { title: "Get moleskine notebooks from officeworks" })).taskId;
+    await settle(t);
+    expect(asked).toHaveLength(2);
+    expect(await tripOf(t, taskId)).toMatchObject({ kind: "trip", query: "Bunnings" });
+  });
+
+  test("a Task deleted before its lookup runs leaves no Trip behind and asks nothing", async () => {
+    const t = await newBackend();
+    const { counts } = world();
+    await placesReady(t);
+    const { taskId } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Get moleskine notebooks from officeworks" }));
+    await t.run((ctx) => ctx.db.delete("tasks", taskId));
+    await settle(t);
+    expect(counts.decisions).toBe(0);
+    expect(await tripRow(t, taskId)).toBeNull();
+  });
+
+  test("a Task trashed or completed before its lookup runs asks nothing, and asking again is refused", async () => {
+    const t = await newBackend();
+    const { counts } = world();
+    await placesReady(t);
+    const trashed = unwrap(await t.mutation(api.planner.tasks.create, { title: "Get moleskine notebooks from officeworks" })).taskId;
+    const done = unwrap(await t.mutation(api.planner.tasks.create, { title: "Pick up prints at Officeworks" })).taskId;
+    unwrap(await t.mutation(api.planner.tasks.trash, { taskId: trashed }));
+    unwrap(await t.mutation(api.planner.tasks.complete, { taskId: done }));
+    await settle(t);
+    expect(counts.decisions).toBe(0);
+    expect(await tripOf(t, trashed)).toBeNull();
+    expect(await t.mutation(api.places.trips.request, { taskId: trashed })).toEqual({ requested: false });
+    expect(await t.mutation(api.places.trips.request, { taskId: done })).toEqual({ requested: false });
+  });
+
+  test("a lookup stuck for over a minute is asked again when the card opens, and only the newest run answers", async () => {
+    const t = await newBackend();
+    const { counts } = world();
+    await placesReady(t);
+    const { taskId } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Get moleskine notebooks from officeworks" }));
+    expect(await t.mutation(api.places.trips.request, { taskId })).toEqual({ requested: false });
+    vi.setSystemTime(Date.now() + 61_000);
+    expect(await t.mutation(api.places.trips.request, { taskId })).toEqual({ requested: true });
+    await settle(t);
+    expect(counts.decisions).toBe(1);
+    expect(await tripOf(t, taskId)).toMatchObject({ kind: "trip", query: "officeworks" });
+  });
+
+  test("moving Home finds the Trip again from the new Home when the card opens", async () => {
+    const t = await newBackend();
+    world();
+    await placesReady(t);
+    const taskId = await newTask(t, "Get moleskine notebooks from officeworks");
+    outside.use(http.get(NOMINATIM_URL, () => HttpResponse.json([{ lat: "-33.8", lon: "151.18", display_name: "Chatswood, Sydney" }])));
+    expect(unwrap(await t.action(api.places.saved.save, { label: "home", address: "Chatswood" }))).toMatchObject({ found: "Chatswood, Sydney" });
+    expect(await t.mutation(api.places.trips.request, { taskId })).toEqual({ requested: true });
+    await settle(t);
+    const trip = await tripOf(t, taskId);
+    if (trip?.kind !== "trip") throw new Error("expected a Trip");
+    expect(trip.from).toEqual({ lat: -33.8, lon: 151.18 });
+    expect(trip.places.toSorted((a, b) => a.straightMetres - b.straightMetres)[0]?.suburb).toBe("Chatswood");
+  });
+
+  test("a place found nowhere nearby is looked for again once Home moves", async () => {
+    const t = await newBackend();
+    world({ place: "a post office", elements: [] });
+    await placesReady(t);
+    const taskId = await newTask(t, "Post the parcel to Mum");
+    expect(await t.mutation(api.places.trips.request, { taskId })).toEqual({ requested: false });
+    outside.use(http.get(NOMINATIM_URL, () => HttpResponse.json([{ lat: "-33.8", lon: "151.18", display_name: "Chatswood" }])));
+    unwrap(await t.action(api.places.saved.save, { label: "home", address: "Chatswood" }));
+    expect(await t.mutation(api.places.trips.request, { taskId })).toEqual({ requested: true });
+  });
+});
+
+describe("choosing a Trip place", () => {
+  test("with no Trip found there is nothing to choose or dismiss", async () => {
+    const t = await newBackend();
+    world({ trip: 0.05, place: "no particular place" });
+    await placesReady(t);
+    const taskId = await newTask(t, "Email the tutor about the essay");
+    expect(await t.mutation(api.places.trips.choose, { taskId, key: "node/4" })).toEqual({ ok: false, error: { kind: "no_trip" } });
+    expect(await t.mutation(api.places.trips.dismiss, { taskId })).toEqual({ ok: false, error: { kind: "no_trip" } });
+  });
+
+  test("choosing the branch already chosen records nothing, and the chosen branch survives a new search for the same place", async () => {
+    const t = await newBackend();
+    world();
+    await placesReady(t);
+    const taskId = await newTask(t, "Get moleskine notebooks from officeworks");
+    unwrap(await t.mutation(api.places.trips.choose, { taskId, key: "way/3" }));
+    expect(unwrap(await t.mutation(api.places.trips.choose, { taskId, key: "way/3" }))).toEqual({ changed: false, activityId: null });
+
+    unwrap(await t.mutation(api.platform.features.configure, { choice: { feature: "places", settings: { travelMode: "walk" } } }));
+    expect(await t.mutation(api.places.trips.request, { taskId })).toEqual({ requested: true });
+    await settle(t);
+    expect(await tripOf(t, taskId)).toMatchObject({ mode: "walk", chosen: { key: "way/3" } });
+  });
+
+  test("a Trip is hidden while Places is off and comes back as it was when Places is on again", async () => {
+    const t = await newBackend();
+    world();
+    await placesReady(t);
+    const taskId = await newTask(t, "Get moleskine notebooks from officeworks");
+    unwrap(await t.mutation(api.places.trips.choose, { taskId, key: "way/3" }));
+    const off = unwrap(await t.mutation(api.platform.features.setEnabled, { feature: "places", enabled: false }));
+    expect(await tripOf(t, taskId)).toBeNull();
+    expect(await t.mutation(api.places.trips.request, { taskId })).toEqual({ requested: false });
+    unwrap(await t.mutation(api.platform.undo.undo, { activityId: off.activityId! }));
+    expect(await tripOf(t, taskId)).toMatchObject({ kind: "trip", chosen: { key: "way/3" } });
+  });
+});
+
+describe("a Task deleted forever", () => {
+  test("takes its Trip row with it", async () => {
+    const t = await newBackend();
+    world();
+    await placesReady(t);
+    const taskId = await newTask(t, "Get moleskine notebooks from officeworks");
+    expect(await tripRow(t, taskId)).not.toBeNull();
+    unwrap(await t.mutation(api.planner.tasks.trash, { taskId }));
+    unwrap(await t.mutation(api.planner.trash.deleteForever, { items: [{ kind: "task", id: taskId }] }));
+    expect(await tripRow(t, taskId)).toBeNull();
+  });
+});

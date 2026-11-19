@@ -199,6 +199,15 @@ const bury = async (ctx: MutationCtx, doc: { things?: { id: string } }) => {
   if (doc.things) await ctx.db.insert("thingsTombstones", { thingsId: doc.things.id });
 };
 
+const forgetAnswers = async (ctx: MutationCtx, taskId: Id<"tasks">) => {
+  const rows = await Promise.all([
+    ctx.db.query("taskTrips").withIndex("by_task", (q) => q.eq("taskId", taskId)).unique(),
+    ctx.db.query("stepSuggestions").withIndex("by_task", (q) => q.eq("taskId", taskId)).unique(),
+    ctx.db.query("estimateSuggestions").withIndex("by_task", (q) => q.eq("taskId", taskId)).unique(),
+  ]);
+  for (const row of rows) if (row) await ctx.db.delete(row._id);
+};
+
 const deleteTask = async (ctx: MutationCtx, record: Recorder, task: Doc<"tasks">) => {
   const [items, blocks, sessions, from, to] = await Promise.all([
     ctx.db
@@ -229,6 +238,7 @@ const deleteTask = async (ctx: MutationCtx, record: Recorder, task: Doc<"tasks">
   for (const block of blocks) await record.remove("workBlocks", block._id);
   for (const session of sessions) await record.remove("focusSessions", session._id);
   for (const link of [...from, ...to]) await record.remove("entityLinks", link._id);
+  await forgetAnswers(ctx, task._id);
   await bury(ctx, task);
   await record.remove("tasks", task._id);
 };

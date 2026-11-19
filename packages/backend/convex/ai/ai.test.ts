@@ -396,3 +396,220 @@ describe("reading a chat model's odds", () => {
     expect(decisionsFromChat(questions, "m", { choices: [{ message: { content: null, refusal: "No." } }] })._unsafeUnwrapErr()).toEqual({ kind: "refused" });
   });
 });
+
+const stepsRow = (t: Backend, taskId: Id<"tasks">) =>
+  t.run((ctx) =>
+    ctx.db
+      .query("stepSuggestions")
+      .withIndex("by_task", (q) => q.eq("taskId", taskId))
+      .unique(),
+  );
+
+const goAnswers = (answer: () => Response) => {
+  const calls: string[] = [];
+  server.resetHandlers(
+    http.post(GO_CHAT_URL, ({ request }) => {
+      calls.push(request.url);
+      return answer();
+    }),
+  );
+  return calls;
+};
+
+describe("Break into steps when the Provider fails", () => {
+  test.each([
+    ["refuses the key", () => new HttpResponse("{}", { status: 401 }), "unauthorised"],
+    ["forbids the key", () => new HttpResponse("{}", { status: 403 }), "unauthorised"],
+    ["rate limits", () => new HttpResponse("{}", { status: 429 }), "rate_limited"],
+    ["breaks", () => new HttpResponse("{}", { status: 500 }), "unavailable"],
+    ["cannot be reached", () => HttpResponse.error(), "unavailable"],
+    ["sends malformed JSON", () => new HttpResponse("{oops", { headers: { "content-type": "application/json" } }), "invalid_response"],
+    ["sends no choices", () => HttpResponse.json({ error: "x" }), "invalid_response"],
+    ["sends prose instead of JSON", () => HttpResponse.json(reply("Here are some steps: draft, write.")), "invalid_response"],
+    ["sends a list instead of an object", () => chatReply(["Draft"]), "invalid_response"],
+    ["sends only blank steps", () => chatReply({ steps: ["  ", "- ", 4], project: false }), "invalid_response"],
+    ["refuses to answer", () => HttpResponse.json({ choices: [{ message: { content: null, refusal: "I cannot help." } }] }), "refused"],
+  ])("a Provider that %s is a typed failure, not a thrown error", async (_, answer, error) => {
+    vi.stubEnv("OPENAI_API_KEY", undefined);
+    const t = await newAiBackend();
+    const calls = goAnswers(answer);
+    const taskId = await essay(t);
+    await settle(t);
+    calls.length = 0;
+    await t.mutation(api.ai.steps.request, { taskId });
+    await settle(t);
+    expect(calls).toHaveLength(1);
+    expect(await t.query(api.ai.steps.forTask, { taskId })).toEqual({ kind: "failed", error });
+  });
+
+  test("when the chosen model's key is refused, the next model in the chain answers", async () => {
+    const t = await newAiBackend();
+    const calls = listening({ go: 401 });
+    const taskId = await essay(t);
+    await t.mutation(api.ai.steps.request, { taskId });
+    await settle(t);
+    expect(calls.map(({ url }) => url).filter((url) => url !== DECISIONS_URL)).toEqual([GO_CHAT_URL, OPENAI_CHAT_URL]);
+    expect(await t.query(api.ai.steps.forTask, { taskId })).toMatchObject({ kind: "steps", answeredBy: "openai/gpt-6-luna" });
+  });
+
+  test("a saved key that no longer unseals, with no key in the environment, fails as not configured without a call", async () => {
+    vi.stubEnv("OPENAI_API_KEY", undefined);
+    vi.stubEnv("OPENCODE_GO_API_KEY", undefined);
+    vi.stubEnv("LIFEOS_SECRETS_KEY", SEALING_KEY);
+    const t = await newAiBackend();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("secrets", { name: "opencodeGo", iv: btoa("twelve bytes"), ciphertext: btoa("not a sealed key"), last4: "abcd", savedAt: 1 });
+    });
+    const calls = listening();
+    const taskId = await essay(t);
+    expect(await t.mutation(api.ai.steps.request, { taskId })).toEqual({ requested: true });
+    await settle(t);
+    expect(calls).toEqual([]);
+    expect(await t.query(api.ai.steps.forTask, { taskId })).toEqual({ kind: "failed", error: "not_configured" });
+  });
+});
+
+describe("Break into steps when the Task changes", () => {
+  test("a missing, completed or trashed Task asks for nothing", async () => {
+    const t = await newAiBackend();
+    const calls = listening();
+    const done = await essay(t);
+    const trashed = await essay(t);
+    const gone = await essay(t);
+    unwrap(await t.mutation(api.planner.tasks.complete, { taskId: done }));
+    unwrap(await t.mutation(api.planner.tasks.trash, { taskId: trashed }));
+    await t.run((ctx) => ctx.db.delete("tasks", gone));
+    await settle(t);
+    calls.length = 0;
+    for (const taskId of [done, trashed, gone]) expect(await t.mutation(api.ai.steps.request, { taskId })).toEqual({ requested: false });
+    await settle(t);
+    expect(calls).toEqual([]);
+  });
+
+  test("a Task deleted or trashed while steps are waiting settles back to idle without a call", async () => {
+    const t = await newAiBackend();
+    const taskId = await essay(t);
+    const other = await essay(t);
+    await settle(t);
+    const calls = listening();
+    await t.mutation(api.ai.steps.request, { taskId });
+    await t.mutation(api.ai.steps.request, { taskId: other });
+    await t.run((ctx) => ctx.db.delete("tasks", taskId));
+    unwrap(await t.mutation(api.planner.tasks.trash, { taskId: other }));
+    await settle(t);
+    expect(calls).toEqual([]);
+    expect(await stepsRow(t, taskId)).toBeNull();
+    expect(await t.query(api.ai.steps.forTask, { taskId: other })).toEqual({ kind: "idle" });
+  });
+
+  test("asking twice before the first answer makes one call, for the latest request", async () => {
+    const t = await newAiBackend();
+    const taskId = await essay(t);
+    await settle(t);
+    const calls = listening();
+    await t.mutation(api.ai.steps.request, { taskId });
+    unwrap(await t.mutation(api.planner.tasks.rename, { taskId, title: "Write essay conclusion" }));
+    await t.mutation(api.ai.steps.request, { taskId, again: true });
+    await settle(t);
+    expect(calls.filter(({ url }) => url === GO_CHAT_URL)).toHaveLength(1);
+    const body = calls.find(({ url }) => url === GO_CHAT_URL)?.body as { messages: { content: string }[] };
+    expect(body.messages[1]?.content).toContain("Task: Write essay conclusion");
+    expect(await t.query(api.ai.steps.forTask, { taskId })).toMatchObject({ kind: "steps" });
+  });
+
+  test("a changed Checklist counts as a change, so asking again sends the new Checklist", async () => {
+    const t = await newAiBackend();
+    const taskId = await essay(t);
+    await settle(t);
+    const calls = listening();
+    await t.mutation(api.ai.steps.request, { taskId });
+    await settle(t);
+    unwrap(await t.mutation(api.planner.checklist.add, { taskId, title: "Pick a topic" }));
+    await t.mutation(api.ai.steps.request, { taskId });
+    await settle(t);
+    const sent = calls.filter(({ url }) => url === GO_CHAT_URL).map(({ body }) => (body as { messages: { content: string }[] }).messages[1]?.content);
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).toContain("Checklist already: Pick a topic");
+  });
+
+  test("a Task deleted forever takes its step suggestion with it", async () => {
+    const t = await newAiBackend();
+    listening();
+    const taskId = await essay(t);
+    await t.mutation(api.ai.steps.request, { taskId });
+    await settle(t);
+    expect(await stepsRow(t, taskId)).not.toBeNull();
+    unwrap(await t.mutation(api.planner.tasks.trash, { taskId }));
+    unwrap(await t.mutation(api.planner.trash.deleteForever, { items: [{ kind: "task", id: taskId }] }));
+    expect(await stepsRow(t, taskId)).toBeNull();
+  });
+});
+
+describe("accepting steps", () => {
+  test("for a Task that is gone, nothing is added and the error says so", async () => {
+    const t = await newAiBackend();
+    const taskId = await essay(t);
+    await t.run((ctx) => ctx.db.delete("tasks", taskId));
+    expect(await t.mutation(api.ai.steps.accept, { taskId, titles: ["Draft"] })).toMatchObject({ ok: false, error: { kind: "not_found" } });
+    expect(await checklistOf(t, taskId)).toEqual([]);
+  });
+
+  test("no titles adds nothing and records nothing, and more than twenty keeps the first twenty", async () => {
+    const t = await newAiBackend();
+    const taskId = await essay(t);
+    expect(unwrap(await t.mutation(api.ai.steps.accept, { taskId, titles: [] }))).toEqual({ itemIds: [], activityId: null });
+    const titles = Array.from({ length: 25 }, (_, index) => `Step ${index + 1}`);
+    const { itemIds, activityId } = unwrap(await t.mutation(api.ai.steps.accept, { taskId, titles }));
+    expect(itemIds).toHaveLength(20);
+    expect(await checklistOf(t, taskId)).toEqual(titles.slice(0, 20));
+    unwrap(await t.mutation(api.platform.undo.undo, { activityId: activityId! }));
+    expect(await checklistOf(t, taskId)).toEqual([]);
+  });
+});
+
+describe("a route change", () => {
+  test("switching a capability off keeps its model, undoes back to on, and the same route twice records nothing", async () => {
+    const t = await newAiBackend();
+    unwrap(await route(t, "breakIntoSteps", { model: "openai/gpt-6.1-terra" }));
+    const off = unwrap(await route(t, "breakIntoSteps", { on: false }));
+    const steps = async () => (await t.query(api.ai.routing.overview, {})).capabilities.find(({ capability }) => capability === "breakIntoSteps");
+    expect(await steps()).toMatchObject({ on: false, model: "openai/gpt-6.1-terra" });
+    expect(unwrap(await route(t, "breakIntoSteps", { on: false }))).toEqual({ changed: false, activityId: null });
+    const taskId = await essay(t);
+    expect(await t.mutation(api.ai.steps.request, { taskId })).toEqual({ requested: false });
+
+    unwrap(await t.mutation(api.platform.undo.undo, { activityId: off.activityId! }));
+    expect(await steps()).toMatchObject({ on: true, model: "openai/gpt-6.1-terra", answering: "openai/gpt-6.1-terra" });
+  });
+
+  test("a route set before AI is ever switched on undoes back to no AI row at all", async () => {
+    const t = await newBackend();
+    const { activityId } = unwrap(await route(t, "smartEstimates", { model: "opencodeGo/glm-5.3" }));
+    expect((await t.query(api.platform.features.list, {})).find(({ feature }) => feature === "ai")).toMatchObject({ enabled: false });
+    unwrap(await t.mutation(api.platform.undo.undo, { activityId: activityId! }));
+    expect(await t.run((ctx) => ctx.db.query("features").collect())).toEqual([]);
+  });
+
+  test("Trip detection shows as on exactly when Places is switched on", async () => {
+    const t = await newAiBackend();
+    const trips = async () => (await t.query(api.ai.routing.overview, {})).capabilities.find(({ capability }) => capability === "tripDetection")?.on;
+    expect(await trips()).toBe(false);
+    unwrap(await t.mutation(api.platform.features.setEnabled, { feature: "places", enabled: true }));
+    expect(await trips()).toBe(true);
+  });
+});
+
+describe("reading a chat model's odds, malformed", () => {
+  const questions: Question[] = [
+    { type: "choice", name: "size", instructions: "How big?", choices: [{ value: "small", description: "" }] },
+    { type: "predicate", name: "vague", instructions: "Vague?" },
+  ];
+
+  test("a list, a choice given as a word, odds given as text or no message at all is not an answer", () => {
+    expect(decisionsFromChat(questions, "m", reply("[1, 2]"))._unsafeUnwrapErr()).toEqual({ kind: "invalid_response" });
+    expect(decisionsFromChat(questions, "m", reply('{"size":"small","vague":0.1}'))._unsafeUnwrapErr()).toEqual({ kind: "invalid_response" });
+    expect(decisionsFromChat(questions, "m", reply('{"size":{"small":1},"vague":"no"}'))._unsafeUnwrapErr()).toEqual({ kind: "invalid_response" });
+    expect(decisionsFromChat(questions, "m", { choices: [] })._unsafeUnwrapErr()).toEqual({ kind: "invalid_response" });
+    expect(decisionsFromChat(questions, "m", null)._unsafeUnwrapErr()).toEqual({ kind: "invalid_response" });
+  });
+});
