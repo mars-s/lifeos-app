@@ -3,6 +3,7 @@
 import { Check, Coffee, Pause, Play, SkipForward, Stop, Trash, type Icon } from "@phosphor-icons/react";
 import { useEffect, useEffectEvent, useState, type ReactNode } from "react";
 import { parseEstimateText } from "@lifeos/backend/estimate";
+import { MAX_FOCUS_MINUTES, type FocusPlanChoice } from "@lifeos/backend/focus";
 import { MorphText } from "@/components/ui/morph-text";
 import { Popover, PopoverClose } from "@/components/ui/popover-panel";
 import { RollingNumber } from "@/components/ui/rolling-number";
@@ -63,6 +64,7 @@ export type FocusPillView = {
   seconds: number;
   ring: number;
   timed: boolean;
+  longBreak?: boolean;
 };
 
 type PillAction = "pause" | "resume" | "advance";
@@ -83,7 +85,8 @@ const PRIMARY_NAMES = {
 
 const labelFor = (view: FocusPillView) => {
   if (view.status === "done") return view.phase === "focus" ? "Session complete" : "Break over";
-  return view.phase === "break" ? "Break" : view.title;
+  if (view.phase === "focus") return view.title;
+  return view.longBreak ? "Long break" : "Break";
 };
 
 export const PillButton = ({ label, className, ...props }: React.ComponentProps<"button"> & { label: string }) => (
@@ -211,24 +214,84 @@ export const FocusTimerPill = ({
   );
 };
 
-export type FocusPlanChoice = { mode: "open" | "pomodoro"; focusMinutes: number; breakMinutes: number };
-
 const FOCUS_LENGTHS = [15, 25, 45, 50, 90] as const;
 const BREAK_LENGTHS = [5, 10, 15] as const;
+const LONG_BREAK_LENGTHS = [15, 20, 30] as const;
+
+const LengthInput = ({ label, value, custom, onChange }: { label: string; value: number; custom: boolean; onChange: (minutes: number) => void }) => {
+  const [draft, setDraft] = useState<string | null>(null);
+  const [refused, setRefused] = useState(false);
+  const reset = () => {
+    setDraft(null);
+    setRefused(false);
+  };
+  const commit = () => {
+    if (draft === null) return true;
+    if (draft.trim() === "") {
+      reset();
+      return true;
+    }
+    const parsed = parseEstimateText(draft.trim());
+    if (parsed.isErr() || parsed.value > MAX_FOCUS_MINUTES) {
+      setRefused(true);
+      haptic("error");
+      return false;
+    }
+    reset();
+    if (parsed.value !== value) onChange(parsed.value);
+    return true;
+  };
+  return (
+    <input
+      aria-label={`${label} length in minutes`}
+      aria-invalid={refused}
+      name={`${label.toLowerCase().replaceAll(" ", "-")}-minutes`}
+      inputMode="numeric"
+      enterKeyHint="done"
+      autoComplete="off"
+      spellCheck={false}
+      placeholder="Other…"
+      value={draft ?? (custom ? String(value) : "")}
+      onFocus={(event) => event.currentTarget.select()}
+      onChange={(event) => {
+        setDraft(event.target.value);
+        setRefused(false);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") commit();
+        if (event.key === "Escape" && draft !== null) {
+          event.stopPropagation();
+          reset();
+        }
+      }}
+      onBlur={() => {
+        if (!commit()) reset();
+      }}
+      className={cn(
+        "h-7 w-14 shrink-0 rounded-md text-center font-mono text-small outline-none placeholder:font-sans placeholder:text-muted-foreground transition-[background-color,color,box-shadow] duration-(--dur-press) ease-out focus-visible:ring-2 focus-visible:ring-brand/40 aria-invalid:ring-2 aria-invalid:ring-negative/60",
+        custom && draft === null ? "bg-brand text-brand-foreground" : "bg-foreground/[0.06] text-foreground/80 hover:bg-foreground/[0.1]",
+      )}
+    />
+  );
+};
 
 const LengthChips = ({
   label,
+  short,
   lengths,
   value,
   onChange,
 }: {
   label: string;
+  short: string;
   lengths: readonly number[];
   value: number;
   onChange: (minutes: number) => void;
 }) => (
   <div role="group" aria-label={`${label} length`} className="flex items-center gap-1">
-    <span className="w-12 text-small text-muted-foreground">{label}</span>
+    <span aria-hidden={short !== label} className="w-11 shrink-0 text-small text-muted-foreground">
+      {short}
+    </span>
     {lengths.map((minutes) => {
       const selected = minutes === value;
       return (
@@ -236,6 +299,7 @@ const LengthChips = ({
           key={minutes}
           type="button"
           aria-pressed={selected}
+          aria-label={`${minutes} minutes`}
           onClick={(event) => {
             if (event.detail > 0) haptic("toggle");
             onChange(minutes);
@@ -249,6 +313,8 @@ const LengthChips = ({
         </button>
       );
     })}
+    <span className="ml-auto" />
+    <LengthInput label={label} value={value} custom={!lengths.includes(value)} onChange={onChange} />
   </div>
 );
 
@@ -266,9 +332,18 @@ export const FocusPlanPanel = ({ plan, onChange }: { plan: FocusPlanChoice; onCh
     />
     {plan.mode === "pomodoro" ? (
       <div className="space-y-1.5">
-        <LengthChips label="Focus" lengths={FOCUS_LENGTHS} value={plan.focusMinutes} onChange={(focusMinutes) => onChange({ ...plan, focusMinutes })} />
-        <LengthChips label="Break" lengths={BREAK_LENGTHS} value={plan.breakMinutes} onChange={(breakMinutes) => onChange({ ...plan, breakMinutes })} />
-        <p className="pt-1 text-small text-muted-foreground">Minutes of focus, then a break. Only the focus counts as Actual Time.</p>
+        <LengthChips label="Focus" short="Focus" lengths={FOCUS_LENGTHS} value={plan.focusMinutes} onChange={(focusMinutes) => onChange({ ...plan, focusMinutes })} />
+        <LengthChips label="Break" short="Break" lengths={BREAK_LENGTHS} value={plan.breakMinutes} onChange={(breakMinutes) => onChange({ ...plan, breakMinutes })} />
+        <LengthChips
+          label="Long break"
+          short="Long"
+          lengths={LONG_BREAK_LENGTHS}
+          value={plan.longBreakMinutes}
+          onChange={(longBreakMinutes) => onChange({ ...plan, longBreakMinutes })}
+        />
+        <p className="pt-1 text-small text-pretty text-muted-foreground">
+          Minutes of focus, then a break. Every fourth break is the long one. Only the focus counts as Actual Time.
+        </p>
       </div>
     ) : (
       <p className="text-small text-muted-foreground">Counts up until you stop. Every minute counts as Actual Time.</p>

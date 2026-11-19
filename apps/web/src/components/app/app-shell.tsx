@@ -14,6 +14,7 @@ import { CommandBarHost } from "./command-bar/host";
 import { ConfirmHost } from "./confirm";
 import { drafts } from "./drafts";
 import { FocusPill, FocusProvider } from "./focus";
+import { FocusSignals } from "./focus-signals";
 import { useLocalDate, useQuietView, useViewState, valueOf } from "./hooks";
 import { AppMenu } from "./menus";
 import { PanelBoundary, PanelNotice } from "./panel-boundary";
@@ -236,6 +237,7 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
           </PanelBoundary>
           <PanelBoundary panel="bar" fallback={() => null}>
             <FocusPill />
+            <FocusSignals />
           </PanelBoundary>
         </div>
       </div>

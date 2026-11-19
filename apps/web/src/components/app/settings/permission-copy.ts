@@ -1,4 +1,4 @@
-import { CalendarDots, Database, Key, type Icon } from "@phosphor-icons/react";
+import { Bell, CalendarDots, Database, Key, type Icon } from "@phosphor-icons/react";
 import type { Permission, PermissionStatus } from "@/lib/mac";
 import type { LampTone } from "./rows";
 
@@ -29,6 +29,15 @@ export const PERMISSION_COPY = {
     missing: "No Worker token on this Mac yet. The README has the one command that adds it.",
     missingWord: "No token",
     reask: "Ask again",
+  },
+  notifications: {
+    label: "Notifications",
+    icon: Bell,
+    why: "So a Pomodoro or a Break that runs out while LifeOS is in the background still tells you.",
+    denied: "macOS said no. Switch LifeOS on under Notifications in System Settings.",
+    missing: "This build of LifeOS cannot show notifications. Open the copy in Applications.",
+    missingWord: "Not here",
+    reask: "Open System Settings",
   },
 } as const satisfies Record<Permission, { label: string; icon: Icon; why: string; denied: string; missing: string; missingWord: string; reask: string }>;
 

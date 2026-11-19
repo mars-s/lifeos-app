@@ -1,20 +1,25 @@
 "use client";
 
-import { DotsThree, Plus, Timer } from "@phosphor-icons/react";
+import { Bell, DotsThree, Plus, Timer } from "@phosphor-icons/react";
 import type { FunctionReturnType } from "convex/server";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { createContext, use, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { api } from "@lifeos/backend/api";
 import type { Id } from "@lifeos/backend/dataModel";
 import {
-  DEFAULT_POMODORO,
+  DEFAULT_FOCUS_PLAN,
   MINUTE_MS,
   endInstant,
   focusedMs,
+  isLongBreak,
   isTimeUp,
+  nextStep,
   overtimeMs,
+  planOf,
   plannedMs,
   remainingMs,
+  stepMinutes,
+  type FocusPlanChoice,
 } from "@lifeos/backend/focus";
 import type { PlannerTask } from "@lifeos/backend/types";
 import { areaVar } from "@/components/lifeos/area";
@@ -26,13 +31,14 @@ import {
   FocusTimerPill,
   PillButton,
   type FocusPillView,
-  type FocusPlanChoice,
 } from "@/components/lifeos/focus-timer";
 import { formatCountdown, formatMinutes } from "@/components/lifeos/format";
 import { MenuRow, ToolButton } from "@/components/lifeos/tool-button";
 import { Popover, PopoverClose } from "@/components/ui/popover-panel";
 import { RollingNumber } from "@/components/ui/rolling-number";
+import { askForWebAlerts, useWebAlertStatus } from "@/lib/alerts";
 import { haptic } from "@/lib/haptics";
+import { useMac } from "@/lib/mac";
 import { instant, springLayout, springLift } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
 import { both, nothing, patchTask, useChange, type Updater } from "./changes";
@@ -40,75 +46,15 @@ import { clockTime, localDate } from "./dates";
 import { useQuietView } from "./hooks";
 import { useSelectionSize } from "./selection";
 import { useShell } from "./shell-context";
+import { askFor, useMacState } from "./settings/mac-state";
 import { isOptimistic } from "./task-actions";
 
 export type ActiveFocus = NonNullable<FunctionReturnType<typeof api.planner.focus.current>>;
 type Via = "pointer" | "keyboard";
 type Logged = PlannerTask["focus"]["sessions"][number];
 
-const PLAN_KEY = "lifeos.focus-plan";
-const DEFAULT_PLAN: FocusPlanChoice = { mode: "open", ...DEFAULT_POMODORO };
 const HOUR_MS = 60 * MINUTE_MS;
 const SELECTION_BAR_LIFT = 64;
-
-const isLength = (value: unknown) => typeof value === "number" && Number.isInteger(value) && value > 0 && value <= 24 * 60;
-
-const parsePlan = (raw: string | null) => {
-  try {
-    const stored: unknown = raw === null ? null : JSON.parse(raw);
-    if (!stored || typeof stored !== "object") return DEFAULT_PLAN;
-    const { mode, focusMinutes, breakMinutes } = stored as Record<string, unknown>;
-    if ((mode !== "open" && mode !== "pomodoro") || !isLength(focusMinutes) || !isLength(breakMinutes)) return DEFAULT_PLAN;
-    return { mode, focusMinutes: focusMinutes as number, breakMinutes: breakMinutes as number } satisfies FocusPlanChoice;
-  } catch {
-    return DEFAULT_PLAN;
-  }
-};
-
-const storedPlan = () => {
-  try {
-    return window.localStorage.getItem(PLAN_KEY);
-  } catch {
-    return null;
-  }
-};
-
-let planCache: { raw: string | null; plan: FocusPlanChoice } = { raw: null, plan: DEFAULT_PLAN };
-const planListeners = new Set<() => void>();
-
-const readPlan = () => {
-  const raw = storedPlan() ?? planCache.raw;
-  if (raw !== planCache.raw) planCache = { raw, plan: parsePlan(raw) };
-  return planCache.plan;
-};
-
-const readDefaultPlan = () => DEFAULT_PLAN;
-
-const subscribePlan = (onChange: () => void) => {
-  planListeners.add(onChange);
-  window.addEventListener("storage", onChange);
-  return () => {
-    planListeners.delete(onChange);
-    window.removeEventListener("storage", onChange);
-  };
-};
-
-const savePlan = (plan: FocusPlanChoice) => {
-  const raw = JSON.stringify(plan);
-  planCache = { raw, plan };
-  try {
-    window.localStorage.setItem(PLAN_KEY, raw);
-  } finally {
-    planListeners.forEach((listener) => listener());
-  }
-};
-
-export const useFocusPlan = () => useSyncExternalStore(subscribePlan, readPlan, readDefaultPlan);
-
-const serverPlan = (plan: FocusPlanChoice) =>
-  plan.mode === "open"
-    ? ({ kind: "open" } as const)
-    : ({ kind: "pomodoro", focusMinutes: plan.focusMinutes, breakMinutes: plan.breakMinutes } as const);
 
 const TICK_MS = 250;
 
@@ -129,12 +75,17 @@ export const useFocusNow = (ticking: boolean) =>
   useSyncExternalStore(ticking ? subscribeSecond : subscribeNever, ticking ? readSecond : readZero, readZero) * 1000;
 
 const FocusContext = createContext<ActiveFocus | null>(null);
+const FocusPlanContext = createContext<FocusPlanChoice>(DEFAULT_FOCUS_PLAN);
 
 export const FocusProvider = ({ children }: { children: ReactNode }) => (
-  <FocusContext value={useQuietView(api.planner.focus.current, {}) ?? null}>{children}</FocusContext>
+  <FocusPlanContext value={useQuietView(api.planner.focus.plan, {}) ?? DEFAULT_FOCUS_PLAN}>
+    <FocusContext value={useQuietView(api.planner.focus.current, {}) ?? null}>{children}</FocusContext>
+  </FocusPlanContext>
 );
 
 export const useActiveFocus = () => use(FocusContext);
+
+export const useFocusPlan = () => use(FocusPlanContext);
 
 export const useFocusOn = (taskId: string) => {
   const active = useActiveFocus();
@@ -156,6 +107,8 @@ export const useLiveFocus = () => {
 };
 
 const wholeMinutes = (ms: number) => Math.floor(ms / MINUTE_MS);
+
+const lengthsOf = ({ focusMinutes, breakMinutes, longBreakMinutes }: FocusPlanChoice) => ({ focusMinutes, breakMinutes, longBreakMinutes });
 
 const setCurrent = (next: ActiveFocus | null) => {
   const update: Updater = (store) => store.setQuery(api.planner.focus.current, {}, next);
@@ -202,14 +155,21 @@ const optimisticSession = (
     state: { kind: "running" },
     title: from.title,
     ...(from.colour ? { colour: from.colour } : {}),
-    ...(pomodoro ? { plannedMinutes: kind === "focus" ? pomodoro.focusMinutes : pomodoro.breakMinutes, pomodoro } : {}),
+    ...(pomodoro ? { plannedMinutes: stepMinutes(pomodoro, kind), pomodoro } : {}),
   }) satisfies ActiveFocus;
+
+const setPlanChoice = (plan: FocusPlanChoice) => {
+  const update: Updater = (store) => store.setQuery(api.planner.focus.plan, {}, plan);
+  return update;
+};
 
 let startedVia: Via = "pointer";
 
 export const useFocusActions = () => {
   const change = useChange();
   const active = useActiveFocus();
+  const chosen = useFocusPlan();
+  const mac = useMac();
   return useMemo(() => {
     const live = active && !isOptimistic(active._id) ? active : null;
 
@@ -250,18 +210,19 @@ export const useFocusActions = () => {
       start: (task: PlannerTask, via: Via) => {
         const now = Date.now();
         if (active?.taskId === task._id && active.kind === "focus" && !isTimeUp(active, now)) return resume();
-        const plan = readPlan();
+        const plan = planOf(chosen);
         startedVia = via;
+        if (plan.kind === "pomodoro" && !mac) askForWebAlerts();
         const next = optimisticSession(
           { taskId: task._id, title: task.title, colour: task.area?.colour },
           "focus",
-          plan.mode === "pomodoro" ? { focusMinutes: plan.focusMinutes, breakMinutes: plan.breakMinutes } : undefined,
+          plan.kind === "pomodoro" ? { ...lengthsOf(chosen), round: 1 } : undefined,
           now,
         );
         void change({
           title: active ? "Focus switched" : "Focus started",
           mutation: api.planner.focus.start,
-          args: { taskId: task._id, plan: serverPlan(plan) },
+          args: { taskId: task._id, plan },
           apply: both(active ? logged(active, now) : nothing, setCurrent(next)),
           revert: both(active ? unlogged(active) : nothing, setCurrent(active)),
         });
@@ -304,24 +265,32 @@ export const useFocusActions = () => {
       advance: () => {
         if (!live?.pomodoro) return;
         const now = Date.now();
+        const next = nextStep(live.pomodoro, live.kind);
         void change({
           title: live.kind === "focus" ? "Break started" : "Focus Session started",
           mutation: api.planner.focus.advance,
           args: { sessionId: live._id },
-          apply: both(logged(live, now), setCurrent(optimisticSession(live, live.kind === "focus" ? "break" : "focus", live.pomodoro, now))),
+          apply: both(logged(live, now), setCurrent(optimisticSession(live, next.kind, next.pomodoro, now))),
           revert: both(unlogged(live), setCurrent(live)),
           silent: true,
         });
       },
 
       setPlan: (plan: FocusPlanChoice) => {
-        savePlan(plan);
+        void change({
+          title: "Focus plan chosen",
+          mutation: api.planner.focus.choosePlan,
+          args: plan,
+          apply: setPlanChoice(plan),
+          revert: setPlanChoice(chosen),
+          silent: true,
+        });
         if (live?.kind !== "focus") return;
-        const pomodoro = { focusMinutes: plan.focusMinutes, breakMinutes: plan.breakMinutes };
+        const pomodoro = { ...lengthsOf(plan), round: live.pomodoro?.round ?? 1 };
         void change({
           title: "Focus mode changed",
           mutation: api.planner.focus.setPlan,
-          args: { sessionId: live._id, plan: serverPlan(plan) },
+          args: { sessionId: live._id, plan: planOf(plan) },
           apply: patchCurrent(({ plannedMinutes: _planned, pomodoro: _pomodoro, ...session }) =>
             plan.mode === "open"
               ? session
@@ -366,10 +335,10 @@ export const useFocusActions = () => {
         });
       },
     };
-  }, [change, active]);
+  }, [change, active, chosen, mac]);
 };
 
-const viewOf: (active: ActiveFocus, now: number) => FocusPillView = (active, now) => {
+export const viewOf: (active: ActiveFocus, now: number) => FocusPillView = (active, now) => {
   const focused = focusedMs(active, now);
   const remaining = remainingMs(active, now);
   const planned = plannedMs(active);
@@ -380,6 +349,7 @@ const viewOf: (active: ActiveFocus, now: number) => FocusPillView = (active, now
     seconds: remaining === undefined || remaining === 0 ? Math.floor(focused / 1000) : Math.ceil(remaining / 1000),
     ring: remaining === undefined || planned === undefined ? (focused % HOUR_MS) / HOUR_MS : remaining / planned,
     timed: remaining !== undefined,
+    longBreak: active.kind === "break" && active.pomodoro !== undefined && isLongBreak(active.pomodoro),
   };
 };
 
@@ -396,6 +366,37 @@ const useCrossing = (active: ActiveFocus, over: boolean) => {
   return over && crossed === active._id;
 };
 
+const useAlertPermission = () => {
+  const mac = useMac();
+  const macState = useMacState(mac);
+  const web = useWebAlertStatus();
+  if (!mac) return { status: web, ask: askForWebAlerts, where: "browser" } as const;
+  return { status: macState?.permissions.notifications ?? "missing", ask: () => void askFor(mac, "notifications"), where: "mac" } as const;
+};
+
+const AlertRow = () => {
+  const { status, ask, where } = useAlertPermission();
+  if (status === "granted" || status === "missing") return null;
+  const blocked = status === "denied";
+  return (
+    <div className="flex min-h-9 items-center gap-2 border-t border-border pt-2 text-small">
+      <Bell weight="fill" className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="min-w-0 flex-1 text-pretty text-muted-foreground">
+        {!blocked ? "Get a notification when time is up" : where === "mac" ? "Notifications are off for LifeOS." : "This browser blocks notifications from LifeOS."}
+      </span>
+      {(!blocked || where === "mac") && (
+        <button
+          type="button"
+          onClick={ask}
+          className="h-7 shrink-0 rounded-md bg-foreground/[0.06] px-2.5 font-medium text-foreground transition-[background-color,scale] duration-(--dur-press) ease-out hover:bg-foreground/[0.1] active:scale-[0.96]"
+        >
+          {blocked ? "Open Settings" : "Allow"}
+        </button>
+      )}
+    </div>
+  );
+};
+
 const PlanMenu = ({ active }: { active: ActiveFocus }) => {
   const plan = useFocusPlan();
   const actions = useFocusActions();
@@ -405,7 +406,7 @@ const PlanMenu = ({ active }: { active: ActiveFocus }) => {
       side="top"
       align="end"
       title="Focus"
-      className="w-[17.5rem]"
+      className="w-[21rem]"
       trigger={
         <PillButton label="Focus options">
           <DotsThree weight="bold" className="size-[18px]" aria-hidden="true" />
@@ -414,6 +415,7 @@ const PlanMenu = ({ active }: { active: ActiveFocus }) => {
     >
       <div className="space-y-2 px-1 pb-1">
         <FocusPlanPanel plan={plan} onChange={actions.setPlan} />
+        {plan.mode === "pomodoro" && <AlertRow />}
         {timed && (
           <PopoverClose asChild>
             <MenuRow onClick={() => actions.extend(5)} className="-mx-2 w-[calc(100%+1rem)]">

@@ -75,7 +75,7 @@ const PermissionsSection = ({ mac, state }: { mac: Mac | null; state: MacState |
       <SettingsRow
         icon={Desktop}
         label="These live in the Mac app"
-        hint="Apple Calendar, Things data and the Keychain token are granted on your Mac. Open LifeOS there to see or change them."
+        hint="Apple Calendar, Things data, the Keychain token and notifications are granted on your Mac. Open LifeOS there to see or change them."
       />
     )}
   </SettingsGroup>

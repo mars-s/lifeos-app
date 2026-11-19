@@ -7,6 +7,10 @@ SCRATCH="${SCRATCH:-${TMPDIR:-/tmp}/lifeos-local-backend}"
 AB="agent-browser --session ${AB_SESSION:-lifeos-check}"
 MOTION="${MOTION:-}"
 
+plan() {
+  (cd "$SCRATCH" && CONVEX_AGENT_MODE=anonymous npx convex run scratch:focusPlan "{\"mode\": \"$1\"}" >/dev/null)
+}
+
 rewind() {
   (cd "$SCRATCH" && CONVEX_AGENT_MODE=anonymous npx convex run scratch:rewindFocus "{\"minutes\": $1}" >/dev/null)
 }
@@ -29,7 +33,7 @@ for size in "1440 900" "390 844"; do
     $AB set media "$theme" $MOTION >/dev/null
     $AB open "$BASE/today" >/dev/null
     $AB wait 900 >/dev/null
-    $AB eval "localStorage.setItem('lifeos.focus-plan', JSON.stringify({ mode: 'pomodoro', focusMinutes: 25, breakMinutes: 5 }))" >/dev/null
+    plan pomodoro
     $AB click "#main [data-task-key] [data-arrow-item]" >/dev/null
     $AB press Enter >/dev/null
     $AB wait 500 >/dev/null
@@ -59,6 +63,6 @@ for size in "1440 900" "390 844"; do
     press "Finish"
     $AB wait 900 >/dev/null
     shot "stopped-$name"
-    $AB eval "localStorage.removeItem('lifeos.focus-plan')" >/dev/null
+    plan open
   done
 done

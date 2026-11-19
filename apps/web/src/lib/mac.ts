@@ -1,12 +1,13 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useSyncExternalStore } from "react";
 
-export const PERMISSIONS = ["calendar", "thingsData", "keychain"] as const;
+export const PERMISSIONS = ["calendar", "thingsData", "keychain", "notifications"] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 export type PermissionStatus = "granted" | "denied" | "notAsked" | "missing";
 export type Permissions = Record<Permission, PermissionStatus>;
 export type Run = { atMs: number; error: string | null };
 export type SyncReport = { things: Run | null; calendar: Run | null };
+export type Alert = { inSeconds: number; title: string; body: string };
 
 export type Mac = {
   permissions: () => Promise<Permissions>;
@@ -15,6 +16,8 @@ export type Mac = {
   finishOnboarding: () => Promise<void>;
   syncReport: () => Promise<SyncReport>;
   importThingsNow: () => Promise<void>;
+  scheduleAlert: (alert: Alert) => Promise<void>;
+  cancelAlert: () => Promise<void>;
 };
 
 const tauriMac: Mac = {
@@ -24,12 +27,14 @@ const tauriMac: Mac = {
   finishOnboarding: () => invoke("finish_onboarding"),
   syncReport: () => invoke("sync_report"),
   importThingsNow: () => invoke("import_things_now"),
+  scheduleAlert: (alert) => invoke("schedule_alert", { alert }),
+  cancelAlert: () => invoke("cancel_alert"),
 };
 
 const PREVIEWS = {
-  fresh: { calendar: "notAsked", thingsData: "notAsked", keychain: "notAsked" },
-  ready: { calendar: "granted", thingsData: "granted", keychain: "granted" },
-  trouble: { calendar: "denied", thingsData: "granted", keychain: "missing" },
+  fresh: { calendar: "notAsked", thingsData: "notAsked", keychain: "notAsked", notifications: "notAsked" },
+  ready: { calendar: "granted", thingsData: "granted", keychain: "granted", notifications: "granted" },
+  trouble: { calendar: "denied", thingsData: "granted", keychain: "missing", notifications: "denied" },
 } as const satisfies Record<string, Permissions>;
 
 const PREVIEW_ANSWER_MS = 500;
@@ -59,6 +64,8 @@ const previewMac = (name: keyof typeof PREVIEWS) => {
       things = { atMs: Date.now(), error: null };
       return Promise.resolve();
     },
+    scheduleAlert: () => Promise.resolve(),
+    cancelAlert: () => Promise.resolve(),
   } satisfies Mac;
 };
 

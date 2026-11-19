@@ -11,6 +11,7 @@ export const macNeedsAttention = (state: MacState | null, thingsRetired: boolean
   if (!state) return false;
   const blocked = PERMISSIONS.some((permission) => {
     const status = state.permissions[permission];
+    if (permission === "notifications") return false;
     if (permission === "thingsData") return !thingsRetired && (status === "denied" || status === "notAsked");
     return status === "denied" || status === "notAsked" || (permission === "keychain" && status === "missing");
   });
