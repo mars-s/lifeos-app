@@ -1,8 +1,13 @@
 "use client";
 
-import { Flag, FolderSimple, ListChecks, Stamp, Trash, Tray, X } from "@phosphor-icons/react";
+import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { ArrowDown, ArrowUp, DotsSixVertical, DotsThree, Flag, FolderSimple, ListChecks, Stamp, Trash, Tray, X } from "@phosphor-icons/react";
+import { generateKeyBetween } from "fractional-indexing";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useId, useRef, useState } from "react";
 import { api } from "@lifeos/backend/api";
 import type { PlannerTask, SidebarView, TemplateRow } from "@lifeos/backend/types";
 import { AreaDot } from "@/components/lifeos/area";
@@ -13,6 +18,7 @@ import { EmptyState } from "@/components/lifeos/states";
 import { EstimateChip } from "@/components/lifeos/task-row";
 import { MenuRow, ToolButton } from "@/components/lifeos/tool-button";
 import { formatMinutes } from "@/components/lifeos/format";
+import { Menu } from "@/components/ui/action-menu";
 import { Popover, PopoverClose } from "@/components/ui/popover-panel";
 import { instant, springLayout } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
@@ -370,17 +376,31 @@ const TemplateItem = ({
   onOpen,
   labels,
   sidebar,
+  onMoveUp,
+  onMoveDown,
 }: {
   template: TemplateRow;
   open: boolean;
   onOpen: (open: boolean) => void;
   labels: readonly Label[];
   sidebar: SidebarView | undefined;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
 }) => {
   const reduce = useReducedMotion();
   const container = useRef<HTMLLIElement>(null);
   const actions = useTemplateActions();
   const pending = isOptimistic(template._id);
+  const sortable = onMoveUp !== undefined || onMoveDown !== undefined;
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
+    id: template._id,
+    disabled: { draggable: !sortable, droppable: pending },
+    ...(reduce ? { transition: null } : {}),
+  });
+  const setRowRef = useCallback((node: HTMLLIElement | null) => {
+    container.current = node;
+    setNodeRef(node);
+  }, [setNodeRef]);
   const closeFromOutside = useEffectEvent((event: PointerEvent) => {
     if (event.target instanceof Node && container.current?.contains(event.target)) return;
     if (event.target instanceof Element && event.target.closest(OUTSIDE)) return;
@@ -394,8 +414,10 @@ const TemplateItem = ({
 
   return (
     <motion.li
-      ref={container}
+      ref={setRowRef}
       data-template-id={template._id}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={cn("relative", isDragging && "z-10 select-none")}
       initial={{ height: 0, opacity: 0 }}
       animate={{ height: "auto", opacity: 1, transitionEnd: { overflow: "visible" } }}
       exit={{ height: 0, opacity: 0, overflow: "hidden" }}
@@ -413,13 +435,26 @@ const TemplateItem = ({
         }}
         className={cn(
           "@container rounded-xl transition-[background-color,box-shadow] duration-(--dur-fast) ease-out",
-          open ? "bg-popover shadow-lift" : "hover:bg-foreground/[0.04] has-[[data-arrow-item]:focus-visible]:bg-foreground/[0.07]",
+          open || isDragging ? "bg-popover shadow-lift" : "hover:bg-foreground/[0.04] has-[[data-arrow-item]:focus-visible]:bg-foreground/[0.07]",
         )}
       >
         <div className="flex items-start gap-3 px-3 py-2">
-          <span className="mt-[3px] grid size-[18px] shrink-0 place-items-center">
-            <Stamp weight="fill" className="size-4 text-faint-foreground" aria-hidden="true" />
-          </span>
+          {sortable ? (
+            <button
+              type="button"
+              ref={setActivatorNodeRef}
+              {...attributes}
+              {...listeners}
+              aria-label={`Drag ${template.title}`}
+              className="-my-1 -mx-1.5 grid size-[30px] shrink-0 cursor-grab touch-none place-items-center rounded-md text-faint-foreground hover:bg-foreground/[0.07] hover:text-foreground focus-visible:outline-2 focus-visible:outline-brand active:cursor-grabbing"
+            >
+              <DotsSixVertical weight="bold" className="size-4" aria-hidden="true" />
+            </button>
+          ) : (
+            <span className="mt-[3px] grid size-[18px] shrink-0 place-items-center">
+              <Stamp weight="fill" className="size-4 text-faint-foreground" aria-hidden="true" />
+            </span>
+          )}
           {open ? (
             <TitleInput title={template.title} onCommit={(title) => actions.edit(template, "Template renamed", { title }, (row) => ({ ...row, title }))} />
           ) : (
@@ -436,6 +471,26 @@ const TemplateItem = ({
             </button>
           )}
           {!open && template.estimateMinutes !== undefined && <EstimateChip minutes={template.estimateMinutes} className="mt-px" />}
+          {sortable && (
+            <Menu
+              align="end"
+              trigger={
+                <button
+                  type="button"
+                  aria-label={`Actions for ${template.title}`}
+                  className="-my-1 -mr-1.5 grid size-[30px] shrink-0 place-items-center rounded-md text-faint-foreground hover:bg-foreground/[0.07] hover:text-foreground focus-visible:outline-2 focus-visible:outline-brand"
+                >
+                  <DotsThree weight="bold" className="size-5" aria-hidden="true" />
+                </button>
+              }
+              groups={[
+                { items: [
+                  { id: "up", label: "Move Up", icon: ArrowUp, disabled: !onMoveUp, onSelect: onMoveUp },
+                  { id: "down", label: "Move Down", icon: ArrowDown, disabled: !onMoveDown, onSelect: onMoveDown },
+                ] },
+              ]}
+            />
+          )}
         </div>
         <AnimatePresence initial={false}>
           {open && (
@@ -462,6 +517,12 @@ export const TemplatesList = () => {
   const sidebar = useQuietView(api.planner.sidebar.get, { date: today });
   const on = useFeatures().of("templates")?.enabled ?? true;
   const [openId, setOpenId] = useState<string | null>(null);
+  const actions = useTemplateActions();
+  const dndId = useId();
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
   if (!templates) return <ListSkeleton />;
   if (!on)
     return (
@@ -483,20 +544,46 @@ export const TemplatesList = () => {
         className="py-16"
       />
     );
+  const sortable = templates.filter((template) => !isOptimistic(template._id));
+  const move = (id: string | number, to: number) => {
+    const from = sortable.findIndex((template) => template._id === id);
+    const template = sortable[from];
+    if (!template || to < 0 || to >= sortable.length || from === to) return;
+    const ordered = arrayMove(sortable, from, to);
+    const before = ordered[to - 1]?.order ?? null;
+    const after = ordered[to + 1]?.order ?? null;
+    if (before !== null && before === after) return;
+    actions.reorder(template, generateKeyBetween(before, after));
+  };
   return (
-    <ul className="-mx-3">
-      <AnimatePresence initial={false}>
-        {templates.map((template) => (
-          <TemplateItem
-            key={template._id}
-            template={template}
-            open={openId === template._id}
-            onOpen={(open) => setOpenId(open ? template._id : null)}
-            labels={labels}
-            sidebar={sidebar?.ok ? sidebar.value : undefined}
-          />
-        ))}
-      </AnimatePresence>
-    </ul>
+    <DndContext
+      id={dndId}
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      modifiers={[restrictToVerticalAxis]}
+      onDragEnd={({ active, over }) => move(active.id, sortable.findIndex((template) => template._id === over?.id))}
+    >
+      <SortableContext items={sortable.map((template) => template._id)} strategy={verticalListSortingStrategy}>
+        <ul aria-label="Templates" className="-mx-3">
+          <AnimatePresence initial={false}>
+            {templates.map((template) => {
+              const index = sortable.indexOf(template);
+              return (
+                <TemplateItem
+                  key={template._id}
+                  template={template}
+                  open={openId === template._id}
+                  onOpen={(open) => setOpenId(open ? template._id : null)}
+                  labels={labels}
+                  sidebar={sidebar?.ok ? sidebar.value : undefined}
+                  onMoveUp={index > 0 ? () => move(template._id, index - 1) : undefined}
+                  onMoveDown={index >= 0 && index < sortable.length - 1 ? () => move(template._id, index + 1) : undefined}
+                />
+              );
+            })}
+          </AnimatePresence>
+        </ul>
+      </SortableContext>
+    </DndContext>
   );
 };

@@ -107,7 +107,7 @@ AI `uses` Places. When Places is ready, the Smart Estimates model is told travel
 
 ### Templates
 
-Templates is a Feature with no keys and no setup, on by default. Its page at `/settings/features/templates` is where Templates are listed and edited (`/templates` opens it). Switched off, LifeOS hides Save as Template, New Task from a Template and the Templates entries in menus and the command bar, and `planner/templates` refuses every change with `feature_off`. The Templates themselves are kept, so switching it back on brings them back. Recurrence Rules keep their own copy of the Task shape, so they keep working either way.
+Templates is a Feature with no keys and no setup, on by default. Its page at `/settings/features/templates` is where Templates are listed, edited and reordered (`/templates` opens it). Switched off, LifeOS hides Save as Template, New Task from a Template and the Templates entries in menus and the command bar, and `planner/templates` refuses every change with `feature_off`. The Templates themselves are kept, so switching it back on brings them back. Recurrence Rules keep their own copy of the Task shape, so they keep working either way.
 
 Repeats stay a built-in part of the Planner for now. Switching them off would have to decide what happens to rules that come due while off (skip them, or catch up when switched back on), and a rule's Tasks already live in every list. That is a product choice, not a switch, so it waits until Avi wants it.
 

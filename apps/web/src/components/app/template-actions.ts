@@ -81,6 +81,18 @@ export const useTemplateActions = () => {
           slot: `template:${template._id}`,
         }),
 
+      reorder: (template: TemplateRow, order: string) => {
+        const place = (key: string) =>
+          editTemplates((rows) => rows.map((row) => (row._id === template._id ? { ...row, order: key } : row)).toSorted(byOrder));
+        void change({
+          title: "Template moved",
+          mutation: api.planner.templates.reorder,
+          args: { templateId: template._id, order },
+          apply: place(order),
+          revert: place(template.order),
+        });
+      },
+
       remove: (template: TemplateRow) =>
         void change({
           title: "Template deleted",

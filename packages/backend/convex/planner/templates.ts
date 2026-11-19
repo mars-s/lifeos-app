@@ -13,6 +13,7 @@ import {
   load,
   parseEstimate,
   parseLabels,
+  parseOrder,
   parseParent,
   parseTitle,
   parseWhen,
@@ -139,6 +140,21 @@ export const update = changeMutation({
     if (fields.isErr()) return err<{ changed: boolean }, PlannerError>(fields.error);
     const patch: TemplateFields = Object.assign({}, ...fields.value);
     return ok<{ changed: boolean }, PlannerError>({ changed: await record.patch("templates", templateId, patch) });
+  },
+});
+
+export const reorder = changeMutation({
+  action: "template.reorder",
+  args: { templateId: v.id("templates"), order: v.string() },
+  handler: async (ctx, { templateId, order }, record) => {
+    if (!(await templatesOn(ctx))) return err<{ changed: boolean }, PlannerError>(SWITCHED_OFF);
+    const inputs = Result.combine([await load(ctx, "templates", templateId), parseOrder(order)]);
+    if (inputs.isErr()) return err<{ changed: boolean }, PlannerError>(inputs.error);
+    const [template, validOrder] = inputs.value;
+    if (template.order === validOrder) return ok<{ changed: boolean }, PlannerError>({ changed: false });
+    const occupied = await ctx.db.query("templates").withIndex("by_order", (q) => q.eq("order", validOrder)).first();
+    if (occupied) return err<{ changed: boolean }, PlannerError>({ kind: "invalid_order", order });
+    return ok<{ changed: boolean }, PlannerError>({ changed: await record.patch("templates", templateId, { order: validOrder }) });
   },
 });
 
