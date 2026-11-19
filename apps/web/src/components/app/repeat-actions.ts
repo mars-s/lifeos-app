@@ -171,13 +171,16 @@ export const useOccurrenceActions = () => {
       },
 
       stop: (row: Occurrence) => {
-        if (!row.taskId) return;
+        if (isOptimistic(row.ruleId)) return;
         void change({
           title: "Stopped repeating",
-          mutation: api.planner.recurrence.stopRepeat,
-          args: { taskId: row.taskId },
-          apply: both(placeOccurrence(only(row), null), patchRepeat(row.taskId, false, ENDED)),
-          revert: both(placeOccurrence(only(row), row), patchRepeat(row.taskId, true, { kind: "due", date: row.date })),
+          mutation: api.planner.recurrence.stopRule,
+          args: { ruleId: row.ruleId },
+          apply: both(placeOccurrence(only(row), null), row.taskId ? patchRepeat(row.taskId, false, ENDED) : nothing),
+          revert: both(
+            placeOccurrence(only(row), row),
+            row.taskId ? patchRepeat(row.taskId, true, { kind: "due", date: row.date }) : nothing,
+          ),
           slot: `rule:${row.ruleId}`,
         });
       },

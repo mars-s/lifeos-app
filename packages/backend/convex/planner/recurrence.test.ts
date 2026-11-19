@@ -350,6 +350,32 @@ test("rows carry the repeat, Upcoming shows each rule's next occurrence, and sto
   expect(unwrap(await t.query(api.planner.recurrence.upcoming, { date: "2026-11-19", days: 7 }))).toEqual([]);
 });
 
+test("stopping a rule from Upcoming still works after its latest Task is deleted forever, and can be undone", async () => {
+  const { t, make, setRepeat, card, generate, datesOf } = await setup();
+  const taskId = await make("Water the plants");
+  const { ruleId } = unwrap(await setRepeat(taskId, daily));
+  const upcoming = async () => unwrap(await t.query(api.planner.recurrence.upcoming, { date: "2026-11-19", days: 7 }));
+  unwrap(await t.mutation(api.planner.tasks.trash, { taskId }));
+  unwrap(await t.mutation(api.planner.trash.deleteForever, { items: [{ kind: "task", id: taskId }] }));
+  expect(await card(taskId)).toBeNull();
+  const [occurrence] = await upcoming();
+  expect(occurrence).toMatchObject({ ruleId, date: "2026-11-20" });
+  expect(occurrence?.taskId).toBeUndefined();
+
+  const stopped = unwrap(await t.mutation(api.planner.recurrence.stopRule, { ruleId }));
+  expect(stopped.changed).toBe(true);
+  expect(await upcoming()).toEqual([]);
+  expect(unwrap(await t.mutation(api.planner.recurrence.stopRule, { ruleId }))).toMatchObject({ changed: false, activityId: null });
+  at(nineAm("2026-11-20"));
+  await generate();
+  expect(await datesOf(ruleId)).toEqual([]);
+
+  unwrap(await t.mutation(api.platform.undo.undo, { activityId: stopped.activityId! }));
+  expect(await upcoming()).toEqual([occurrence]);
+  await generate();
+  expect(await datesOf(ruleId)).toEqual(["2026-11-20"]);
+});
+
 test("a stranger or a signed-out caller cannot read or change Recurrence Rules", async () => {
   const anonymous = newSignedOutBackend();
   const owner = await signInWithGithub(anonymous, ownerGithubId, "avi");
@@ -365,10 +391,11 @@ test("a stranger or a signed-out caller cannot read or change Recurrence Rules",
       await Promise.all([
         refusal(caller.mutation(api.planner.recurrence.setRepeat, repeat)),
         refusal(caller.mutation(api.planner.recurrence.stopRepeat, { taskId })),
+        refusal(caller.mutation(api.planner.recurrence.stopRule, { ruleId })),
         refusal(caller.mutation(api.planner.recurrence.skip, { ruleId, date: "2026-11-20" })),
         refusal(caller.query(api.planner.recurrence.upcoming, { date: "2026-11-19", days: 7 })),
       ]),
-    ).toEqual(Array.from({ length: 4 }, () => kind));
+    ).toEqual(Array.from({ length: 5 }, () => kind));
   }
   expect((await owner.run((ctx) => ctx.db.get("recurrenceRules", ruleId)))?.next).toEqual({ kind: "due", date: "2026-11-20" });
 });

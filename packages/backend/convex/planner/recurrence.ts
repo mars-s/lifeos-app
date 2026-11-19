@@ -208,6 +208,18 @@ export const stopRepeat = changeMutation({
   },
 });
 
+export const stopRule = changeMutation({
+  action: "recurrence.stop",
+  args: { ruleId: v.id("recurrenceRules") },
+  handler: async (ctx, { ruleId }, record) => {
+    const rule = await load(ctx, "recurrenceRules", ruleId);
+    if (rule.isErr()) return err<{ changed: boolean }, PlannerError>(rule.error);
+    return ok<{ changed: boolean }, PlannerError>({
+      changed: await record.patch("recurrenceRules", ruleId, { next: ENDED }),
+    });
+  },
+});
+
 export const skip = changeMutation({
   action: "recurrence.skip",
   args: { ruleId: v.id("recurrenceRules"), date: v.string() },

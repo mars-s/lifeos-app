@@ -323,7 +323,7 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
 
   const occurrenceGroups: (row: RecurringOccurrence) => MenuGroup[] = (row) => [
     { items: [{ id: "skip", label: "Skip This One", icon: SkipForward, onSelect: () => occurrenceDo.skip(row) }] },
-    { items: [{ id: "stop", label: "Stop Repeating", icon: XCircle, disabled: !row.taskId, onSelect: () => occurrenceDo.stop(row) }] },
+    { items: [{ id: "stop", label: "Stop Repeating", icon: XCircle, onSelect: () => occurrenceDo.stop(row) }] },
   ];
 
   const whenItems: (
