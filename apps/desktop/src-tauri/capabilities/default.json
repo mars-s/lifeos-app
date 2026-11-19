@@ -3,5 +3,9 @@
   "identifier": "default",
   "description": "Default window permissions",
   "windows": ["main", "capture"],
-  "permissions": ["core:default", "deep-link:default"]
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "deep-link:default"
+  ]
 }

@@ -23,6 +23,7 @@ import { SelectionBar } from "./selection-bar";
 import { useSelectionGestures } from "./selection-gestures";
 import { ShellContext, type ListDraft, type OpenCard, type Renaming, type ShellState } from "./shell-context";
 import { Sidebar } from "./sidebar";
+import { WindowDragStrip } from "./window-drag-strip";
 
 const PLANNER_KEY = "8";
 
@@ -253,6 +254,7 @@ export const AppShell = ({ children }: { children: ReactNode }) => {
       {!isConvexConfigured ? <SetupNotice /> : today ? <Connected today={today}>{children}</Connected> : <div className="h-dvh bg-surface" />}
       <ConfirmHost />
       <Toaster />
+      <WindowDragStrip />
     </>
   );
 };
