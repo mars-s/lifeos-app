@@ -89,6 +89,10 @@ One unit of background work.
 
 Indexes: `by_name` (register, and `platform/workers:grant`, which adds one capability to a named Worker without touching its token), `by_token_hash` (authenticate every Worker call).
 
+### `preferences`
+
+One row, absent until Avi changes a setting: `smartEstimates` (boolean, on when the row is missing). `platform/preferences:get` reads it with the defaults filled in. Each setter is a `changeMutation`, so a switch is in Activity and can be undone.
+
 ### `users`
 
 One row per GitHub account that signed in. Convex Auth's components keep the sessions and the GitHub account link. Only the owner's row exists in practice, because sign-in refuses every other account (`docs/auth.md`).
@@ -181,6 +185,28 @@ One stretch of timed work, or one Pomodoro Break, on one Task.
 | `by_state` (`state.kind`) | The one running or paused session |
 
 The clock is never stored and no server tick runs. `shared/focus.ts` works every figure out from these fields and the current time: focused time is the end (or now) minus `start` minus `pausedMs`, capped at `plannedMinutes`. The web app and the backend share that file (`@lifeos/backend/focus`), so a pill in two tabs and the stored Actual Time always agree. A session whose planned time has run out stays as it is until Avi finishes it, extends it or starts a Break. It gains no more time while it waits.
+
+### `estimateSuggestions`
+
+One row per Task that has asked for a **Smart Estimate**. The suggestion never touches the Task's `estimateMinutes`. Avi's click sets that through `tasks:setEstimate`, like any other Estimate.
+
+| Field | Type |
+| --- | --- |
+| `taskId` | `Id<"tasks">` |
+| `requestedAt` | The latest request. A scheduled run with an older value has been replaced and does nothing |
+| `outcome` | `waiting`; `suggested { minutes, modelMinutes, reason, confidence, probabilities, model, inputsHash, at }`; `unclear { vague, inputsHash, at }`; or `failed { error, inputsHash, at }` |
+
+Index: `by_task` (the card's query and every request).
+
+### How a Smart Estimate lands
+
+- **Asking.** `tasks:create` and a real `tasks:rename` call `requestSuggestion`, and so does opening the card of a Task with no row yet (`planner/smartEstimates:request`, an `ownerMutation` because it changes none of Avi's data). Nothing happens when the Task already has an Estimate, is closed or trashed, Smart Estimates is off, or `OPENAI_API_KEY` is missing. Otherwise it bumps `requestedAt` and schedules `suggest` two seconds later, so a burst of edits makes one call.
+- **The signal.** `planFor` builds the title, notes (whitespace collapsed, cut at 600 characters), Checklist size, Area, Project and Label names, and up to 6 nearest past Tasks. Past Tasks are the last 300 closed Tasks plus any Task in the last 600 Focus Sessions. They rank by shared title words, then same Project, same Area and shared Labels. Each example sends only its title, Area, Project, Labels, Estimate and Actual Time. Other Tasks' notes and every id stay home.
+- **The call.** `POST https://api.openai.com/v1/decisions` with `gpt-6-luna`: one `choice` question (`estimate`, values `5` to `240` minutes) and one `predicate` (`too_vague`). The fixed instructions come first in a developer message and the Task follows as `input_json`. The request carries `prompt_cache_key`, but the prefix is under the 1,024 tokens caching needs, so every call is billed in full (about 300 to 900 input tokens, a fraction of a cent).
+- **The answer.** A `too_vague` probability of 0.7 or more stores `unclear`. Otherwise the pick is nudged by Avi's run ratio: the median of Actual Time over Estimate across the examples (2 or more pairs), or else across all history (3 or more). A ratio outside 0.85 to 1.15 moves the pick to the choice nearest `pick × ratio`. The reason is written in LifeOS, not by the model: the closest example and, when it applies, the over-run.
+- **Showing it.** `planner/smartEstimates:forTask` returns `{ minutes, reason }` only when the preference is on, the Task still has no Estimate, and `confidence` is at least 0.3.
+- **Once per change.** `inputsHash` is the SHA-256 of the model name, the signal and the ratio. A run whose hash matches the stored `suggested` or `unclear` outcome makes no call. A failure is retried on the next real change.
+- `planner/smartEstimates:status` says whether the preference is on and whether the key is set.
 
 ### `thingsSync`
 

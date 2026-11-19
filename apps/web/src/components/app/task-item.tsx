@@ -472,13 +472,7 @@ export const TaskItem = ({
         </div>
         <AnimatePresence initial={false}>
           {open && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={transition}
-              className="overflow-hidden"
-            >
+            <motion.div initial={ROW_HIDDEN} animate={ROW_SHOWN} exit={ROW_HIDDEN} transition={transition}>
               {closed ? (
                 <ClosedBody task={task} today={today} />
               ) : (

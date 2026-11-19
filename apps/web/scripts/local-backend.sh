@@ -40,6 +40,8 @@ const SEEDED = [
   "workingHours",
   "healthDays",
   "ouraConnection",
+  "estimateSuggestions",
+  "preferences",
 ] as const;
 
 export const seed = internalMutation({
@@ -60,6 +62,21 @@ export const rewindFocus = internalMutation({
     const session = await activeSession(ctx);
     if (session) await ctx.db.patch("focusSessions", session._id, { start: session.start - minutes * 60_000 });
     return null;
+  },
+});
+
+export const suggestEstimate = internalMutation({
+  args: { title: v.string(), minutes: v.number(), reason: v.string(), confidence: v.optional(v.number()) },
+  handler: async (ctx, { title, minutes, reason, confidence }) => {
+    const task = (await ctx.db.query("tasks").collect()).find((row) => row.title === title);
+    if (!task) throw new Error(`No Task called ${title}`);
+    await ctx.db.patch("tasks", task._id, { estimateMinutes: undefined });
+    const at = Date.now();
+    const outcome = { kind: "suggested" as const, minutes, modelMinutes: minutes, reason, confidence: confidence ?? 0.8, probabilities: [], model: "gpt-6-luna", inputsHash: "seeded", at };
+    const row = await ctx.db.query("estimateSuggestions").withIndex("by_task", (q) => q.eq("taskId", task._id)).unique();
+    if (row) await ctx.db.patch("estimateSuggestions", row._id, { requestedAt: at, outcome });
+    else await ctx.db.insert("estimateSuggestions", { taskId: task._id, requestedAt: at, outcome });
+    return task._id;
   },
 });
 

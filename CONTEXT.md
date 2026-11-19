@@ -32,6 +32,9 @@ _Avoid_: due date.
 **Estimate**: how long a Task should take, in minutes. Shown as `0:30`. Also called allocated time in conversation.
 _Avoid_: duration (that belongs to Work Blocks).
 
+**Smart Estimate**: an Estimate LifeOS suggests for a Task that has none, chosen by OpenAI's Decisions API from the Task and Avi's nearest past Tasks, then nudged by how far he usually runs over or under. It shows as a marked chip with its reason. It becomes the Estimate only when Avi clicks it. The Smart Estimates preference turns it off, and then nothing is sent to OpenAI.
+_Avoid_: AI estimate, auto-estimate.
+
 **Work Block**: a slot on the calendar reserved for one Task, with a start and an end. A Task can have several. Creating one never changes the Task's Deadline.
 _Avoid_: timebox in code (fine in UI copy), event.
 

@@ -18,7 +18,7 @@ const CHIP =
   "relative h-7 rounded-md px-2 font-mono text-small transition-[background-color,color,scale,opacity] duration-(--dur-press) ease-out before:absolute before:-inset-x-0.5 before:-inset-y-2 active:scale-[0.94]";
 
 const SUGGESTED =
-  "outline-1 outline-dashed -outline-offset-1 outline-brand/55 text-foreground starting:opacity-0 motion-safe:duration-(--dur-fast)";
+  "outline-1 outline-dashed -outline-offset-1 outline-brand/55 text-foreground starting:opacity-0 motion-safe:duration-(--dur-fast) focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring";
 
 const Spark = () => (
   <Sparkle weight="fill" aria-hidden="true" className="pointer-events-none absolute -top-1 -right-1 size-2.5 text-brand" />
@@ -89,7 +89,7 @@ export const EstimateField = ({
           </button>
         );
         return hint ? (
-          <Tooltip key={chip} content={hint.reason} side="bottom" align="start">
+          <Tooltip key={chip} content={hint.reason} side="top" align="start">
             {button}
           </Tooltip>
         ) : (
