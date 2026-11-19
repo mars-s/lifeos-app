@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi 
 import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { newBackend, unwrap, type Backend } from "../backend.test-utils";
-import { bucketsFor, calibrationOf, DECISIONS_URL, guessesFrom, isPlaceholderTitle, nearestExamples, nudged, parseDecision, type PastTask } from "./smartEstimateModel";
+import { bucketsFor, calibrationOf, DECISIONS_URL, guessesFrom, isPlaceholderTitle, isTooVague, nearestExamples, nudged, parseDecision, type PastTask } from "./smartEstimateModel";
 
 const BUCKETS = bucketsFor(510);
 
@@ -392,6 +392,16 @@ describe("the estimate model", () => {
       ["2 working weeks", 5100],
     ]);
     expect(bucketsFor(480).find((bucket) => bucket.value === "1 working week")?.minutes).toBe(2400);
+  });
+
+  test("vague means certain, or likely and unsure of the size, so big clear work still gets a guess", () => {
+    const live = [
+      { title: "rewrite the entire db in rust", vague: 0.81, confidence: 0.99 },
+      { title: "Build the iPhone app for LifeOS", vague: 0.67, confidence: 0.72 },
+      { title: "stuff", vague: 1, confidence: 0.77 },
+      { title: "Stuff for later", vague: 0.8, confidence: 0.4 },
+    ];
+    expect(live.map(isTooVague)).toEqual([false, false, true, true]);
   });
 
   test("placeholder titles are not worth classifying", () => {

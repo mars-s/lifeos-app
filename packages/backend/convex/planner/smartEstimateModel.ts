@@ -9,7 +9,10 @@ export const PROMPT_CACHE_KEY = "lifeos-smart-estimate";
 export const VAGUE_THRESHOLD = 0.7;
 export const SURE_CONFIDENCE = 0.6;
 
-export const isTooVague = ({ vague, confidence }: { vague: number; confidence: number }) => vague >= VAGUE_THRESHOLD && confidence < SURE_CONFIDENCE;
+export const CERTAINLY_VAGUE = 0.95;
+
+export const isTooVague = ({ vague, confidence }: { vague: number; confidence: number }) =>
+  vague >= CERTAINLY_VAGUE || (vague >= VAGUE_THRESHOLD && confidence < SURE_CONFIDENCE);
 export const GUESS_FLOOR = 0.03;
 export const GUESS_LIMIT = 3;
 const PLACEHOLDER_TITLES = new Set(["new task", "untitled", "task", "todo", "to do", "to-do"]);
