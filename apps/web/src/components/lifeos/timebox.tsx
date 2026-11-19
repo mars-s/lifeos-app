@@ -17,7 +17,7 @@ const DRAG_START_PX = 4;
 const GUTTER_REM = 3;
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 
-const toPx = (minutes: number) => (minutes / 60) * HOUR_PX;
+export const toPx = (minutes: number) => (minutes / 60) * HOUR_PX;
 const snapTo = (minutes: number) => Math.round(minutes / SNAP_MINUTES) * SNAP_MINUTES;
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const rubber = (overshoot: number) => (overshoot * 120 * 0.55) / (120 + 0.55 * Math.abs(overshoot));
@@ -183,6 +183,10 @@ type Gesture = {
 
 type Live = { id: string; mode: Gesture["mode"]; day: number; start: number; minutes: number };
 
+type Draw = { pointerId: number; day: number; from: number; to: number };
+
+const MIN_DRAW_MINUTES = 15;
+
 export const Timebox = ({
   days,
   commitments,
@@ -195,6 +199,8 @@ export const Timebox = ({
   now,
   scrollKey,
   dayLayers,
+  zones,
+  onDraw,
   onMove,
   onResize,
   onToggle,
@@ -213,6 +219,8 @@ export const Timebox = ({
   now: { day: number; minute: number } | null;
   scrollKey: string;
   dayLayers?: readonly ReactNode[];
+  zones?: ReactNode;
+  onDraw?: (day: number, start: number, end: number) => void;
   onMove: (id: string, day: number, start: number) => void;
   onResize: (id: string, minutes: number) => void;
   onToggle: (id: string, done: boolean) => void;
@@ -226,6 +234,7 @@ export const Timebox = ({
   const gesture = useRef<Gesture | null>(null);
   const [byKey, setByKey] = useState(false);
   const [live, setLive] = useState<Live | null>(null);
+  const [drawn, setDrawn] = useState<Draw | null>(null);
   const count = days.length;
   const tight = count > 1;
   const clockSpan = (start: number, end: number) => (tight ? formatClock(start) : formatRange(start, end));
@@ -363,13 +372,40 @@ export const Timebox = ({
     }
   };
 
+  const drawFrom = (day: number) => (event: React.PointerEvent<HTMLDivElement>) => {
+    const box = grid.current?.getBoundingClientRect();
+    if (!onDraw || !box || event.button !== 0 || event.pointerType === "touch" || gesture.current) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const minute = clamp(snapTo(minuteAtPointer(event.clientY, box.top)), 0, DAY_MINUTES);
+    setDrawn({ pointerId: event.pointerId, day, from: minute, to: minute });
+  };
+  const drawTo = (event: React.PointerEvent<HTMLDivElement>) => {
+    const box = grid.current?.getBoundingClientRect();
+    if (!drawn || !box || drawn.pointerId !== event.pointerId) return;
+    const to = clamp(snapTo(minuteAtPointer(event.clientY, box.top)), 0, DAY_MINUTES);
+    if (to === drawn.to) return;
+    haptic("snap");
+    setDrawn({ ...drawn, to });
+  };
+  const drawEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!drawn || drawn.pointerId !== event.pointerId) return;
+    setDrawn(null);
+    const start = Math.min(drawn.from, drawn.to);
+    const end = Math.max(drawn.from, drawn.to);
+    if (event.type === "pointerup" && end - start >= MIN_DRAW_MINUTES) {
+      haptic("drop");
+      onDraw?.(drawn.day, start, end);
+    }
+  };
+  const drawing = drawn && Math.abs(drawn.to - drawn.from) >= MIN_DRAW_MINUTES ? { day: drawn.day, start: Math.min(drawn.from, drawn.to), minutes: Math.abs(drawn.to - drawn.from) } : null;
+
   const liveBlock = live && blocks.find((block) => block.id === live.id);
   const shown = live && {
     day: live.day,
     start: clamp(snapTo(live.start), 0, DAY_MINUTES - SNAP_MINUTES),
     minutes: clamp(snapTo(live.minutes), SNAP_MINUTES, DAY_MINUTES),
   };
-  const readout = shown ?? ghost;
+  const readout = shown ?? ghost ?? drawing;
   const clash =
     readout &&
     commitments.find(
@@ -428,7 +464,14 @@ export const Timebox = ({
           <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 bg-foreground/[0.028]" style={{ top: toPx(workingHours.endMinute) }} />
           <div className="absolute inset-0 grid" style={columns}>
             {days.map((day, index) => (
-              <div key={day.key} className={cn("relative", index > 0 && "shadow-[inset_1px_0_0_color-mix(in_oklab,var(--foreground)_6%,transparent)]")}>
+              <div
+                key={day.key}
+                onPointerDown={onDraw ? drawFrom(index) : undefined}
+                onPointerMove={onDraw ? drawTo : undefined}
+                onPointerUp={onDraw ? drawEnd : undefined}
+                onPointerCancel={onDraw ? drawEnd : undefined}
+                className={cn("relative", onDraw && "cursor-crosshair", index > 0 && "shadow-[inset_1px_0_0_color-mix(in_oklab,var(--foreground)_6%,transparent)]")}
+              >
                 {dayLayers?.[index]}
               </div>
             ))}
@@ -436,6 +479,14 @@ export const Timebox = ({
           {sleep.map((band) => (
             <SleepBand key={band.id} band={band} days={count} tight={tight} />
           ))}
+          {zones}
+          {drawing && (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute rounded-lg bg-brand/[0.06] outline-[1.5px] -outline-offset-[1.5px] outline-dashed outline-brand/60"
+              style={{ ...slotStyle(drawing.day, count, WHOLE), top: toPx(drawing.start) + 1, height: toPx(drawing.minutes) - 2 }}
+            />
+          )}
           {commitments.map((commitment) => {
             const height = toPx(commitment.end - commitment.start) - 2;
             return (

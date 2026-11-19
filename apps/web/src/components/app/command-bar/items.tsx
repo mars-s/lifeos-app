@@ -3,6 +3,7 @@
 import { FEATURE_IDS, FEATURES, type FeatureId } from "@lifeos/backend/features";
 import { FEATURE_ICONS } from "../settings/feature-icons";
 import type { FeatureState } from "../settings/feature-state";
+import { FrameCorners } from "@phosphor-icons/react";
 import {
   ArrowBendUpRight,
   ArrowCounterClockwise,
@@ -373,8 +374,10 @@ export const moreItems = (deps: {
   features: readonly FeatureState[] | undefined;
   setFeature: (feature: FeatureId, enabled: boolean) => void;
   spreadToday: () => void;
+  newSmartBlock: () => void;
 }) => {
   const muted = MUTED;
+  const smartBlocksOn = deps.features?.some((state) => state.feature === "smartBlocks" && state.status.kind === "ready") ?? false;
   const item = plain.bind(null, "More");
   const paused = deps.focus?.state.kind === "paused";
   return [
@@ -415,6 +418,18 @@ export const moreItems = (deps: {
       undefined,
       "timebox work blocks schedule plan day auto sunsama",
     ),
+    ...(smartBlocksOn
+      ? [
+          item(
+            "smart-block",
+            "New Smart Block",
+            <FrameCorners weight="bold" aria-hidden="true" className={muted} />,
+            deps.newSmartBlock,
+            undefined,
+            "focus zone time block frame reserve fill morgen",
+          ),
+        ]
+      : []),
     item("shortcuts", "Keyboard shortcuts", <Keyboard weight="fill" aria-hidden="true" className={muted} />, deps.shortcuts, "shift+/", "help keys"),
   ];
 };

@@ -36,6 +36,10 @@ const WHEN_OFF = {
   },
   places: hideTrips,
   templates: () => undefined,
+  smartBlocks: (store: OptimisticLocalStore) => {
+    for (const { args } of store.getAllQueries(api.planner.smartBlocks.range))
+      store.setQuery(api.planner.smartBlocks.range, args, { ok: true, value: { on: false, occurrences: [] } });
+  },
 } satisfies Record<FeatureId, (store: OptimisticLocalStore) => void>;
 
 const switched = (enabled: boolean, before: FeatureStatus) =>

@@ -12,12 +12,14 @@ import { FEATURE_ICONS } from "./feature-icons";
 import { STATUS_WORDS, statusTone, useFeatures, type FeatureState } from "./feature-state";
 import { AiSettings } from "./ai-settings";
 import { PlacesSettings } from "./places-settings";
+import { SmartBlocksSettings } from "./smart-blocks-settings";
 import { SettingsGroup, StatusLamp } from "./rows";
 
 const FEATURE_PAGES = {
   ai: <AiSettings />,
   places: <PlacesSettings />,
   templates: <TemplatesList />,
+  smartBlocks: <SmartBlocksSettings />,
 } satisfies Record<FeatureId, ReactNode>;
 
 const useGo = () => {
@@ -136,6 +138,7 @@ const WORKS_WITH_HINT = {
   ai: "When Places finds a trip for a Task, the Smart Estimate adds the time there and back.",
   places: "AI spots which Tasks need a trip, and Smart Estimates adds the time there and back.",
   templates: "",
+  smartBlocks: "A Task with no Estimate fills a Smart Block by its Smart Estimate, marked as a guess.",
 } satisfies Record<FeatureId, string>;
 
 export const FeatureScreen = ({ feature }: { feature: FeatureId }) => {

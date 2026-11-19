@@ -2,7 +2,7 @@
 
 import { useDroppable } from "@dnd-kit/core";
 import { CaretLeft, CaretRight } from "@phosphor-icons/react";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { addDays, type IsoDate } from "@lifeos/backend/date";
 import type { PlannerTask } from "@lifeos/backend/types";
 import { Timebox, type TimeboxDay, type TimeboxGhost, type TimeboxPreview } from "@/components/lifeos/timebox";
@@ -21,6 +21,8 @@ import { useGhost } from "./drag";
 import { calContainer, useTimebox } from "./model";
 import { useSleep } from "./sleep";
 import type { SpreadPreview } from "./spread";
+import { draftOf, fillPreviews, newDraft, SmartBlockBar, SmartZones, useSmartActions, useSmartBlocks, type SmartDraft } from "./smart-blocks";
+import type { SmartFill } from "@lifeos/backend/smartBlocks";
 
 export type TimeboxMode = "day" | "week";
 export type TimeboxView = { mode: TimeboxMode; anchor: IsoDate };
@@ -49,8 +51,16 @@ export const TimeboxPane = ({
   spread,
   onApplySpread,
   onCancelSpread,
+  smart,
   className,
 }: {
+  smart: {
+    draft: SmartDraft | null;
+    fill: SmartFill | null;
+    pending: { date: IsoDate; fill: SmartFill } | null;
+    setDraft: (draft: SmartDraft | null) => void;
+    onAccept: () => void;
+  };
   spread: SpreadPreview | null;
   onApplySpread: () => void;
   onCancelSpread: () => void;
@@ -71,6 +81,9 @@ export const TimeboxPane = ({
       : Array.from({ length: 7 }, (_, index) => addDays(startOfWeek(anchor), index));
   }, [mode, anchor, narrow]);
   const data = useTimebox(dates);
+  const smartRange = useSmartBlocks(dates);
+  const smartActions = useSmartActions();
+  const smartOn = smartRange?.on === true;
   const tasksDo = useSelectionActions(today);
   const sleep = useSleep(dates, today);
   const held = useGhost();
@@ -97,11 +110,23 @@ export const TimeboxPane = ({
             ({ id: `spread:${task._id}`, day: spreadDay, start, minutes, title: task.title, colour: task.area?.colour }) satisfies TimeboxPreview,
         )
       : [];
+  const draftDay = smart.draft ? dates.indexOf(smart.draft.date) : -1;
+  const opened = smart.draft ? `${smart.draft.blockId ?? "new"}:${smart.draft.date}:${draftDay}` : null;
+  useEffect(() => {
+    if (opened === null) return;
+    const frame = requestAnimationFrame(() => document.querySelector("[data-smart-draft]")?.scrollIntoView({ block: "start", behavior: "smooth" }));
+    return () => cancelAnimationFrame(frame);
+  }, [opened]);
+  const pendingDay = smart.pending ? dates.indexOf(smart.pending.date) : -1;
+  const smartPreviews = [
+    ...(draftDay === -1 ? [] : fillPreviews(smart.fill, draftDay)),
+    ...(pendingDay === -1 || !smart.pending ? [] : fillPreviews(smart.pending.fill, pendingDay)),
+  ];
   const rowOf = (id: string) => data.rows.find((row) => row._id === id);
   const label = mode === "day" ? `${weekdayShort(anchor)} ${dayMonth(anchor)}` : first.slice(0, 7) === last.slice(0, 7) ? monthYear(first) : `${dayMonth(first)} to ${dayMonth(last)}`;
 
   return (
-    <section aria-label="Timebox" className={cn("min-h-0 flex-col", className)}>
+    <section aria-label="Timebox" className={cn("relative min-h-0 flex-col", className)}>
       <header className="mb-2 flex h-8 shrink-0 items-center gap-1 pr-3 pl-4">
         <h2 className="min-w-0 flex-1 truncate text-heading font-semibold">
           <span className="sr-only">Timebox, </span>
@@ -122,6 +147,9 @@ export const TimeboxPane = ({
         <Segmented label="Timebox view" options={modes(narrow)} value={mode} onValueChange={(next) => onView({ mode: next, anchor })} className="ml-1" />
       </header>
       {spread && <SpreadBar spread={spread} isToday={spread.date === today} onApply={onApplySpread} onCancel={onCancelSpread} />}
+      {smart.draft && (
+        <SmartBlockBar draft={smart.draft} fill={smart.fill} onChange={smart.setDraft} onAccept={smart.onAccept} onCancel={() => smart.setDraft(null)} />
+      )}
       <Timebox
         days={days}
         commitments={data.commitments}
@@ -129,13 +157,35 @@ export const TimeboxPane = ({
         blocks={data.blocks}
         sleep={sleep}
         ghost={ghost}
-        previews={previews}
+        previews={[...previews, ...smartPreviews]}
         workingHours={workingHours}
         now={now !== null && showsToday ? { day: dates.indexOf(today), minute: minuteOfDay(now) } : null}
         scrollKey={`${mode}:${dates.length}`}
+        className={smart.draft ? "pb-[30rem]" : undefined}
         dayLayers={dates.map((date) => (
           <CalDrop key={date} date={date} />
         ))}
+        zones={
+          smartOn && (
+            <SmartZones
+              dates={dates}
+              range={smartRange}
+              draft={smart.draft}
+              fill={smart.fill}
+              actions={smartActions}
+              onOpen={(occurrence) => smart.setDraft(draftOf(occurrence))}
+              onResize={(start, end) => smart.draft && smart.setDraft({ ...smart.draft, start, end })}
+            />
+          )
+        }
+        onDraw={
+          smartOn
+            ? (day, start, end) => {
+                const date = dates[day];
+                if (date) smart.setDraft(newDraft(date, start, end));
+              }
+            : undefined
+        }
         onMove={(id, day, start) => {
           const row = rowOf(id);
           const date = dates[day];

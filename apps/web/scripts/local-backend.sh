@@ -49,6 +49,7 @@ const SEEDED = [
   "savedPlaces",
   "taskTrips",
   "stepSuggestions",
+  "smartBlocks",
 ] as const;
 
 export const seed = internalMutation({

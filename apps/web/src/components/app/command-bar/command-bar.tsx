@@ -193,6 +193,11 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
         planCommands.pending = today as IsoDate;
         go({ kind: "planner" });
       },
+      newSmartBlock: () => {
+        if (planCommands.smartBlock) return planCommands.smartBlock(today as IsoDate);
+        planCommands.pendingSmartBlock = today as IsoDate;
+        go({ kind: "planner" });
+      },
     });
     const containers = containerItems(sidebar, go);
     const review = inApp || import.meta.env.DEV ? [replayWelcomeItem(replayWelcome)] : [];

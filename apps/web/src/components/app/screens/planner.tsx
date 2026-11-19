@@ -18,6 +18,8 @@ import { BrainDump, DayColumn } from "../planner/lists";
 import { INBOX, dayContainer, nextFreeSlot, usePlanner, type PlannerModel } from "../planner/model";
 import { useSleep } from "../planner/sleep";
 import { previewSpread, sleepOn, type SpreadPreview } from "../planner/spread";
+import { newDraft, smartBusy, useSmartActions, useSmartBlocks, useSmartFill, type SmartDraft } from "../planner/smart-blocks";
+import type { SmartFill } from "@lifeos/backend/smartBlocks";
 import { TimeboxPane, type TimeboxView } from "../planner/timebox-pane";
 import { selection } from "../selection";
 import type { PlannerTab } from "../route";
@@ -57,6 +59,8 @@ const useTabbed = () => {
 };
 
 const BLOCKED_BY = "[data-open-card], [role=menu], [role=dialog]";
+
+const SMART_DEFAULT_MINUTES = 120;
 
 const isTyping = (target: EventTarget | null) =>
   target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
@@ -102,16 +106,55 @@ const Panes = ({
   const week = view.mode === "week";
   const dates = model.days.map((day) => day.date);
   const nights = useSleep(dates, today);
+  const smartRange = useSmartBlocks(dates);
+  const smartActions = useSmartActions();
+  const smartDraftAt = (date: IsoDate) => {
+    const opens = model.workingHours.startMinute;
+    const earliest = date === today ? Math.max(minuteOfDay(Date.now()), opens) : opens;
+    const busy = [...(model.days.find((day) => day.date === date)?.busy ?? []), ...smartBusy(smartRange, date)].toSorted((a, b) => a.start - b.start);
+    const start = nextFreeSlot(busy, SMART_DEFAULT_MINUTES, earliest);
+    return newDraft(date, start, Math.min(24 * 60, start + SMART_DEFAULT_MINUTES));
+  };
+  const [smartDraft, setSmartDraft] = useState<SmartDraft | null>(() =>
+    planCommands.pendingSmartBlock ? smartDraftAt(planCommands.pendingSmartBlock) : null,
+  );
+  const [smartPending, setSmartPending] = useState<{ date: IsoDate; fill: SmartFill } | null>(null);
+  const smartFill = useSmartFill(smartDraft, view.anchor);
   const previewOn = (date: IsoDate) => {
     const index = model.days.findIndex((day) => day.date === date);
     const day = model.days[index];
-    return day ? previewSpread({ day, model, sleep: sleepOn(nights, index), today, now: Date.now() }) : null;
+    return day ? previewSpread({ day, model, sleep: [...sleepOn(nights, index), ...smartBusy(smartRange, date)], today, now: Date.now() }) : null;
   };
   const [spread, setSpread] = useState<SpreadPreview | null>(() => (planCommands.pending ? previewOn(planCommands.pending) : null));
+
+  const showDate = (date: IsoDate) => {
+    setView(view.mode === "day" || startOfWeek(date) !== startOfWeek(view.anchor) ? { mode: view.mode, anchor: date } : view);
+    if (tabbed) setPane("timebox");
+  };
+
+  const editSmartBlock = (next: SmartDraft | null) => {
+    if (next && !smartDraft) setSpread(null);
+    setSmartDraft(next);
+  };
+
+  const startSmartBlock = useEffectEvent((date: IsoDate) => {
+    editSmartBlock(smartDraftAt(date));
+    showDate(date);
+  });
+
+  const acceptSmartBlock = useEffectEvent(() => {
+    if (!smartDraft || !smartFill || smartDraft.title.trim() === "") return;
+    haptic("drop");
+    const pending = { date: smartDraft.date, fill: smartFill };
+    setSmartPending(pending);
+    void smartActions.accept(smartDraft, smartFill, () => setSmartPending((current) => (current === pending ? null : current)));
+    setSmartDraft(null);
+  });
 
   const startSpread = useEffectEvent((date: IsoDate) => {
     const preview = previewOn(date);
     if (!preview) return;
+    setSmartDraft(null);
     setSpread(preview);
     setView(view.mode === "day" || startOfWeek(date) !== startOfWeek(view.anchor) ? { mode: view.mode, anchor: date } : view);
     if (tabbed) setPane("timebox");
@@ -137,26 +180,35 @@ const Panes = ({
   useEffect(() => {
     planCommands.addBlock = addBlock;
     planCommands.spread = startSpread;
+    planCommands.smartBlock = startSmartBlock;
     planCommands.pending = null;
+    planCommands.pendingSmartBlock = null;
     return () => {
       planCommands.addBlock = null;
       planCommands.spread = null;
+      planCommands.smartBlock = null;
     };
   }, []);
 
+  const onPreviewKey = useEffectEvent((event: KeyboardEvent) => {
+    if ((!smartDraft && !spread) || event.defaultPrevented || isTyping(event.target) || document.querySelector(BLOCKED_BY)) return;
+    if (event.key !== "Escape" && !(event.key === "Enter" && !(event.target instanceof HTMLButtonElement))) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      setSmartDraft(null);
+      setSpread(null);
+    } else if (smartDraft) acceptSmartBlock();
+    else applySpread();
+  });
+
+  useEffect(() => {
+    const listen = (event: KeyboardEvent) => onPreviewKey(event);
+    window.addEventListener("keydown", listen, true);
+    return () => window.removeEventListener("keydown", listen, true);
+  }, []);
+
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (spread && !event.defaultPrevented && !isTyping(event.target) && !document.querySelector(BLOCKED_BY)) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setSpread(null);
-        return;
-      }
-      if (event.key === "Enter" && !(event.target instanceof HTMLButtonElement)) {
-        event.preventDefault();
-        applySpread();
-        return;
-      }
-    }
     if (event.defaultPrevented || isTyping(event.target) || event.altKey || event.shiftKey) return;
     if (document.querySelector(BLOCKED_BY)) return;
     const command = event.metaKey || event.ctrlKey;
@@ -258,6 +310,7 @@ const Panes = ({
         spread={spread}
         onApplySpread={applySpread}
         onCancelSpread={() => setSpread(null)}
+        smart={{ draft: smartDraft, fill: smartFill, pending: smartPending, setDraft: editSmartBlock, onAccept: acceptSmartBlock }}
         className={cn("w-full", week ? "@4xl/planner:min-w-0 @4xl/planner:flex-1" : "@4xl/planner:w-[21rem] @4xl/planner:shrink-0", shows("timebox", pane, true))}
       />
       </ViewTransition>
