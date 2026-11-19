@@ -22,6 +22,7 @@ const applyChange = async <Args extends PropertyValidators, T extends object, E>
   const record = startRecording(ctx, actor, spec.action);
   const result = await spec.handler(ctx, args, record);
   const activityId = record.finish();
+  if (result.isErr() && activityId !== null) throw new Error(`${spec.action} was refused after it had written, so none of it was kept.`);
   return result.map((value) => ({ ...value, activityId }));
 };
 
