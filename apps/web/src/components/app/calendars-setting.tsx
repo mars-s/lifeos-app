@@ -1,8 +1,9 @@
 "use client";
 
-import { CalendarCheck } from "@phosphor-icons/react";
+import { CalendarCheck, CaretRight } from "@phosphor-icons/react";
 import type { OptimisticLocalStore } from "convex/browser";
 import { api } from "@lifeos/backend/api";
+import { useState } from "react";
 import type { CalendarsView } from "@lifeos/backend/types";
 import { Popover } from "@/components/ui/popover-panel";
 import { Switch } from "@/components/ui/choice-controls";
@@ -63,20 +64,61 @@ export const CalendarSwitches = ({ className }: { className?: string }) => {
   return (
     <div className={className}>
       {groupBySource(view?.calendars ?? []).map(([source, calendars]) => (
-        <section key={source} aria-label={source} className="pb-1.5">
-          <h3 className="px-2.5 pt-1 pb-0.5 text-micro text-faint-foreground">{source}</h3>
-          <ul>
-            {calendars.map((calendar) => (
-              <li key={calendar._id} className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5">
-                <span aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ backgroundColor: calendar.colour }} />
-                <span className="min-w-0 flex-1 truncate text-small">{calendar.title}</span>
-                <Switch aria-label={`Count ${calendar.title}`} checked={calendar.included} onCheckedChange={(included) => toggle(calendar, included)} />
-              </li>
-            ))}
-          </ul>
-        </section>
+        <CalendarGroup key={source} source={source} calendars={calendars} onToggle={toggle} />
       ))}
     </div>
+  );
+};
+
+const CalendarGroup = ({
+  source,
+  calendars,
+  onToggle,
+}: {
+  source: string;
+  calendars: readonly CalendarRow[];
+  onToggle: (calendar: CalendarRow, included: boolean) => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  const counting = calendars.filter((calendar) => calendar.included).length;
+  const listId = `calendars-${source}`;
+  return (
+    <section aria-label={source} className="pb-0.5">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={listId}
+        onClick={() => setOpen((was) => !was)}
+        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-[background-color,scale] duration-(--dur-press) ease-out hover:bg-foreground/[0.04] active:scale-[0.99]"
+      >
+        <CaretRight
+          weight="bold"
+          aria-hidden="true"
+          className="size-3 shrink-0 text-faint-foreground transition-transform duration-200 ease-out motion-reduce:transition-none"
+          style={{ rotate: open ? "90deg" : "0deg" }}
+        />
+        <span className="min-w-0 flex-1 truncate text-small text-muted-foreground">{source}</span>
+        <span className="shrink-0 font-mono text-micro text-faint-foreground tabular-nums">
+          {counting}/{calendars.length}
+        </span>
+      </button>
+      <div
+        id={listId}
+        inert={!open}
+        className="grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none"
+        style={{ gridTemplateRows: open ? "1fr" : "0fr", opacity: open ? 1 : 0 }}
+      >
+        <ul className="min-h-0 overflow-hidden pl-5">
+          {calendars.map((calendar) => (
+            <li key={calendar._id} className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5">
+              <span aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ backgroundColor: calendar.colour }} />
+              <span className="min-w-0 flex-1 truncate text-small">{calendar.title}</span>
+              <Switch aria-label={`Count ${calendar.title}`} checked={calendar.included} onCheckedChange={(included) => onToggle(calendar, included)} />
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
   );
 };
 
