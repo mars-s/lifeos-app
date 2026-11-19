@@ -10,6 +10,7 @@ import {
 } from "convex/server";
 import { useMemo, useSyncExternalStore } from "react";
 import { localIsoDate } from "@lifeos/backend/date";
+import { useReverted } from "./reverted-views";
 
 const TICK_MS = 20_000;
 
@@ -49,10 +50,11 @@ export const useViewState = <Query extends FunctionReference<"query">>(query: Qu
     return request;
   }, [name, argsKey]);
   const live: unknown = useQueries(queries).view;
+  const shown = useReverted(name, argsKey, live);
   const key = argsKey === null ? null : `${name}:${argsKey}`;
   if (live instanceof Error) return { value: undefined, error: live };
   if (key && live !== undefined) lastSeen.set(key, live);
-  return { value: (live ?? (key ? lastSeen.get(key) : undefined)) as FunctionReturnType<Query> | undefined, error: null };
+  return { value: (shown ?? (key ? lastSeen.get(key) : undefined)) as FunctionReturnType<Query> | undefined, error: null };
 };
 
 export const useView = <Query extends FunctionReference<"query">>(query: Query, args: FunctionArgs<Query> | "skip") => {

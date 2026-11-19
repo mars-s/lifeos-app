@@ -1,12 +1,16 @@
 "use client";
 
+import { getFunctionName } from "convex/server";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { api } from "@lifeos/backend/api";
 import type { Id } from "@lifeos/backend/dataModel";
 import type { IsoDate } from "@lifeos/backend/date";
 import type { PlannerTask } from "@lifeos/backend/types";
+import { rewriteView, type Updater } from "./local-views";
 
 const OPTIMISTIC = "optimistic:task:";
 const CLOCK_SKEW_MS = 60_000;
+const DRAFT_VIEW = getFunctionName(api.planner.lists.inbox);
 
 export type DraftBlock = { date: IsoDate; minute: number; minutes: number };
 
@@ -74,6 +78,14 @@ export const drafts = {
     });
     save(trimmed);
     return true;
+  },
+
+  rewrite: (key: string, update: Updater) => {
+    const draft = snapshot.drafts.find((candidate) => candidate.key === key && candidate.taskId === undefined);
+    if (!draft) return;
+    const [task] = rewriteView(update, DRAFT_VIEW, {}, [draft.task]) as PlannerTask[];
+    if (!task || task === draft.task) return;
+    publish({ ...snapshot, drafts: snapshot.drafts.map((candidate) => (candidate === draft ? { ...draft, task } : candidate)) });
   },
 
   discard: (key: string) => {

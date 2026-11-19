@@ -6,7 +6,7 @@ import type { PlannerTask } from "@lifeos/backend/types";
 import { formatMinutes } from "@/components/lifeos/format";
 import { haptic } from "@/lib/haptics";
 import { LINGER_MS } from "@/lib/motion-tokens";
-import { both, dropBlocksOf, dropTasks, nothing, patchTasks, reorderTask, useChange } from "./changes";
+import { completingTasks, patchTasks, reorderTask, trashingTasks, useChange } from "./changes";
 import { shortDay, whenLabel } from "./dates";
 import { selection } from "./selection";
 
@@ -38,11 +38,8 @@ export const useSelectionActions = (today: string) => {
         title: said(open, "Task completed", "completed"),
         mutation: api.planner.selection.complete,
         args: { taskIds },
-        apply: both(
-          patchTasks(taskIds, (task) => ({ ...task, status: { kind: "completed", at: Date.now() } })),
-          dropTasks(taskIds),
-        ),
-        revert: nothing,
+        ...completingTasks(taskIds),
+        onUndo: () => selection.linger(taskIds, false),
       });
     };
 
@@ -160,8 +157,7 @@ export const useSelectionActions = (today: string) => {
           title: said(tasks, "Task moved to Trash", "moved to Trash"),
           mutation: api.planner.selection.trash,
           args: { taskIds: idsOf(tasks) },
-          apply: both(dropTasks(idsOf(tasks)), dropBlocksOf(idsOf(tasks))),
-          revert: nothing,
+          ...trashingTasks(idsOf(tasks)),
         });
       },
     };

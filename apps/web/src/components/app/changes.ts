@@ -12,10 +12,11 @@ import type { AreaColour } from "@/components/lifeos/area";
 import { showUndo } from "@/components/lifeos/undo";
 import { toast } from "@/components/ui/toast-stack";
 import { drafts, isDraftTask } from "./drafts";
+import { putBack, type Node, type Updater } from "./local-views";
+import { showReverted } from "./reverted-views";
 
-export type Updater = (store: OptimisticLocalStore) => void;
+export type { Updater } from "./local-views";
 
-type Node = Record<string, unknown>;
 type ChangeResult = SerialisedResult<{ activityId: Id<"activity"> | null }, { kind: string }>;
 type ChangeMutation = FunctionReference<"mutation", "public", DefaultFunctionArgs, ChangeResult>;
 type SavedValue<Mutation extends ChangeMutation> = Extract<Mutation["_returnType"], { ok: true }>["value"];
@@ -135,6 +136,44 @@ export const dropTasks =
     const ids = new Set<string>(taskIds);
     dropFromViews(store, (node) => isTaskNode(node) && ids.has(node._id as string));
   };
+
+const taskAmong = (taskIds: readonly string[]) => {
+  const ids = new Set(taskIds);
+  return (node: Node) => isTaskNode(node) && ids.has(node._id as string);
+};
+
+const blockAmong = (taskIds: readonly string[]) => {
+  const ids = new Set(taskIds);
+  return (node: Node) => typeof node.taskId === "string" && ids.has(node.taskId) && "minutes" in node;
+};
+
+type Seen = { view: FunctionReference<"query">; args: DefaultFunctionArgs; value: unknown };
+
+const restorable = (drop: Updater, gone: (node: Node) => boolean) => {
+  let before: readonly Seen[] | null = null;
+  return {
+    apply: (store: OptimisticLocalStore) => {
+      const seen = before ? [] : TASK_VIEWS.flatMap((view) => store.getAllQueries(view).map(({ args, value }) => ({ view, args, value })));
+      drop(store);
+      before ??= seen.filter(({ view, args, value }) => store.getQuery(view, args) !== value);
+    },
+    revert: (store: OptimisticLocalStore) => {
+      for (const { view, args, value } of before ?? []) {
+        const now: unknown = store.getQuery(view, args);
+        if (now !== undefined) store.setQuery(view, args, putBack(value, now, gone));
+      }
+    },
+  };
+};
+
+export const completingTasks = (taskIds: readonly Id<"tasks">[]) =>
+  restorable(both(patchTasks(taskIds, (task) => ({ ...task, status: { kind: "completed", at: Date.now() } })), dropTasks(taskIds)), taskAmong(taskIds));
+
+export const trashingTasks = (taskIds: readonly Id<"tasks">[]) => {
+  const tasks = taskAmong(taskIds);
+  const blocks = blockAmong(taskIds);
+  return restorable(both(dropTasks(taskIds), dropBlocksOf(taskIds)), (node) => tasks(node) || blocks(node));
+};
 
 const byStart = (a: { start: number }, b: { start: number }) => a.start - b.start;
 
@@ -270,38 +309,47 @@ export type Change<Mutation extends ChangeMutation> = {
   permanent?: boolean;
   silent?: boolean;
   onSaved?: (value: SavedValue<Mutation>) => void;
+  onUndo?: () => void;
   onUndone?: () => void;
 };
+
+const draftsIn = (args: DefaultFunctionArgs) =>
+  [args.taskId, ...(Array.isArray(args.taskIds) ? (args.taskIds as unknown[]) : [])].filter(
+    (id): id is string => typeof id === "string" && isDraftTask(id),
+  );
 
 export const useChange = () => {
   const convex = useConvex();
   return useMemo(() => {
-    const send = async (mutation: ChangeMutation, args: DefaultFunctionArgs, optimisticUpdate: Updater) => {
-      const draftKey = typeof args.taskId === "string" && isDraftTask(args.taskId) ? args.taskId : null;
-      const taskId = draftKey ? await drafts.whenSaved(draftKey) : null;
-      if (draftKey && !taskId) return { ok: false, error: { kind: DISCARDED } } satisfies ChangeResult;
+    const send = async (mutation: ChangeMutation, args: DefaultFunctionArgs, unsaved: readonly string[], optimisticUpdate: Updater, wanted: () => boolean) => {
+      const discarded = unsaved.length > 0 && (await Promise.all(unsaved.map(drafts.whenSaved))).includes(null);
+      if (discarded || !wanted()) return { ok: false, error: { kind: DISCARDED } } satisfies ChangeResult;
+      const taskId = typeof args.taskId === "string" ? { taskId: drafts.realId(args.taskId) } : {};
       const taskIds = Array.isArray(args.taskIds) ? { taskIds: args.taskIds.map((id) => drafts.realId(String(id))) } : {};
-      return convex.mutation(mutation, { ...args, ...taskIds, ...(taskId ? { taskId } : {}) }, { optimisticUpdate });
+      return convex.mutation(mutation, { ...args, ...taskId, ...taskIds }, { optimisticUpdate });
     };
 
     const undo = async (sent: Promise<Id<"activity"> | null>, revert: Updater, onUndone: (() => void) | undefined) => {
+      const lift = showReverted(revert);
       const activityId = await sent;
-      if (!activityId) return;
-      const result = await convex
-        .mutation(api.platform.undo.undo, { activityId }, { optimisticUpdate: revert })
-        .catch(() => undefined);
+      if (!activityId) return lift();
+      const undoing = convex.mutation(api.platform.undo.undo, { activityId }, { optimisticUpdate: revert });
+      lift();
+      const result = await undoing.catch(() => undefined);
       if (!result?.ok) toast.error("That could not be undone", { description: reasonFor(result?.error.kind) });
       else onUndone?.();
     };
 
-    return <Mutation extends ChangeMutation>({ title, mutation, args, apply, revert, slot, permanent, silent, onSaved, onUndone }: Change<Mutation>) => {
+    return <Mutation extends ChangeMutation>({ title, mutation, args, apply, revert, slot, permanent, silent, onSaved, onUndo, onUndone }: Change<Mutation>) => {
+      const unsaved = draftsIn(args);
+      let undone = false;
+      unsaved.forEach((key) => drafts.rewrite(key, apply));
       const refused = (kind: string | undefined) => {
         forget();
-        if (kind === DISCARDED) return { saved: false, activityId: null };
-        toast.error("That did not save", { description: reasonFor(kind) });
+        if (kind !== DISCARDED && !undone) toast.error("That did not save", { description: reasonFor(kind) });
         return { saved: false, activityId: null };
       };
-      const sent = send(mutation, args, apply).then(
+      const sent = send(mutation, args, unsaved, apply, () => !undone).then(
         (result) => {
           if (!result.ok) return refused(result.error.kind);
           onSaved?.(result.value as SavedValue<Mutation>);
@@ -314,7 +362,12 @@ export const useChange = () => {
         ? nothing
         : showUndo(
             title,
-            () => void undo(sent.then(({ activityId }) => activityId), revert, onUndone),
+            () => {
+              undone = true;
+              onUndo?.();
+              unsaved.forEach((key) => drafts.rewrite(key, revert));
+              void undo(sent.then(({ activityId }) => activityId), revert, onUndone);
+            },
             slot,
           );
       return sent.then(({ saved }) => saved);
