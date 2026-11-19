@@ -12,6 +12,8 @@ import { cn } from "@/lib/utils";
 import { useView, valueOf } from "../hooks";
 import { ListPage, ListSkeleton, RouteLink, SectionHeading } from "../list-page";
 import { useShell } from "../shell-context";
+import { placeAttr, type NewTaskPlace } from "../new-task-place";
+import { routeHref } from "../route";
 import { LIST_META } from "../sidebar";
 import { TaskItems, useHasDrafts, type TaskItemShow } from "../task-item";
 
@@ -48,9 +50,17 @@ const GroupHeading = ({ container }: { container: TaskGroup["container"] }) => {
   );
 };
 
-const Group = ({ group, show }: { group: TaskGroup; show: TaskItemShow }) => {
+const parentOf = (container: TaskGroup["container"]) =>
+  (container.kind === "area"
+    ? { kind: "area", areaId: container.area._id }
+    : container.kind === "project"
+      ? { kind: "project", projectId: container.project._id }
+      : { kind: "loose" }) satisfies NewTaskPlace["parent"];
+
+const Group = ({ group, show, when }: { group: TaskGroup; show: TaskItemShow; when: "anytime" | "someday" }) => {
   const reduce = useReducedMotion();
-  const { openCard, setOpenCard } = useShell();
+  const { openCard, setOpenCard, route } = useShell();
+  const slot = `${routeHref(route)}:${group.key}`;
   const [expanded, setExpanded] = useState(false);
   const [settled, setSettled] = useState(false);
   const collapsible = group.container.kind !== "loose" && group.tasks.length > VISIBLE + 1;
@@ -58,9 +68,9 @@ const Group = ({ group, show }: { group: TaskGroup; show: TaskItemShow }) => {
   const rest = collapsible ? group.tasks.slice(VISIBLE) : [];
   const showAll = expanded || rest.some((task) => task._id === openCard?.key);
   return (
-    <section>
+    <section {...placeAttr({ slot, when: { kind: when }, parent: parentOf(group.container) })}>
       <GroupHeading container={group.container} />
-      <TaskItems tasks={head} show={show} />
+      <TaskItems tasks={head} show={show} hostsDrafts="inline" slot={slot} />
       <AnimatePresence initial={false} onExitComplete={() => setSettled(false)}>
         {showAll && (
           <motion.div
@@ -107,7 +117,7 @@ export const AnytimeScreen = () => {
         <>
           <TaskItems tasks={NO_TASKS} show={{ star: true }} hostsDrafts="above" />
           {view.groups.map((group) => (
-            <Group key={group.key} group={group} show={{ star: true }} />
+            <Group key={group.key} group={group} show={{ star: true }} when="anytime" />
           ))}
         </>
       )}
@@ -156,7 +166,7 @@ export const SomedayScreen = () => {
         <>
           <TaskItems tasks={NO_TASKS} hostsDrafts="above" />
           {view.groups.map((group) => (
-            <Group key={group.key} group={group} show={{}} />
+            <Group key={group.key} group={group} show={{}} when="someday" />
           ))}
           {view.projects.length > 0 && <ParkedProjects projects={view.projects} />}
         </>

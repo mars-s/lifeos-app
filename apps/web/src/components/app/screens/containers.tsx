@@ -17,6 +17,7 @@ import { useContainerActions } from "../container-actions";
 import { deadlineMark, whenLabel } from "../dates";
 import { useView } from "../hooks";
 import { ListPage, ListSkeleton, Missing, RouteLink, SectionHeading } from "../list-page";
+import { placeAttr } from "../new-task-place";
 import { useShell } from "../shell-context";
 import { openMenuFor } from "../menus";
 import { NotesField } from "../task-card-body";
@@ -140,6 +141,8 @@ export const AreaScreen = ({ areaId }: { areaId: Id<"areas"> }) => {
   );
 };
 
+const headingSlot = (headingId: Id<"headings">) => `/heading/${headingId}`;
+
 export const ProjectScreen = ({ projectId }: { projectId: Id<"projects"> }) => {
   const shell = useShell();
   const { today } = shell;
@@ -226,9 +229,16 @@ export const ProjectScreen = ({ projectId }: { projectId: Id<"projects"> }) => {
       ) : (
         view.sections.map((section) =>
           section.heading ? (
-            <section key={section.heading._id}>
+            <section
+              key={section.heading._id}
+              {...placeAttr({
+                slot: headingSlot(section.heading._id),
+                when: { kind: "anytime" },
+                parent: { kind: "project", projectId, headingId: section.heading._id },
+              })}
+            >
               <SectionHeading>{section.heading.title}</SectionHeading>
-              <TaskItems tasks={section.tasks} show={{ star: true, when: true }} sortable />
+              <TaskItems tasks={section.tasks} show={{ star: true, when: true }} hostsDrafts="inline" slot={headingSlot(section.heading._id)} sortable />
             </section>
           ) : (
             <TaskItems key="loose" tasks={section.tasks} show={{ star: true, when: true }} hostsDrafts="inline" sortable />

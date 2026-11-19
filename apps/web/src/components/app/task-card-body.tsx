@@ -23,6 +23,7 @@ import { useQuietView } from "./hooks";
 import { Linkified, TitleLinks } from "./linkified";
 import { useRepeatActions } from "./repeat-actions";
 import { TaskEstimateField } from "./smart-estimate";
+import { drafts, isDraftTask } from "./drafts";
 import { isOptimistic, useTaskActions } from "./task-actions";
 import { useFeatureOn } from "./settings/feature-state";
 import { useTemplateActions } from "./template-actions";
@@ -57,17 +58,18 @@ const Chip = ({ colour, children }: { colour: PlannerTask["labels"][number]["col
 
 const draftField = "block w-full bg-transparent outline-none placeholder:text-faint-foreground";
 
-export const TitleField = ({ task, today }: { task: PlannerTask; today: string }) => {
+export const TitleField = ({ task, today, onCreated }: { task: PlannerTask; today: string; onCreated?: () => void }) => {
   const { rename } = useTaskActions(task, today);
   const [draft, setDraft] = useState<string | null>(null);
   const field = useRef<HTMLInputElement>(null);
   useEffect(() => {
     field.current?.focus({ preventScroll: true });
-    if (field.current?.value === "New Task") field.current.select();
   }, []);
   const commit = () => {
     const next = draft?.trim();
     setDraft(null);
+    if (drafts.isUnsaved(task._id)) return void drafts.commit(task._id, next ?? "");
+    if (isDraftTask(task._id) && !drafts.exists(task._id)) return;
     if (next && next !== task.title) rename(next);
   };
   return (
@@ -82,7 +84,11 @@ export const TitleField = ({ task, today }: { task: PlannerTask; today: string }
       onChange={(event) => setDraft(event.target.value)}
       onBlur={commit}
       onKeyDown={(event) => {
-        if (event.key === "Enter" && !event.metaKey && !event.ctrlKey) event.currentTarget.blur();
+        if (event.key !== "Enter" || event.metaKey || event.ctrlKey) return;
+        const unsaved = drafts.isUnsaved(task._id);
+        if (unsaved && event.currentTarget.value.trim() === "") return;
+        event.currentTarget.blur();
+        if (unsaved) onCreated?.();
       }}
       className={`${draftField} min-w-0 flex-1 font-medium`}
     />

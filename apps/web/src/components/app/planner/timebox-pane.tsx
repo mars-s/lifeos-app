@@ -17,6 +17,7 @@ import { useNow } from "../hooks";
 import { useSelectionActions } from "../selection-actions";
 import { SleepButton } from "../sleep-setting";
 import type { PlanActions } from "./actions";
+import { useDraftBlocks } from "../drafts";
 import { useGhost } from "./drag";
 import { calContainer, useTimebox } from "./model";
 import { useSleep } from "./sleep";
@@ -87,6 +88,7 @@ export const TimeboxPane = ({
   const tasksDo = useSelectionActions(today);
   const sleep = useSleep(dates, today);
   const held = useGhost();
+  const draftBlocks = useDraftBlocks();
   const now = useNow();
   const first = dates[0] ?? anchor;
   const last = dates.at(-1) ?? anchor;
@@ -118,6 +120,10 @@ export const TimeboxPane = ({
     return () => cancelAnimationFrame(frame);
   }, [opened]);
   const pendingDay = smart.pending ? dates.indexOf(smart.pending.date) : -1;
+  const draftPreviews = draftBlocks.flatMap(({ key, title, block }) => {
+    const day = dates.indexOf(block.date);
+    return day === -1 ? [] : [{ id: key, day, start: block.minute, minutes: block.minutes, title: title || "New Task", colour: undefined } satisfies TimeboxPreview];
+  });
   const smartPreviews = [
     ...(draftDay === -1 ? [] : fillPreviews(smart.fill, draftDay)),
     ...(pendingDay === -1 || !smart.pending ? [] : fillPreviews(smart.pending.fill, pendingDay)),
@@ -157,7 +163,7 @@ export const TimeboxPane = ({
         blocks={data.blocks}
         sleep={sleep}
         ghost={ghost}
-        previews={[...previews, ...smartPreviews]}
+        previews={[...previews, ...smartPreviews, ...draftPreviews]}
         workingHours={workingHours}
         now={now !== null && showsToday ? { day: dates.indexOf(today), minute: minuteOfDay(now) } : null}
         scrollKey={`${mode}:${dates.length}`}

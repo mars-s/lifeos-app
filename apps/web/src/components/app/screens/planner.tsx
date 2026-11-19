@@ -167,6 +167,11 @@ const Panes = ({
     setSpread(null);
   });
 
+  const revealDay = useEffectEvent((date: IsoDate) => {
+    if (week) setView({ mode: "day", anchor: date });
+    if (tabbed) setPane("days");
+  });
+
   const addBlock = useEffectEvent((task: PlannerTask) => {
     const date = task.when.kind === "scheduled" && task.when.date > today ? (task.when.date as IsoDate) : today;
     const minutes = blockMinutesFor(task.estimateMinutes);
@@ -179,12 +184,14 @@ const Panes = ({
 
   useEffect(() => {
     planCommands.addBlock = addBlock;
+    planCommands.reveal = revealDay;
     planCommands.spread = startSpread;
     planCommands.smartBlock = startSmartBlock;
     planCommands.pending = null;
     planCommands.pendingSmartBlock = null;
     return () => {
       planCommands.addBlock = null;
+      planCommands.reveal = null;
       planCommands.spread = null;
       planCommands.smartBlock = null;
     };

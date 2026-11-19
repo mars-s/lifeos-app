@@ -16,6 +16,8 @@ import { useQuietView, useView, valueOf } from "../hooks";
 import { ListSkeleton } from "../list-page";
 import { openMenuFor } from "../menus";
 import { useShell } from "../shell-context";
+import { useDraftCount } from "../drafts";
+import { placeAttr } from "../new-task-place";
 import { TaskItems, useHasDrafts } from "../task-item";
 
 const ALWAYS_SHOWN_DAYS = 7;
@@ -94,10 +96,15 @@ const DaySection = ({
   today: string;
 }) => {
   const near = daysBetween(today, date) <= ALWAYS_SHOWN_DAYS;
+  const slot = `/upcoming:${date}`;
+  const drafting = useDraftCount(slot) > 0;
   const scheduledHere = new Set(day?.tasks.map((task) => task._id));
   const dueOnly = day?.deadlines.filter((task) => !scheduledHere.has(task._id)) ?? [];
   return (
-    <section aria-label={`${weekdayLong(date)} ${dayNumber(date)} ${monthLong(date)}`} className={cn("@container", day || commitments || occurrences.length > 0 ? "pb-5" : "pb-7")}>
+    <section
+      aria-label={`${weekdayLong(date)} ${dayNumber(date)} ${monthLong(date)}`}
+      {...placeAttr({ slot, when: { kind: "scheduled", date, evening: false } })}
+      className={cn("@container", day || commitments || occurrences.length > 0 ? "pb-5" : "pb-7")}>
       <h2 className="flex items-end gap-2.5">
         <span className="text-[1.75rem] leading-8 font-semibold tracking-[-0.02em]">{dayNumber(date)}</span>
         <span className="flex h-7 min-w-0 flex-1 items-center gap-2 border-t border-border pt-1 text-small font-medium text-muted-foreground">
@@ -106,7 +113,7 @@ const DaySection = ({
         </span>
       </h2>
       {commitments && <CommitmentList items={commitments} className="mt-1.5 mb-1" />}
-      {day && (
+      {(day || drafting) && (
         <>
           {dueOnly.length > 0 && (
             <ul className="-mx-3 mt-1">
@@ -115,7 +122,13 @@ const DaySection = ({
               ))}
             </ul>
           )}
-          <TaskItems tasks={day.tasks} show={{ context: true }} className={dueOnly.length > 0 ? undefined : "mt-1"} />
+          <TaskItems
+            tasks={day?.tasks ?? NO_TASKS}
+            show={{ context: true }}
+            hostsDrafts="inline"
+            slot={slot}
+            className={dueOnly.length > 0 ? undefined : "mt-1"}
+          />
         </>
       )}
       {occurrences.length > 0 && (

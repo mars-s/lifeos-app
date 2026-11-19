@@ -321,10 +321,26 @@ export const TaskItem = ({
     close(false);
   });
 
+  const dismiss = (byKey: boolean) => {
+    const back = drafts.discard(itemKey);
+    close(byKey);
+    if (back) requestAnimationFrame(() => back.focus({ preventScroll: true }));
+  };
+  const escapeFromNowhere = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key !== "Escape" || event.defaultPrevented || event.target !== document.body) return;
+    if (document.querySelector("[role=dialog], [role=menu], [role=alertdialog]")) return;
+    event.preventDefault();
+    dismiss(true);
+  });
+
   useEffect(() => {
     if (!open) return;
     document.addEventListener("pointerdown", closeFromOutside);
-    return () => document.removeEventListener("pointerdown", closeFromOutside);
+    document.addEventListener("keydown", escapeFromNowhere);
+    return () => {
+      document.removeEventListener("pointerdown", closeFromOutside);
+      document.removeEventListener("keydown", escapeFromNowhere);
+    };
   }, [open]);
 
   return (
@@ -338,6 +354,9 @@ export const TaskItem = ({
       animate={ROW_SHOWN}
       exit={ROW_HIDDEN}
       transition={reduce || (unsaved && openCard?.instant) ? instant : springLayout}
+      onAnimationComplete={() => {
+        if (open && unsaved) container.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      }}
       className={cn(isDragging && "relative z-10", tile && "pb-1.5")}
     >
       <div
@@ -355,7 +374,8 @@ export const TaskItem = ({
           if (event.key === "Escape" || (event.key === "Enter" && (event.metaKey || event.ctrlKey))) {
             event.preventDefault();
             event.stopPropagation();
-            close(true);
+            if (event.key === "Escape") dismiss(true);
+            else close(true);
           }
         }}
         className={cn(
@@ -374,7 +394,7 @@ export const TaskItem = ({
         <div className={cn("flex items-start gap-x-3 px-3 py-2", tile && !open && "flex-wrap gap-y-0.5")}>
           <StatusBox task={task} today={today} />
           {editable ? (
-            <TitleField task={task} today={today} />
+            <TitleField task={task} today={today} onCreated={() => close(true)} />
           ) : (
           <button
             type="button"
@@ -512,17 +532,19 @@ export const TaskItems = ({
   show,
   className,
   hostsDrafts,
+  slot,
   sortable = false,
 }: {
   tasks: readonly PlannerTask[];
   show?: TaskItemShow;
   className?: string;
   hostsDrafts?: "inline" | "above";
+  slot?: string;
   sortable?: boolean;
 }) => {
   const { route, today, openCard } = useShell();
   const actions = useSelectionActions(today);
-  const shown = useHostedRows(tasks, hostsDrafts ? routeHref(route) : undefined, hostsDrafts === "inline");
+  const shown = useHostedRows(tasks, hostsDrafts ? (slot ?? routeHref(route)) : undefined, hostsDrafts === "inline");
   const sensors = useSensors(useSensor(MouseSensor, { activationConstraint: { distance: DRAG_START_PX } }), useSensor(KeyboardSensor));
   const place = (key: string, to: number) => {
     const moved = shown.find((row) => row.key === key);

@@ -2,10 +2,13 @@
 
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import type { Id } from "@lifeos/backend/dataModel";
+import type { IsoDate } from "@lifeos/backend/date";
 import type { PlannerTask } from "@lifeos/backend/types";
 
 const OPTIMISTIC = "optimistic:task:";
 const CLOCK_SKEW_MS = 60_000;
+
+export type DraftBlock = { date: IsoDate; minute: number; minutes: number };
 
 type Draft = {
   key: string;
@@ -14,7 +17,12 @@ type Draft = {
   known: ReadonlySet<string>;
   createdAt: number;
   taskId?: Id<"tasks">;
+  save?: (title: string) => void;
+  block?: DraftBlock;
+  returnTo?: HTMLElement;
 };
+
+type Unsaved = { save: (title: string) => void; block?: DraftBlock; returnTo?: HTMLElement };
 
 type Snapshot = { drafts: readonly Draft[]; adopted: ReadonlyMap<string, PlannerTask> };
 
@@ -40,13 +48,40 @@ const settle = (key: string, taskId: Id<"tasks"> | null) => {
 export const isDraftTask = (id: string) => id.startsWith(OPTIMISTIC);
 
 export const drafts = {
-  add: (slot: string, fields: Omit<PlannerTask, "_id" | "_creationTime">, known: ReadonlySet<string>) => {
+  add: (slot: string, fields: Omit<PlannerTask, "_id" | "_creationTime">, known: ReadonlySet<string>, unsaved?: Unsaved) => {
     count += 1;
     const key = `${OPTIMISTIC}${count}`;
     const createdAt = Date.now();
     const task = { ...fields, _id: key as Id<"tasks">, _creationTime: createdAt };
-    publish({ ...snapshot, drafts: [...snapshot.drafts, { key, slot, task, known, createdAt }] });
+    publish({ ...snapshot, drafts: [...snapshot.drafts, { key, slot, task, known, createdAt, ...unsaved }] });
     return key;
+  },
+
+  exists: (key: string) => snapshot.drafts.some((draft) => draft.key === key),
+
+  isUnsaved: (key: string) => snapshot.drafts.some((draft) => draft.key === key && draft.save !== undefined),
+
+  commit: (key: string, title: string) => {
+    const draft = snapshot.drafts.find((candidate) => candidate.key === key);
+    const trimmed = title.trim();
+    if (!draft?.save || trimmed === "") return false;
+    const { save } = draft;
+    publish({
+      ...snapshot,
+      drafts: snapshot.drafts.map((candidate) =>
+        candidate.key === key ? { ...candidate, save: undefined, task: { ...candidate.task, title: trimmed } } : candidate,
+      ),
+    });
+    save(trimmed);
+    return true;
+  },
+
+  discard: (key: string) => {
+    const draft = snapshot.drafts.find((candidate) => candidate.key === key && candidate.save !== undefined);
+    if (!draft) return undefined;
+    publish({ ...snapshot, drafts: snapshot.drafts.filter((candidate) => candidate.key !== key) });
+    settle(key, null);
+    return draft.returnTo;
   },
 
   saved: (key: string, taskId: Id<"tasks">) => {
@@ -62,10 +97,12 @@ export const drafts = {
   },
 
   keepOnly: (openKey: string | undefined) => {
-    const kept = snapshot.drafts.filter((draft) => draft.key === openKey || draft.taskId === undefined);
+    const kept = snapshot.drafts.filter((draft) => draft.key === openKey || (draft.taskId === undefined && draft.save === undefined));
     if (kept.length === snapshot.drafts.length) return;
     const adopted = new Map([...snapshot.adopted].filter(([key]) => kept.some((draft) => draft.key === key)));
+    const dropped = snapshot.drafts.filter((draft) => !kept.includes(draft));
     publish({ drafts: kept, adopted });
+    for (const draft of dropped) if (draft.save) settle(draft.key, null);
   },
 
   release: (key: string) => {
@@ -107,6 +144,16 @@ const claims = (draft: Draft, task: PlannerTask) =>
   draft.taskId !== undefined
     ? draft.taskId === task._id
     : !draft.known.has(task._id) && task._creationTime >= draft.createdAt - CLOCK_SKEW_MS && task.title === draft.task.title;
+
+const readBlocks = () => snapshot.drafts;
+
+export const useDraftBlocks = () => {
+  const live = useSyncExternalStore(subscribe, readBlocks, () => EMPTY.drafts);
+  return useMemo(
+    () => live.flatMap((draft) => (draft.block && draft.taskId === undefined ? [{ key: draft.key, title: draft.task.title, block: draft.block }] : [])),
+    [live],
+  );
+};
 
 export const useDraftCount = (slot: string) => useSyncExternalStore(subscribe, () => drafts.count(slot), () => 0);
 

@@ -47,7 +47,7 @@ export const CommandBarHost = ({ sidebar }: { sidebar: SidebarView | undefined }
       const chosen = selection.tasks();
       if (command && !event.shiftKey && key === "n") {
         event.preventDefault();
-        return newTask(true);
+        return newTask({ byKey: true, here: true });
       }
       if (command && !event.shiftKey && (key === "t" || key === "e") && chosen.length > 0) {
         event.preventDefault();
@@ -61,7 +61,7 @@ export const CommandBarHost = ({ sidebar }: { sidebar: SidebarView | undefined }
       if (event.shiftKey) return;
       if (key === "n" || key === "t") {
         event.preventDefault();
-        return newTask(true, key === "t" ? { kind: "today" } : undefined);
+        return newTask(key === "t" ? { byKey: true, into: { kind: "today" } } : { byKey: true, here: true });
       }
       if (key === "q") {
         event.preventDefault();

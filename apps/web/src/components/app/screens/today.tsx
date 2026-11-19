@@ -16,6 +16,7 @@ import { useLiveFocus } from "../focus";
 import { useView, valueOf } from "../hooks";
 import { ListPage, ListSkeleton, SectionHeading } from "../list-page";
 import { useShell } from "../shell-context";
+import { placeAttr } from "../new-task-place";
 import { LIST_META } from "../sidebar";
 import { TaskItems, useHasDrafts } from "../task-item";
 
@@ -76,6 +77,8 @@ const CalendarToday = ({ today }: { today: IsoDate }) => {
   return <CommitmentStrip items={items} free={free} />;
 };
 
+const EVENING_SLOT = "/today:evening";
+
 export const TodayScreen = () => {
   const { today } = useShell();
   const view = valueOf(useView(api.planner.today.get, { date: today }));
@@ -92,12 +95,12 @@ export const TodayScreen = () => {
           <PlannedStrip tasks={[...view.tasks, ...view.evening]} />
           <TaskItems tasks={view.tasks} show={{ context: true }} hostsDrafts="inline" />
           {view.evening.length > 0 && (
-            <>
+            <section {...placeAttr({ slot: EVENING_SLOT, when: { kind: "scheduled", date: today, evening: true } })}>
               <SectionHeading leading={<Moon weight="fill" className="size-4 text-muted-foreground" aria-hidden="true" />}>
                 This Evening
               </SectionHeading>
-              <TaskItems tasks={view.evening} show={{ context: true }} />
-            </>
+              <TaskItems tasks={view.evening} show={{ context: true }} hostsDrafts="inline" slot={EVENING_SLOT} />
+            </section>
           )}
         </>
       )}

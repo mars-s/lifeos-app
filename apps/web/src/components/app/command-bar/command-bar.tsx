@@ -170,11 +170,11 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
       canRepeat: repeatable !== undefined,
       saveTemplate: templatesOn ? (task) => templateDo.save(task, today) : undefined,
     });
-    const fromTemplates = templatesOn ? templateItems(templates ?? [], (template) => newTask(true, undefined, template)) : [];
+    const fromTemplates = templatesOn ? templateItems(templates ?? [], (template) => newTask({ byKey: true, template })) : [];
     const goTo = goItems(go);
     const create = createItems({
       inApp,
-      newTask: (into) => newTask(true, into),
+      newTask: (into) => newTask({ byKey: true, into }),
       capture: () => bar.capture(),
       newProject: () => setDraft({ kind: "project", areaId: route.kind === "area" ? route.id : null }),
       newArea: () => setDraft({ kind: "area" }),

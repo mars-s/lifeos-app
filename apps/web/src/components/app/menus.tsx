@@ -678,7 +678,7 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
   const emptyGroups: () => MenuGroup[] = () => [
     {
       items: [
-        { id: "new-task", label: "New Task", icon: CheckSquare, shortcut: "N", onSelect: () => newTask(false) },
+        { id: "new-task", label: "New Task", icon: CheckSquare, shortcut: "N", onSelect: () => newTask({ byKey: false, here: true, at: point }) },
         ...(templatesOn
           ? [
               {
@@ -692,7 +692,7 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
                   label: template.title,
                   leading: template.area ? <AreaDot colour={template.area.colour} className="size-2" /> : undefined,
                   disabled: isOptimistic(template._id),
-                  onSelect: () => newTask(false, undefined, template),
+                  onSelect: () => newTask({ byKey: false, template }),
                 })),
               } satisfies MenuItem,
             ]

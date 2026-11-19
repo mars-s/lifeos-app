@@ -11,6 +11,7 @@ import { formatMinutes } from "@/components/lifeos/format";
 import { RollingNumber } from "@/components/ui/rolling-number";
 import { cn } from "@/lib/utils";
 import { longDay } from "../dates";
+import { placeAttr } from "../new-task-place";
 import { TaskItem, useHostedRows } from "../task-item";
 import type { PlanActions } from "./actions";
 import { DayHeader } from "./day-header";
@@ -116,7 +117,7 @@ const PlanList = ({
 export const BrainDump = ({ tasks, actions, className }: { tasks: readonly PlannerTask[]; actions: PlanActions; className?: string }) => {
   const total = tasks.reduce((sum, task) => sum + (task.estimateMinutes ?? 0), 0);
   return (
-    <section aria-label="Brain Dump" className={cn("min-h-0 flex-col", className)}>
+    <section aria-label="Brain Dump" {...placeAttr({ slot: PLANNER_SLOT, when: { kind: "inbox" } })} className={cn("min-h-0 flex-col", className)}>
       <header className="space-y-2 px-2 pb-2">
         <h2 className="flex h-8 items-center gap-2 px-3 text-heading font-semibold">
           Brain Dump
@@ -147,7 +148,11 @@ export const DayColumn = ({
   const over = day.planned + day.guessed - Math.max(0, day.free);
   const isToday = day.date === today;
   return (
-    <section aria-label={longDay(day.date)} data-plan-day={day.date} className="flex min-h-0 w-[17.5rem] shrink-0 snap-start flex-col @max-4xl/planner:w-full">
+    <section
+      aria-label={longDay(day.date)}
+      data-plan-day={day.date}
+      {...placeAttr({ slot: daySlot(day.date), when: { kind: "scheduled", date: day.date, evening: false } })}
+      className="flex min-h-0 w-[17.5rem] shrink-0 snap-start flex-col @max-4xl/planner:w-full">
       <header className="space-y-2 px-2 pb-2">
         <DayHeader day={day} isToday={isToday} actions={actions} onSpread={onSpread} />
         <AddTask

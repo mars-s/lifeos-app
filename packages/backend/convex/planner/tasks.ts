@@ -24,6 +24,7 @@ import { requestTrip } from "../places/trips";
 import { requestSuggestion } from "./smartEstimates";
 import { followCompletion } from "./recurrence";
 import { vParent, vWhen } from "./tables";
+import { parseNewBlock, vNewBlock } from "./workBlocks";
 
 const CARD_LIMIT = 500;
 
@@ -52,8 +53,11 @@ export const create = changeMutation({
     estimateMinutes: v.optional(v.number()),
     parent: v.optional(vParent),
     labelIds: v.optional(v.array(v.id("labels"))),
+    block: v.optional(vNewBlock),
   },
   handler: async (ctx, args, record) => {
+    const block = args.block ? parseNewBlock(args.block) : ok(undefined);
+    if (block.isErr()) return err<{ taskId: Id<"tasks"> }, PlannerError>(block.error);
     const fields = Result.combine([
       parseTitle(args.title),
       parseWhen(args.when ?? { kind: "inbox" }),
@@ -75,6 +79,7 @@ export const create = changeMutation({
       status: { kind: "open" },
       order: keyAfter(await lastTaskOrder(ctx, parent)),
     });
+    if (block.value) await record.insert("workBlocks", { taskId, ...block.value, done: false });
     await requestSuggestion(ctx, taskId);
     await requestTrip(ctx, taskId);
     return ok<{ taskId: Id<"tasks"> }, PlannerError>({ taskId });

@@ -43,6 +43,15 @@ const parseTimeZone = (timeZone: string) =>
     ? ok<string, PlannerError>(timeZone)
     : err<string, PlannerError>({ kind: "invalid_block", reason: "time_zone" });
 
+export const vNewBlock = v.object({ start: v.number(), minutes: v.number(), timeZone: v.string() });
+
+export const parseNewBlock = (block: { start: number; minutes: number; timeZone: string }) =>
+  Result.combine([parseStart(block.start), parseMinutes(block.minutes), parseTimeZone(block.timeZone)]).map(([start, minutes, timeZone]) => ({
+    start,
+    minutes,
+    timeZone,
+  }));
+
 const parseDay = (date: string | undefined) =>
   date === undefined ? ok<string | undefined, PlannerError>(undefined) : parseIsoDate(date).map(String).mapErr<PlannerError>((error) => error);
 

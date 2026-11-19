@@ -238,10 +238,10 @@ def main():
         page.wait_for_selector(BAR)
         expect("Cmd+K works while a card is open and targets its Task", groups()[0], "This Task")
         page.keyboard.press("Escape")
+        page.wait_for_timeout(200)
         page.keyboard.press("Escape")
-        page.wait_for_timeout(300)
-        page.keyboard.press("ControlOrMeta+z")
         page.wait_for_timeout(600)
+        expect("Escape on the new Task leaves nothing behind", [page.locator("[data-open-card]").count(), page.get_by_text("Task created").count()], [0, 0])
 
         page.keyboard.press("q")
         page.wait_for_selector("input[name=capture]")

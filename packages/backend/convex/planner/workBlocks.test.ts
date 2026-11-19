@@ -139,3 +139,31 @@ test("a spread that overlaps an existing Work Block, or itself, or names a close
   const blocks = unwrap(await t.query(api.planner.workBlocks.range, { from: nineAm - hour, to: nineAm + 12 * hour }));
   expect(blocks).toHaveLength(1);
 });
+
+test("A Task created with a Work Block saves both in one change, and one undo removes both", async () => {
+  const t = await newBackend();
+  const created = unwrap(
+    await t.mutation(api.planner.tasks.create, {
+      title: "Plan the week",
+      when: { kind: "scheduled", date: "2026-11-19", evening: false },
+      block: { start: nineAm, minutes: 30, timeZone: "Australia/Sydney" },
+    }),
+  );
+  const card = async () => (await t.query(api.planner.tasks.card, { taskId: created.taskId }))!;
+  expect((await card()).workBlocks).toMatchObject([{ start: nineAm, minutes: 30, timeZone: "Australia/Sydney" }]);
+  expect(await t.run((ctx) => ctx.db.query("activity").collect())).toHaveLength(1);
+
+  unwrap(await t.mutation(api.platform.undo.undo, { activityId: created.activityId! }));
+  expect(await t.run((ctx) => ctx.db.query("workBlocks").collect())).toEqual([]);
+  expect(await t.query(api.planner.tasks.card, { taskId: created.taskId })).toBeNull();
+});
+
+test("A Task with a broken Work Block is refused whole", async () => {
+  const t = await newBackend();
+  const refused = await t.mutation(api.planner.tasks.create, {
+    title: "Plan the week",
+    block: { start: nineAm, minutes: 0, timeZone: "Australia/Sydney" },
+  });
+  expect(refused).toMatchObject({ ok: false, error: { kind: "invalid_block" } });
+  expect(await t.run((ctx) => ctx.db.query("tasks").collect())).toEqual([]);
+});

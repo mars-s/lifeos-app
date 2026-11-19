@@ -256,6 +256,8 @@ const REASONS: Record<string, string> = {
   invalid_template: "That Template is not valid.",
 };
 
+const DISCARDED = "draft_discarded";
+
 export const reasonFor = (kind: string | undefined) => (kind && REASONS[kind]) || "LifeOS could not save it. Try again.";
 
 export type Change<Mutation extends ChangeMutation> = {
@@ -276,7 +278,7 @@ export const useChange = () => {
     const send = async (mutation: ChangeMutation, args: DefaultFunctionArgs, optimisticUpdate: Updater) => {
       const draftKey = typeof args.taskId === "string" && isDraftTask(args.taskId) ? args.taskId : null;
       const taskId = draftKey ? await drafts.whenSaved(draftKey) : null;
-      if (draftKey && !taskId) return { ok: false, error: { kind: "not_found" } } satisfies ChangeResult;
+      if (draftKey && !taskId) return { ok: false, error: { kind: DISCARDED } } satisfies ChangeResult;
       const taskIds = Array.isArray(args.taskIds) ? { taskIds: args.taskIds.map((id) => drafts.realId(String(id))) } : {};
       return convex.mutation(mutation, { ...args, ...taskIds, ...(taskId ? { taskId } : {}) }, { optimisticUpdate });
     };
@@ -293,6 +295,7 @@ export const useChange = () => {
     return <Mutation extends ChangeMutation>({ title, mutation, args, apply, revert, slot, permanent, silent, onSaved }: Change<Mutation>) => {
       const refused = (kind: string | undefined) => {
         forget();
+        if (kind === DISCARDED) return { saved: false, activityId: null };
         toast.error("That did not save", { description: reasonFor(kind) });
         return { saved: false, activityId: null };
       };
