@@ -16,7 +16,7 @@ import { Kbd } from "@/components/ui/key-hint";
 import { MorphText } from "@/components/ui/morph-text";
 import { RollingNumber } from "@/components/ui/rolling-number";
 import { toast } from "@/components/ui/toast-stack";
-import { ActivityTimeline, type Brush } from "@/components/lifeos/activity-timeline";
+import { ActivityTimeline, type ActivityDay, type Brush } from "@/components/lifeos/activity-timeline";
 import { AreaDot, areaVar } from "@/components/lifeos/area";
 import { CalendarStrip } from "@/components/lifeos/calendar-strip";
 import { DayColumnHeader } from "@/components/lifeos/capacity";
@@ -33,15 +33,12 @@ import { TaskRow } from "@/components/lifeos/task-row";
 import { showUndo } from "@/components/lifeos/undo";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
+import { HEAT_HOURS, HEAT_MINUTES, HEAT_WEEKDAYS } from "./review-samples";
 import {
-  ACTIVITY,
   AREAS,
   CARD_TASKS,
   COMMANDS,
   COMMITMENTS,
-  HEAT_HOURS,
-  HEAT_MINUTES,
-  HEAT_WEEKDAYS,
   BOARD_TODAY,
   LABELS,
   PLANNABLE,
@@ -387,7 +384,7 @@ export const PlanningSpecimens = () => (
   </>
 );
 
-export const ReviewSpecimens = () => {
+export const ReviewSpecimens = ({ activity }: { activity: ActivityDay[] }) => {
   const [brush, setBrush] = useState<Brush | null>({ from: 38, to: 51 });
   return (
     <>
@@ -427,7 +424,7 @@ export const ReviewSpecimens = () => {
         className="md:col-span-6 xl:col-span-12"
         stage="items-stretch"
       >
-        <ActivityTimeline days={ACTIVITY} brush={brush} onBrushChange={setBrush} />
+        <ActivityTimeline days={activity} brush={brush} onBrushChange={setBrush} />
       </Specimen>
       <Specimen
         name="Estimate against Actual"

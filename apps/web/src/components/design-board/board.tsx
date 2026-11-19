@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { Segmented } from "@/components/ui/segmented-control";
 import { Toaster } from "@/components/ui/toast-stack";
+import type { ActivityDay } from "@/components/lifeos/activity-timeline";
 import { LifeosMark } from "@/components/lifeos/mark";
 import { undoLast } from "@/components/lifeos/undo";
 import { ArtSpecimens } from "./art-demos";
@@ -31,7 +32,7 @@ const PRINCIPLES = [
   { line: "Time you can see.", detail: "Dots, rings and meters, drawn with care. Never a stock chart." },
 ];
 
-export const DesignBoard = () => {
+export const DesignBoard = ({ activity }: { activity: ActivityDay[] }) => {
   const [theme, setTheme] = useTheme();
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -151,7 +152,7 @@ export const DesignBoard = () => {
           title="Focus and review"
           lede="Where the personality lives. Time spent is drawn as dots you can read at a glance and brush with a finger."
         >
-          <ReviewSpecimens />
+          <ReviewSpecimens activity={activity} />
         </Section>
         <Section
           id="art"
