@@ -32,7 +32,7 @@ _Avoid_: due date.
 **Estimate**: how long a Task should take, in minutes. Shown as `0:30`. Also called allocated time in conversation.
 _Avoid_: duration (that belongs to Work Blocks).
 
-**Smart Estimate**: an Estimate LifeOS suggests for a Task that has none, chosen by OpenAI's Decisions API from the Task and Avi's nearest past Tasks, then nudged by how far he usually runs over or under. Up to three guesses replace the preset chips on the card, each with its odds, the most likely one marked with its reason. One becomes the Estimate only when Avi clicks it. When Places knows a Trip, each guess adds the Trip there and back and says so. Switching the Smart Estimates Feature off stops it, and then nothing is sent to OpenAI.
+**Smart Estimate**: an Estimate LifeOS suggests for a Task that has none. It is an AI Capability: the model Avi picked chooses from the Task and his nearest past Tasks, then LifeOS nudges the answer by how far he usually runs over or under. Up to three guesses replace the preset chips on the card, each with its odds, and the most likely one is marked with its reason. A guess becomes the Estimate only when Avi clicks it. When Places knows a Trip, each guess adds the Trip there and back and says so. With AI off, or Smart Estimates switched off on the AI page, nothing is sent anywhere.
 _Avoid_: AI estimate, auto-estimate.
 
 **Work Block**: a slot on the calendar reserved for one Task, with a start and an end. A Task can have several. Creating one never changes the Task's Deadline.
@@ -109,16 +109,32 @@ _Avoid_: Things Bridge, Things sync (except for the `pnpm sync:things` command),
 
 **Order Key**: a fractional index string that places a record among its siblings. Moving a record changes only its own key.
 
+## AI
+
+**AI**: the one Feature every AI call goes through. It is off until Avi switches it on, and then it needs at least one Provider key. With AI off, LifeOS sends nothing to any model.
+_Avoid_: assistant, chat (there is no chat).
+
+**Provider**: a company or gateway LifeOS sends AI calls to with Avi's key: OpenAI or OpenCode Go. Each has one named secret.
+_Avoid_: vendor, backend.
+
+**Model**: one model at one Provider, as LifeOS offers it, such as GPT-6 Luna on the Decisions API or DeepSeek V4.1 Flash on OpenCode Go. It says what it can answer (a choice with odds, or structured JSON) and what it costs.
+
+**AI Capability**: one job AI does in LifeOS, such as Smart Estimates, Break into steps or Trip detection. Each has its own switch and its own Model, picked on the AI page, with a default and a cheap fallback. A new job, such as a task recommender, is a new AI Capability.
+_Avoid_: AI feature (a Feature is something else), skill, tool.
+
+**Step Suggestion**: the Checklist Items Break into steps proposes for one Task. Avi edits, reorders and accepts them, and they become Checklist Items in one undoable change.
+_Avoid_: AI subtasks.
+
 ## Platform
 
 **Core**: the hosted Convex deployment. It holds the live app data and the Job queue.
 
 **Home Server**: one thin LXC container on Avi's Proxmox box, on his Tailscale network, with the 2 TB SSD. It runs Workers.
 
-**Feature**: an optional capability Avi switches on or off in Settings, such as Smart Estimates or Places. It has its own settings page, the keys it needs, and the other Features it works better with. It plugs into surfaces that already exist (the Task card, the command bar) and owns no screen of its own. Its code lives in a Module, or in its own Module folder when it brings tables.
+**Feature**: an optional capability Avi switches on or off in Settings, such as AI, Places or Templates. It has its own settings page, the keys it needs, and the other Features it works better with. It plugs into surfaces that already exist (the Task card, the command bar) and owns no screen of its own. Its code lives in a Module, or in its own Module folder when it brings tables.
 _Avoid_: plugin, integration, preference (for a whole capability).
 
-**Feature Status**: what a Feature needs before it works: ready, off, needs a key, or needs setup (such as a home address).
+**Feature Status**: what a Feature needs before it works: ready, off, needs a key, needs another Feature (Places needs AI), or needs setup (such as a home address).
 
 **Module**: one area of the life OS (Planner, Calendar, Notes, Saved Links, Agents). It is always there, unlike a Feature. It owns its tables, queries, MCP tools, Job kinds and screens, and shares Areas, entity references, Activity, Labels, search and Jobs with the others.
 
