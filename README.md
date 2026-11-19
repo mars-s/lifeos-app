@@ -59,6 +59,10 @@ Smart Estimates uses OpenAI's Decisions API to suggest durations for a Task. Pic
   <img src="docs/readme/screens/task-card-light.webp" alt="Task card showing Smart Estimate guesses and a map of the trip">
 </picture>
 
+## Repeats and Templates
+
+Set a Task to repeat on a schedule, such as every weekday or the first Thursday of the month, or a set time after you finish it. Upcoming shows each rule's next occurrence, where you can skip it or stop the rule. Save any Task as a Template and start new Tasks from it, with its Estimate, Labels and Checklist Items.
+
 ## Focus and undo
 
 Start a Focus Session from a Task and choose a stopwatch or Pomodoro. Most planner changes can be undone with `Cmd+Z` or from Activity. One undo can take back a whole Spread.
