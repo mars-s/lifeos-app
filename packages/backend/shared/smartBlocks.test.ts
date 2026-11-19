@@ -216,6 +216,62 @@ describe("filling a Smart Block", () => {
     ]);
   });
 
+  test("an overdue Task and one due today come first, and say so", () => {
+    const tasks = [task("uni", { areaId: "uni" }), task("late", { areaId: "personal", deadline: "2026-11-18" }), task("today", { areaId: "personal", deadline: DATE })];
+    expect(fill(snapshot({ tasks })).picks.map((pick) => [pick.task._id, pick.reason])).toEqual([
+      ["late", "Overdue"],
+      ["today", "Due today"],
+      ["uni", "University first"],
+    ]);
+  });
+
+  test("a Task on the Day Plan order goes before one off it when they rank the same", () => {
+    const tasks = [task("a"), task("b", { planOrder: "a0" }), task("c"), task("d", { planOrder: "a1" })].map((each) => ({ ...each, estimateMinutes: 20 }));
+    expect(fill(snapshot({ tasks, areas: [] })).picks.map((pick) => pick.task._id)).toEqual(["b", "d", "a", "c"]);
+  });
+
+  test("picks go first in the order Avi gave, and an excluded pick stays out", () => {
+    const tasks = [task("a", { areaId: "uni" }), task("b", { areaId: "uni" }), task("c"), task("d")];
+    const result = fillSmartBlock({
+      snapshot: snapshot({ tasks }),
+      blockId: "focus",
+      window: FOCUS,
+      filter: ALL_TASKS,
+      now: EARLY,
+      edits: { exclude: ["b"], prefer: ["d", "b", "c", "missing"] },
+    });
+    expect(result.picks.map((pick) => [pick.task._id, pick.reason])).toEqual([
+      ["d", "Your pick"],
+      ["c", "Your pick"],
+      ["a", "University first"],
+    ]);
+  });
+
+  test("works with no Tasks, no Areas and no free time known", () => {
+    const empty = fill(snapshot({ areas: [], freeMinutes: [] }));
+    expect(empty).toMatchObject({ picks: [], kept: [], released: [], skipped: [], spare: [], freeMinutes: 120, filledMinutes: 0 });
+    const tasks = [task("soon", { deadline: "2026-12-20" }), task("free")];
+    expect(fill(snapshot({ tasks, areas: [], freeMinutes: [] })).picks.map((pick) => pick.task._id)).toEqual(["soon", "free"]);
+  });
+
+  test("with one Area its Tasks carry its name, not a claim to come first", () => {
+    const result = fill(snapshot({ tasks: [task("a", { areaId: "uni" })], areas: [{ _id: "uni", title: "University" }] }));
+    expect(result.picks[0]?.reason).toBe("University");
+  });
+
+  test("busy time after the window and a now past its end leave it as it is", () => {
+    const busy = [{ start: 19 * 60, end: 20 * 60 }];
+    expect(fill(snapshot({ busy, tasks: [task("a")] })).freeMinutes).toBe(120);
+    const late = fill(snapshot({ tasks: [task("a")] }), { now: 18 * 60 + 30 });
+    expect(late).toMatchObject({ picks: [], freeMinutes: 0 });
+    expect(late.skipped.map((skip) => skip.why)).toEqual(["too_long"]);
+  });
+
+  test("a gap shorter than five minutes after rounding to the step is not counted", () => {
+    const busy = [{ start: 16 * 60 + 9, end: 17 * 60 }];
+    expect(fill(snapshot({ busy, tasks: [] })).freeMinutes).toBe(18 * 60 - 17 * 60 - 5);
+  });
+
   test("a resized window refills live", () => {
     const tasks = [task("a", { estimateMinutes: 60 }), task("b", { estimateMinutes: 60 })];
     expect(fill(snapshot({ tasks, areas: [] }), { window: { start: 960, end: 1030 } }).picks).toHaveLength(1);

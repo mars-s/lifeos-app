@@ -3,7 +3,7 @@ import { api } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { newBackend, newSignedOutBackend, strangerSession, unwrap, type Backend } from "../backend.test-utils";
 import { zonedIso, zonedMoment } from "../calendar/model";
-import type { IsoDate } from "../../shared/date";
+import { addDays, type IsoDate } from "../../shared/date";
 import { fillSmartBlock, type FillSnapshot } from "../../shared/smartBlocks";
 
 const ZONE = "Australia/Sydney";
@@ -232,4 +232,331 @@ test("only the owner can read or change Smart Blocks", async () => {
   expect(
     await refusal(stranger.mutation(api.planner.smartBlocks.create, { title: "Focus", date: DATE, startMinute: FOUR, endMinute: SIX, timeZone: ZONE })),
   ).toBe("not_owner");
+});
+
+const smartRows = (t: Backend) => t.run((ctx) => ctx.db.query("smartBlocks").collect());
+
+const liveRows = async (t: Backend) => (await t.run((ctx) => ctx.db.query("workBlocks").collect())).filter((block) => block.removedAt === undefined);
+
+const weekdays = async (t: Backend) =>
+  unwrap(
+    await t.mutation(api.planner.smartBlocks.create, {
+      title: "Focus",
+      date: "2026-11-16",
+      startMinute: FOUR,
+      endMinute: SIX,
+      timeZone: ZONE,
+      repeat: { schedule: { kind: "weekdays" }, until: "2026-11-27" },
+    }),
+  ).blockId;
+
+const refusedAs = (reason: string) => ({ ok: false, error: { kind: "invalid_smart_block", reason } });
+
+test("a create refused for its date or its fill leaves no Smart Block behind", async () => {
+  const { t, task } = await setup();
+  const taskId = await task("Draft", { estimateMinutes: 30 });
+  const saturdays = await t.mutation(api.planner.smartBlocks.create, {
+    title: "Focus",
+    date: DATE,
+    startMinute: FOUR,
+    endMinute: SIX,
+    timeZone: ZONE,
+    repeat: { schedule: { kind: "weeks", every: 1, days: [6] } },
+  });
+  expect(saturdays).toEqual(refusedAs("occurrence"));
+  const outside = await t.mutation(api.planner.smartBlocks.create, {
+    title: "Focus",
+    date: DATE,
+    startMinute: FOUR,
+    endMinute: SIX,
+    timeZone: ZONE,
+    fill: [{ taskId, start: at(DATE, SIX - 15), minutes: 30 }],
+  });
+  expect(outside).toEqual(refusedAs("outside"));
+  expect(await smartRows(t)).toEqual([]);
+  expect((await occurrences(t, DATE, 7)).occurrences).toEqual([]);
+});
+
+test("a fill refused after its edit leaves the series as it was", async () => {
+  const { t, task } = await setup();
+  const taskId = await task("Draft", { estimateMinutes: 30 });
+  const other = await task("Call", { estimateMinutes: 30 });
+  const blockId = await weekdays(t);
+  unwrap(await t.mutation(api.planner.workBlocks.create, { taskId: other, start: at(DATE, 15 * 60), minutes: 30, timeZone: ZONE }));
+  const clash = await t.mutation(api.planner.smartBlocks.fill, {
+    blockId,
+    date: DATE,
+    blocks: [{ taskId, start: at(DATE, 15 * 60), minutes: 30 }],
+    release: [],
+    edit: { scope: "one", startMinute: 15 * 60 },
+  });
+  expect(clash).toEqual(refusedAs("overlap"));
+  const gone = await t.mutation(api.planner.smartBlocks.fill, {
+    blockId,
+    date: DATE,
+    blocks: [],
+    release: [],
+    edit: { scope: "all", title: "Renamed", repeat: { schedule: { kind: "weeks", every: 1, days: [1] } } },
+  });
+  expect(gone).toEqual(refusedAs("occurrence"));
+  const rows = await smartRows(t);
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({ title: "Focus", startMinute: FOUR, repeat: { schedule: { kind: "weekdays" }, skipped: [] } });
+});
+
+test("undoing an edit of one occurrence puts it and its Work Blocks back in the series", async () => {
+  const { t, task } = await setup();
+  await task("Write", { estimateMinutes: 30 });
+  const blockId = await weekdays(t);
+  const { blocks } = proposal(await snapshotFor(t), blockId);
+  unwrap(await t.mutation(api.planner.smartBlocks.fill, { blockId, date: DATE, blocks, release: [] }));
+  const before = await smartRows(t);
+  const linkedBefore = await linked(t, blockId);
+  const moved = unwrap(await t.mutation(api.planner.smartBlocks.edit, { blockId, date: DATE, title: "Late focus", startMinute: 15 * 60 }));
+  expect(moved.blockId).not.toBe(blockId);
+  expect(await linked(t, blockId)).toEqual([]);
+  unwrap(await t.mutation(api.platform.undo.undo, { activityId: moved.activityId! }));
+  expect((await smartRows(t)).filter((row) => row.removedAt === undefined)).toEqual(before);
+  expect(await linked(t, blockId)).toEqual(linkedBefore);
+  const [shown] = (await occurrences(t, DATE, 1)).occurrences;
+  expect(shown).toMatchObject({ blockId, title: "Focus", startMinute: FOUR, detached: false, filled: 1 });
+});
+
+test("undoing an edit of every occurrence restores the title, window, filter and repeat", async () => {
+  const { t, uni } = await setup();
+  const blockId = await weekdays(t);
+  const [before] = await smartRows(t);
+  const edited = unwrap(
+    await t.mutation(api.planner.smartBlocks.edit, {
+      blockId,
+      title: "Uni",
+      colour: "violet",
+      startMinute: 9 * 60,
+      endMinute: 24 * 60,
+      filter: { areaIds: [uni, uni], projectIds: [], labelIds: [] },
+      repeat: null,
+    }),
+  );
+  const [after] = await smartRows(t);
+  expect(after).toMatchObject({ title: "Uni", colour: "violet", startMinute: 9 * 60, endMinute: 24 * 60, until: "2026-11-16", filter: { areaIds: [uni] } });
+  expect(after?.repeat).toBeUndefined();
+  unwrap(await t.mutation(api.platform.undo.undo, { activityId: edited.activityId! }));
+  expect(await smartRows(t)).toEqual([before]);
+});
+
+test("removing a Smart Block hides every occurrence, and undo brings them back", async () => {
+  const { t } = await setup();
+  const blockId = await weekdays(t);
+  const removed = unwrap(await t.mutation(api.planner.smartBlocks.remove, { blockId }));
+  expect((await occurrences(t, "2026-11-16", 14)).occurrences).toEqual([]);
+  expect(await t.mutation(api.planner.smartBlocks.remove, { blockId })).toEqual({ ok: false, error: { kind: "not_found", table: "smartBlocks", id: blockId } });
+  expect(await t.mutation(api.planner.smartBlocks.edit, { blockId, title: "Back" })).toMatchObject({ ok: false, error: { kind: "not_found" } });
+  expect(await t.mutation(api.planner.smartBlocks.skip, { blockId, date: DATE })).toMatchObject({ ok: false, error: { kind: "not_found" } });
+  unwrap(await t.mutation(api.platform.undo.undo, { activityId: removed.activityId! }));
+  expect((await occurrences(t, "2026-11-16", 14)).occurrences).toHaveLength(10);
+});
+
+test("skipping a one-off Smart Block removes it, and undo brings it back", async () => {
+  const { t } = await setup();
+  const { blockId } = unwrap(await t.mutation(api.planner.smartBlocks.create, { title: "Focus", date: DATE, startMinute: FOUR, endMinute: SIX, timeZone: ZONE }));
+  const skipped = unwrap(await t.mutation(api.planner.smartBlocks.skip, { blockId, date: DATE }));
+  expect((await occurrences(t, DATE, 1)).occurrences).toEqual([]);
+  expect((await smartRows(t))[0]?.removedAt).toBeTypeOf("number");
+  unwrap(await t.mutation(api.platform.undo.undo, { activityId: skipped.activityId! }));
+  expect((await occurrences(t, DATE, 1)).occurrences.map((each) => each.blockId)).toEqual([blockId]);
+});
+
+test("a refill that frees Work Blocks is undone in one step", async () => {
+  const { t, task } = await setup();
+  const done = await task("Slides", { estimateMinutes: 30 });
+  const blockId = await weekdays(t);
+  const first = proposal(await snapshotFor(t), blockId);
+  unwrap(await t.mutation(api.planner.smartBlocks.fill, { blockId, date: DATE, blocks: first.blocks, release: [] }));
+  const before = await liveRows(t);
+  unwrap(await t.mutation(api.planner.selection.complete, { taskIds: [done] }));
+  await task("Essay", { estimateMinutes: 45 });
+  const refill = proposal(await snapshotFor(t), blockId);
+  expect(refill.release).toHaveLength(1);
+  const filled = unwrap(await t.mutation(api.planner.smartBlocks.fill, { blockId, date: DATE, blocks: refill.blocks, release: refill.release }));
+  expect((await liveRows(t)).map((row) => row.minutes)).toEqual([45]);
+  unwrap(await t.mutation(api.platform.undo.undo, { activityId: filled.activityId! }));
+  expect(await liveRows(t)).toEqual(before);
+});
+
+test("editing an occurrence that is skipped, detached or outside the series is refused", async () => {
+  const { t } = await setup();
+  const blockId = await weekdays(t);
+  unwrap(await t.mutation(api.planner.smartBlocks.skip, { blockId, date: "2026-11-19" }));
+  unwrap(await t.mutation(api.planner.smartBlocks.edit, { blockId, date: "2026-11-18", title: "Detached" }));
+  for (const date of ["2026-11-19", "2026-11-18", "2026-11-13", "2026-11-21", "2026-11-30"]) {
+    expect(await t.mutation(api.planner.smartBlocks.edit, { blockId, date, title: "Moved" })).toEqual(refusedAs("occurrence"));
+    expect(await t.mutation(api.planner.smartBlocks.skip, { blockId, date })).toEqual(refusedAs("occurrence"));
+  }
+  expect(await t.mutation(api.planner.smartBlocks.edit, { blockId, date: "2026-11-31", title: "Moved" })).toEqual({
+    ok: false,
+    error: { kind: "invalid_date", input: "2026-11-31" },
+  });
+});
+
+test("editing one occurrence without changing anything keeps it in the series", async () => {
+  const { t } = await setup();
+  const blockId = await weekdays(t);
+  const same = unwrap(await t.mutation(api.planner.smartBlocks.edit, { blockId, date: DATE, title: "Focus", startMinute: FOUR, filter: ALL }));
+  expect(same.blockId).toBe(blockId);
+  expect(await smartRows(t)).toHaveLength(1);
+});
+
+test("a repeat that ends before it starts, a bad schedule, a bad window or a bad time zone is refused", async () => {
+  const { t } = await setup();
+  const base = { title: "Focus", date: DATE, startMinute: FOUR, endMinute: SIX, timeZone: ZONE };
+  expect(await t.mutation(api.planner.smartBlocks.create, { ...base, repeat: { schedule: { kind: "weekdays" }, until: "2026-11-19" } })).toEqual({
+    ok: false,
+    error: { kind: "invalid_schedule", reason: "end" },
+  });
+  expect(await t.mutation(api.planner.smartBlocks.create, { ...base, repeat: { schedule: { kind: "days", every: 0 } } })).toMatchObject({
+    ok: false,
+    error: { kind: "invalid_schedule" },
+  });
+  expect(await t.mutation(api.planner.smartBlocks.create, { ...base, timeZone: "Mars/Olympus" })).toEqual(refusedAs("time_zone"));
+  expect(await t.mutation(api.planner.smartBlocks.create, { ...base, startMinute: FOUR + 0.5 })).toEqual(refusedAs("window"));
+  expect(await t.mutation(api.planner.smartBlocks.create, { ...base, startMinute: -15 })).toEqual(refusedAs("window"));
+  const blockId = await weekdays(t);
+  expect(await t.mutation(api.planner.smartBlocks.edit, { blockId, repeat: { schedule: { kind: "weekdays" }, until: "2026-11-15" } })).toEqual({
+    ok: false,
+    error: { kind: "invalid_schedule", reason: "end" },
+  });
+  expect(await t.mutation(api.planner.smartBlocks.edit, { blockId, startMinute: SIX })).toEqual(refusedAs("window"));
+  expect(await t.mutation(api.planner.smartBlocks.edit, { blockId, date: DATE, endMinute: FOUR + 5 })).toEqual(refusedAs("window"));
+  expect((await smartRows(t)).map((row) => [row.startMinute, row.endMinute, row.until])).toEqual([[FOUR, SIX, "2026-11-27"]]);
+});
+
+test("a fill of too many blocks, outside the window, of a closed Task, or overlapping itself is refused", async () => {
+  const { t, task } = await setup();
+  const taskId = await task("Draft", { estimateMinutes: 30 });
+  const other = await task("Call", { estimateMinutes: 30 });
+  const blockId = await weekdays(t);
+  const fill = (blocks: { taskId: Id<"tasks">; start: number; minutes: number }[], release: Id<"workBlocks">[] = []) =>
+    t.mutation(api.planner.smartBlocks.fill, { blockId, date: DATE, blocks, release });
+  const many = Array.from({ length: 51 }, (_, index) => ({ taskId, start: at(DATE, FOUR + index), minutes: 1 }));
+  expect(await fill(many)).toEqual(refusedAs("too_many"));
+  expect(await fill([{ taskId, start: at(DATE, FOUR - 5), minutes: 30 }])).toEqual(refusedAs("outside"));
+  expect(await fill([{ taskId, start: at(DATE, FOUR), minutes: 0 }])).toEqual(refusedAs("outside"));
+  expect(await fill([{ taskId, start: at(DATE, FOUR), minutes: 2.5 }])).toEqual(refusedAs("outside"));
+  expect(await fill([{ taskId, start: at(DATE, FOUR) + 0.5, minutes: 30 }])).toEqual(refusedAs("outside"));
+  expect(await fill([{ taskId, start: at(DATE, FOUR), minutes: 30 }, { taskId: other, start: at(DATE, FOUR + 20), minutes: 30 }])).toEqual(refusedAs("overlap"));
+  const nextDay = proposal(await snapshotFor(t, "2026-11-23" as IsoDate), blockId, "2026-11-23" as IsoDate);
+  const { blockIds } = unwrap(await t.mutation(api.planner.smartBlocks.fill, { blockId, date: "2026-11-23", blocks: nextDay.blocks, release: [] }));
+  expect(await fill([], blockIds)).toEqual(refusedAs("release"));
+  unwrap(await t.mutation(api.planner.selection.complete, { taskIds: [other] }));
+  expect(await fill([{ taskId: other, start: at(DATE, FOUR), minutes: 30 }])).toEqual({ ok: false, error: { kind: "not_found", table: "tasks", id: other } });
+  expect(await liveRows(t)).toHaveLength(blockIds.length);
+});
+
+test("a fill may reuse the time of the Work Blocks it frees", async () => {
+  const { t, task } = await setup();
+  const first = await task("Draft", { estimateMinutes: 30 });
+  const second = await task("Call", { estimateMinutes: 30 });
+  const blockId = await weekdays(t);
+  const { blockIds } = unwrap(
+    await t.mutation(api.planner.smartBlocks.fill, { blockId, date: DATE, blocks: [{ taskId: first, start: at(DATE, FOUR), minutes: 30 }], release: [] }),
+  );
+  unwrap(await t.mutation(api.planner.smartBlocks.fill, { blockId, date: DATE, blocks: [{ taskId: second, start: at(DATE, FOUR), minutes: 30 }], release: blockIds }));
+  expect((await liveRows(t)).map((row) => row.taskId)).toEqual([second]);
+  expect(await t.mutation(api.planner.smartBlocks.fill, { blockId, date: DATE, blocks: [], release: blockIds })).toEqual(refusedAs("release"));
+});
+
+test("with the Feature off every Smart Block change is refused and nothing changes", async () => {
+  const { t, task } = await setup();
+  const taskId = await task("Draft", { estimateMinutes: 30 });
+  const blockId = await weekdays(t);
+  unwrap(await t.mutation(api.platform.features.setEnabled, { feature: "smartBlocks", enabled: false }));
+  const off = { ok: false, error: { kind: "feature_off", feature: "smartBlocks" } };
+  expect(await t.mutation(api.planner.smartBlocks.edit, { blockId, title: "Off" })).toEqual(off);
+  expect(await t.mutation(api.planner.smartBlocks.edit, { blockId, date: DATE, title: "Off" })).toEqual(off);
+  expect(await t.mutation(api.planner.smartBlocks.skip, { blockId, date: DATE })).toEqual(off);
+  expect(await t.mutation(api.planner.smartBlocks.remove, { blockId })).toEqual(off);
+  expect(await t.mutation(api.planner.smartBlocks.fill, { blockId, date: DATE, blocks: [{ taskId, start: at(DATE, FOUR), minutes: 30 }], release: [] })).toEqual(off);
+  expect(await occurrences(t, "2026-11-16", 14)).toEqual({ on: false, occurrences: [] });
+  expect((await smartRows(t)).map((row) => [row.title, row.removedAt])).toEqual([["Focus", undefined]]);
+  expect(await liveRows(t)).toEqual([]);
+});
+
+test("a range with a bad date, day count or time zone is refused", async () => {
+  const { t } = await setup();
+  const range = (from: string, days: number, timeZone = ZONE) => t.query(api.planner.smartBlocks.range, { from, days, timeZone });
+  expect(await range("2026-02-30", 1)).toEqual({ ok: false, error: { kind: "invalid_date", input: "2026-02-30" } });
+  for (const days of [0, 63, 1.5]) expect(await range(DATE, days)).toEqual(refusedAs("window"));
+  expect(await range(DATE, 62)).toMatchObject({ ok: true });
+  expect(await range(DATE, 1, "Nowhere/Land")).toEqual(refusedAs("time_zone"));
+  expect(await t.query(api.planner.smartBlocks.fillInputs, { date: DATE, timeZone: "Nowhere/Land" })).toEqual(refusedAs("time_zone"));
+});
+
+test("a daily 9:00 to 11:00 block keeps its wall-clock times on both daylight saving days, and a window can end at midnight", async () => {
+  const { t } = await setup();
+  for (const date of ["2026-10-03", "2026-04-04"]) {
+    unwrap(
+      await t.mutation(api.planner.smartBlocks.create, {
+        title: "Morning",
+        date,
+        startMinute: 9 * 60,
+        endMinute: 11 * 60,
+        timeZone: ZONE,
+        repeat: { schedule: { kind: "days", every: 1 }, until: addDays(date as IsoDate, 2) },
+      }),
+    );
+    const { occurrences: shown } = await occurrences(t, date, 3);
+    expect(shown.map((each) => [zonedIso(each.start, ZONE).slice(11), zonedIso(each.end, ZONE).slice(11)])).toEqual(
+      date === "2026-10-03"
+        ? [
+            ["09:00+10:00", "11:00+10:00"],
+            ["09:00+11:00", "11:00+11:00"],
+            ["09:00+11:00", "11:00+11:00"],
+          ]
+        : [
+            ["09:00+11:00", "11:00+11:00"],
+            ["09:00+10:00", "11:00+10:00"],
+            ["09:00+10:00", "11:00+10:00"],
+          ],
+    );
+  }
+  const { blockId } = unwrap(await t.mutation(api.planner.smartBlocks.create, { title: "Whole day", date: "2026-04-05", startMinute: 0, endMinute: 24 * 60, timeZone: ZONE }));
+  const [whole] = (await occurrences(t, "2026-04-05", 1)).occurrences.filter((each) => each.blockId === blockId);
+  expect(whole && [zonedIso(whole.start, ZONE), zonedIso(whole.end, ZONE), (whole.end - whole.start) / (60 * MINUTE_MS)]).toEqual([
+    "2026-04-05T00:00+11:00",
+    "2026-04-06T00:00+10:00",
+    25,
+  ]);
+});
+
+test("a Work Block running past midnight from the day before is busy time for a fill", async () => {
+  const { t, task } = await setup();
+  const late = await task("Late shift", { estimateMinutes: 60 });
+  await task("Draft", { estimateMinutes: 30 });
+  unwrap(await t.mutation(api.planner.workBlocks.create, { taskId: late, start: at("2026-11-19" as IsoDate, 23 * 60 + 30), minutes: 60, timeZone: ZONE }));
+  const { blockId } = unwrap(await t.mutation(api.planner.smartBlocks.create, { title: "Night", date: DATE, startMinute: 0, endMinute: 2 * 60, timeZone: ZONE }));
+  const night = proposal(await snapshotFor(t), blockId, DATE, { start: 0, end: 2 * 60 });
+  expect(night.blocks.map((block) => zonedIso(block.start, ZONE))).toEqual(["2026-11-20T00:35+11:00"]);
+  unwrap(await t.mutation(api.planner.smartBlocks.fill, { blockId, date: DATE, blocks: night.blocks, release: [] }));
+});
+
+test("the fill inputs give a Project's Task the Area of its Project, with that Area's colour", async () => {
+  const { t, uni } = await setup();
+  unwrap(await t.mutation(api.planner.areas.setColour, { areaId: uni, colour: "violet" }));
+  const { projectId } = unwrap(await t.mutation(api.planner.projects.create, { title: "Thesis", areaId: uni }));
+  const { taskId } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Chapter", when: { kind: "anytime" }, parent: { kind: "project", projectId } }));
+  const snapshot = await snapshotFor(t);
+  expect(snapshot.tasks.find((each) => each._id === taskId)).toMatchObject({ areaId: uni, projectId, colour: "violet" });
+  const result = fillSmartBlock({ snapshot, blockId: null, window: { start: 0, end: 1 }, filter: { areaIds: [uni], projectIds: [], labelIds: [] }, now: 0 });
+  expect(result.skipped.map((skip) => skip.task._id)).toEqual([taskId]);
+});
+
+test("editing the one occurrence of a one-off block changes it in place, and undo restores it", async () => {
+  const { t } = await setup();
+  const { blockId } = unwrap(await t.mutation(api.planner.smartBlocks.create, { title: "Focus", date: DATE, startMinute: FOUR, endMinute: SIX, timeZone: ZONE }));
+  const before = await smartRows(t);
+  const edited = unwrap(await t.mutation(api.planner.smartBlocks.edit, { blockId, date: DATE, title: "Admin", endMinute: SIX + 30 }));
+  expect(edited.blockId).toBe(blockId);
+  expect((await smartRows(t)).map((row) => [row.title, row.endMinute, row.detachedFrom])).toEqual([["Admin", SIX + 30, undefined]]);
+  unwrap(await t.mutation(api.platform.undo.undo, { activityId: edited.activityId! }));
+  expect(await smartRows(t)).toEqual(before);
 });

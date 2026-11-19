@@ -186,9 +186,9 @@ const poolOf = async (ctx: QueryCtx, date: IsoDate) => {
 export const loadSnapshot = async (ctx: QueryCtx, date: IsoDate, timeZone: string) => {
   const dayStart = zonedMoment(date, 0, timeZone);
   const dayEnd = zonedMoment(addDays(date, 1), 0, timeZone);
-  const [pool, blocks, commitments, areas, capacity] = await Promise.all([
+  const [pool, nearby, commitments, areas, capacity] = await Promise.all([
     poolOf(ctx, date),
-    linkedBlocks(ctx, dayStart, dayEnd),
+    linkedBlocks(ctx, dayStart - MAX_BLOCK_MS, dayEnd),
     commitmentsBetween(ctx, dayStart, dayEnd),
     areaPriority(ctx),
     capacityDays(ctx, date, FREE_DAYS, timeZone),
@@ -198,6 +198,7 @@ export const loadSnapshot = async (ctx: QueryCtx, date: IsoDate, timeZone: strin
   const projectArea = new Map(projects.flatMap((project) => (project ? [[project._id as string, project.areaId]] : [])));
   const guessed = new Map<string, number>(guesses.map((guess) => [guess.taskId, guess.minutes]));
   const colours = new Map(areas.map((area) => [area._id as string, area.colour]));
+  const blocks = nearby.filter((block) => block.start + block.minutes * MINUTE_MS > dayStart);
   const tasks = pool.map((task) => {
     const areaId = task.parent.kind === "area" ? task.parent.areaId : task.parent.kind === "project" ? projectArea.get(task.parent.projectId) : undefined;
     return {
@@ -250,35 +251,44 @@ type FillBlockInput = { taskId: Id<"tasks">; start: number; minutes: number };
 const overlaps = (a: { start: number; minutes: number }, b: { start: number; minutes: number }) =>
   a.start < b.start + b.minutes * MINUTE_MS && b.start < a.start + a.minutes * MINUTE_MS;
 
-const applyFill = async (
-  ctx: MutationCtx,
-  record: Recorder,
-  block: SmartBlock,
+const checkFill = async (
+  ctx: QueryCtx,
+  block: Pick<SmartBlock, "startMinute" | "endMinute" | "timeZone">,
+  blockId: Id<"smartBlocks"> | null,
   date: IsoDate,
   blocks: readonly FillBlockInput[],
   release: readonly Id<"workBlocks">[],
 ) => {
-  if (blocks.length > MAX_FILL_BLOCKS || release.length > MAX_FILL_BLOCKS) return err<{ blockIds: Id<"workBlocks">[] }, PlannerError>(refused("too_many"));
+  if (blocks.length > MAX_FILL_BLOCKS || release.length > MAX_FILL_BLOCKS) return err<null, PlannerError>(refused("too_many"));
   const window = windowOf(block, date);
   const outside = blocks.some(
     (fill) => !Number.isSafeInteger(fill.start) || !Number.isInteger(fill.minutes) || fill.minutes <= 0 || fill.start < window.start || fill.start + fill.minutes * MINUTE_MS > window.end,
   );
-  if (outside) return err<{ blockIds: Id<"workBlocks">[] }, PlannerError>(refused("outside"));
+  if (outside) return err<null, PlannerError>(refused("outside"));
   const released = await Promise.all(release.map((id) => ctx.db.get("workBlocks", id)));
   const foreign = released.some(
-    (found) => !found || found.removedAt !== undefined || found.smartBlock?.blockId !== block._id || found.smartBlock.date !== date,
+    (found) => !found || found.removedAt !== undefined || blockId === null || found.smartBlock?.blockId !== blockId || found.smartBlock.date !== date,
   );
-  if (foreign) return err<{ blockIds: Id<"workBlocks">[] }, PlannerError>(refused("release"));
+  if (foreign) return err<null, PlannerError>(refused("release"));
   const tasks = await Promise.all(blocks.map((fill) => ctx.db.get("tasks", fill.taskId)));
   const closed = blocks.find((_, index) => {
     const task = tasks[index];
     return !task || !isLive(task) || task.status.kind !== "open";
   });
-  if (closed) return err<{ blockIds: Id<"workBlocks">[] }, PlannerError>({ kind: "not_found", table: "tasks", id: closed.taskId });
+  if (closed) return err<null, PlannerError>({ kind: "not_found", table: "tasks", id: closed.taskId });
   const freed = new Set<string>(release);
   const existing = (await linkedBlocks(ctx, window.start - MAX_BLOCK_MS, window.end)).filter((other) => !freed.has(other._id));
   const clash = blocks.some((fill, index) => existing.some((other) => overlaps(fill, other)) || blocks.slice(index + 1).some((other) => overlaps(fill, other)));
-  if (clash) return err<{ blockIds: Id<"workBlocks">[] }, PlannerError>(refused("overlap"));
+  return clash ? err<null, PlannerError>(refused("overlap")) : ok<null, PlannerError>(null);
+};
+
+const writeFill = async (
+  record: Recorder,
+  block: Pick<SmartBlock, "_id" | "timeZone">,
+  date: IsoDate,
+  blocks: readonly FillBlockInput[],
+  release: readonly Id<"workBlocks">[],
+) => {
   const at = Date.now();
   for (const id of release) await record.patch("workBlocks", id, { removedAt: at });
   const blockIds: Id<"workBlocks">[] = [];
@@ -293,7 +303,7 @@ const applyFill = async (
         smartBlock: { blockId: block._id, date },
       }),
     );
-  return ok<{ blockIds: Id<"workBlocks">[] }, PlannerError>({ blockIds });
+  return blockIds;
 };
 
 const vEditFields = {
@@ -325,30 +335,35 @@ const relink = async (ctx: MutationCtx, record: Recorder, from: SmartBlock, date
   for (const fill of linked) await record.patch("workBlocks", fill._id, { smartBlock: { blockId: to, date } });
 };
 
-const editOne = async (ctx: MutationCtx, record: Recorder, block: SmartBlock, date: IsoDate, fields: EditFields) => {
-  const parsed = parseEdit(block, fields);
-  if (parsed.isErr()) return err<Id<"smartBlocks">, PlannerError>(parsed.error);
+const sameIds = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((id, index) => id === b[index]);
+
+const sameFilter = (a: SmartBlockFilter, b: SmartBlockFilter) =>
+  sameIds(a.areaIds, b.areaIds) && sameIds(a.projectIds, b.projectIds) && sameIds(a.labelIds, b.labelIds);
+
+type Edited = ReturnType<typeof parseEdit> extends Result<infer T, PlannerError> ? T : never;
+
+const writeOne = async (ctx: MutationCtx, record: Recorder, block: SmartBlock, date: IsoDate, edited: Edited) => {
   if (!block.repeat) {
-    await record.patch("smartBlocks", block._id, parsed.value);
-    return ok<Id<"smartBlocks">, PlannerError>(block._id);
+    await record.patch("smartBlocks", block._id, edited);
+    return block._id;
   }
   const unchanged =
-    parsed.value.title === block.title &&
-    parsed.value.colour === block.colour &&
-    parsed.value.startMinute === block.startMinute &&
-    parsed.value.endMinute === block.endMinute &&
-    JSON.stringify(parsed.value.filter) === JSON.stringify(block.filter);
-  if (unchanged) return ok<Id<"smartBlocks">, PlannerError>(block._id);
+    edited.title === block.title &&
+    edited.colour === block.colour &&
+    edited.startMinute === block.startMinute &&
+    edited.endMinute === block.endMinute &&
+    sameFilter(edited.filter, block.filter);
+  if (unchanged) return block._id;
   await record.patch("smartBlocks", block._id, { repeat: { ...block.repeat, skipped: [...block.repeat.skipped, date].toSorted() } });
   const detachedId = await record.insert("smartBlocks", {
-    ...parsed.value,
+    ...edited,
     date,
     until: date,
     timeZone: block.timeZone,
     detachedFrom: { blockId: block._id, date },
   });
   await relink(ctx, record, block, date, detachedId);
-  return ok<Id<"smartBlocks">, PlannerError>(detachedId);
+  return detachedId;
 };
 
 const whenOn = async <T>(ctx: QueryCtx, run: () => Promise<Result<T, PlannerError>>) =>
@@ -374,7 +389,7 @@ export const create = changeMutation({
       const [title, date, window, timeZone] = parsed.value;
       const repeat = parseRepeat(date, args.repeat, []);
       if (repeat.isErr()) return err(repeat.error);
-      const blockId = await record.insert("smartBlocks", {
+      const fields = {
         title,
         colour: args.colour ?? DEFAULT_COLOUR,
         date,
@@ -383,26 +398,16 @@ export const create = changeMutation({
         filter: cleanFilter(args.filter ?? { areaIds: [], projectIds: [], labelIds: [] }),
         until: repeat.value.until ?? date,
         ...(repeat.value.repeat ? { repeat: repeat.value.repeat } : {}),
-      });
-      const block = await ctx.db.get("smartBlocks", blockId);
-      if (!block) return err<{ blockId: Id<"smartBlocks">; blockIds: Id<"workBlocks">[] }, PlannerError>({ kind: "not_found", table: "smartBlocks", id: blockId });
-      if (!occursOnDate(block, date)) return err<{ blockId: Id<"smartBlocks">; blockIds: Id<"workBlocks">[] }, PlannerError>(refused("occurrence"));
-      const filled = await applyFill(ctx, record, block, date, args.fill ?? [], []);
-      return filled.map(({ blockIds }) => ({ blockId, blockIds }));
+      };
+      if (!occursOnDate(fields, date)) return err<{ blockId: Id<"smartBlocks">; blockIds: Id<"workBlocks">[] }, PlannerError>(refused("occurrence"));
+      const fills = args.fill ?? [];
+      const checked = await checkFill(ctx, fields, null, date, fills, []);
+      if (checked.isErr()) return err(checked.error);
+      const blockId = await record.insert("smartBlocks", fields);
+      const blockIds = await writeFill(record, { _id: blockId, timeZone }, date, fills, []);
+      return ok({ blockId, blockIds });
     }),
 });
-
-const editAll = async (record: Recorder, block: SmartBlock, fields: EditFields, repeat: RepeatInput | null | undefined) => {
-  const parsed = parseEdit(block, fields);
-  if (parsed.isErr()) return err<Id<"smartBlocks">, PlannerError>(parsed.error);
-  const series =
-    repeat === undefined
-      ? ok<Pick<SmartBlockFields, "repeat" | "until">, PlannerError>({})
-      : parseRepeat(block.date as IsoDate, repeat, block.repeat?.skipped ?? []);
-  if (series.isErr()) return err<Id<"smartBlocks">, PlannerError>(series.error);
-  await record.patch("smartBlocks", block._id, { ...parsed.value, ...series.value });
-  return ok<Id<"smartBlocks">, PlannerError>(block._id);
-};
 
 const vScope = v.union(v.literal("one"), v.literal("all"));
 
@@ -410,8 +415,21 @@ const vEdit = v.object({ scope: vScope, ...vEditFields, repeat: v.optional(v.uni
 
 type Edit = EditFields & { scope: "one" | "all"; repeat?: RepeatInput | null | undefined };
 
-const applyEdit = (ctx: MutationCtx, record: Recorder, block: SmartBlock, date: IsoDate, { scope, repeat, ...fields }: Edit) =>
-  scope === "one" ? editOne(ctx, record, block, date, fields) : editAll(record, block, fields, repeat);
+const planEdit = (block: SmartBlock, { scope, repeat, ...fields }: Edit) =>
+  parseEdit(block, fields).andThen((edited) =>
+    (scope === "one" || repeat === undefined
+      ? ok<Pick<SmartBlockFields, "repeat" | "until">, PlannerError>({})
+      : parseRepeat(block.date as IsoDate, repeat, block.repeat?.skipped ?? [])
+    ).map((series) => ({ scope, edited, series, after: scope === "one" ? { ...block, ...edited } : { ...block, ...edited, ...series } })),
+  );
+
+type PlannedEdit = ReturnType<typeof planEdit> extends Result<infer T, PlannerError> ? T : never;
+
+const writeEdit = async (ctx: MutationCtx, record: Recorder, block: SmartBlock, date: IsoDate, plan: PlannedEdit) => {
+  if (plan.scope === "one") return writeOne(ctx, record, block, date, plan.edited);
+  await record.patch("smartBlocks", block._id, { ...plan.edited, ...plan.series });
+  return block._id;
+};
 
 export const edit = changeMutation({
   action: "smartBlock.edit",
@@ -423,14 +441,15 @@ export const edit = changeMutation({
   },
   handler: (ctx, { blockId, date, repeat, ...fields }, record) =>
     whenOn(ctx, async () => {
-      if (date !== undefined) {
-        const occurrence = await occurrenceOf(ctx, blockId, date);
-        if (occurrence.isErr()) return err(occurrence.error);
-        return (await editOne(ctx, record, occurrence.value.block, occurrence.value.date, fields)).map((id) => ({ blockId: id }));
-      }
-      const block = await liveBlock(ctx, blockId);
-      if (block.isErr()) return err(block.error);
-      return (await editAll(record, block.value, fields, repeat)).map((id) => ({ blockId: id }));
+      const target =
+        date === undefined
+          ? (await liveBlock(ctx, blockId)).map((block) => ({ block, date: block.date as IsoDate, edit: { scope: "all" as const, repeat, ...fields } }))
+          : (await occurrenceOf(ctx, blockId, date)).map((found) => ({ ...found, edit: { scope: "one" as const, ...fields } }));
+      if (target.isErr()) return err(target.error);
+      const { block, date: day, edit: changes } = target.value;
+      const plan = planEdit(block, changes);
+      if (plan.isErr()) return err(plan.error);
+      return ok({ blockId: await writeEdit(ctx, record, block, day, plan.value) });
     }),
 });
 
@@ -472,16 +491,15 @@ export const fill = changeMutation({
     whenOn(ctx, async () => {
       const occurrence = await occurrenceOf(ctx, blockId, date);
       if (occurrence.isErr()) return err(occurrence.error);
-      let block = occurrence.value.block;
-      if (changes) {
-        const edited = await applyEdit(ctx, record, block, occurrence.value.date, changes);
-        if (edited.isErr()) return err(edited.error);
-        const fresh = await ctx.db.get("smartBlocks", edited.value);
-        if (!fresh || !occursOnDate(fresh, occurrence.value.date))
-          return err<{ blockId: Id<"smartBlocks">; blockIds: Id<"workBlocks">[] }, PlannerError>(refused("occurrence"));
-        block = fresh;
-      }
-      const filled = await applyFill(ctx, record, block, occurrence.value.date, blocks, release);
-      return filled.map(({ blockIds }) => ({ blockId: block._id, blockIds }));
+      const { block, date: day } = occurrence.value;
+      const plan = changes ? planEdit(block, changes) : ok<PlannedEdit | null, PlannerError>(null);
+      if (plan.isErr()) return err(plan.error);
+      const after = plan.value?.after ?? block;
+      if (!occursOnDate(after, day)) return err<{ blockId: Id<"smartBlocks">; blockIds: Id<"workBlocks">[] }, PlannerError>(refused("occurrence"));
+      const checked = await checkFill(ctx, after, block._id, day, blocks, release);
+      if (checked.isErr()) return err(checked.error);
+      const target = plan.value ? await writeEdit(ctx, record, block, day, plan.value) : block._id;
+      const blockIds = await writeFill(record, { _id: target, timeZone: block.timeZone }, day, blocks, release);
+      return ok({ blockId: target, blockIds });
     }),
 });
