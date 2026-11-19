@@ -5,7 +5,7 @@ import { internal } from "../_generated/api";
 import type { QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { agentMutation, agentQuery, MCP_SCOPES } from "./access";
-import { endMcpRun, isLiveRun, latestMcpRun } from "./agentRuns";
+import { endMcpRun, isLiveRun, isRunOf, latestMcpRun } from "./agentRuns";
 import { undoActivity, undoAgentRun, type UndoError } from "./undo";
 
 const DEFAULT_LIMIT = 20;
@@ -111,6 +111,8 @@ const undoRefusals = {
       : "",
 } satisfies Record<UndoError["kind"], (error: UndoError) => string>;
 
+const notYours = "You can only undo changes this connection made. Avi undoes his own changes in the app.";
+
 const undone = (result: Result<{ undoActivityId: Id<"activity"> | null }, UndoError>) => {
   if (result.isErr()) throw new ConvexError(undoRefusals[result.error.kind](result.error));
   return result.value.undoActivityId ? { undoActivityId: result.value.undoActivityId as string } : {};
@@ -123,17 +125,20 @@ export const undo = agentMutation({
     if (targets.length !== 1) throw new ConvexError("Give exactly one of activityId, runId or currentRun: true.");
     if (args.activityId !== undefined) {
       const activityId = ctx.db.normalizeId("activity", args.activityId);
-      if (!activityId) throw new ConvexError(`No Activity entry has the id "${args.activityId}". recent_activity lists them.`);
+      const entry = activityId && (await ctx.db.get("activity", activityId));
+      if (!activityId || !entry) throw new ConvexError(`No Activity entry has the id "${args.activityId}". recent_activity lists them.`);
+      const owner = entry.actor.kind === "agentRun" ? await ctx.db.get("jobs", entry.actor.jobId) : null;
+      if (!isRunOf(owner, caller.connectionId)) throw new ConvexError(notYours);
       return { ...undone(await undoActivity(ctx, await run(), activityId)), undid: "activity" as const };
     }
     const now = Date.now();
     const latest = await latestMcpRun(ctx, caller.connectionId);
     const jobId = args.runId === undefined ? latest?._id : ctx.db.normalizeId("jobs", args.runId);
     if (!jobId) throw new ConvexError(args.runId === undefined ? "This connection has made no changes yet." : `No Agent Run has the id "${args.runId}".`);
-    const own = latest?._id === jobId;
-    if (own && latest && isLiveRun(latest, now)) await endMcpRun(ctx, latest, now);
-    const actor = own ? ({ kind: "agentRun", jobId } as const) : await run();
-    return { ...undone(await undoAgentRun(ctx, actor, jobId)), undid: "run" as const, runId: jobId as string };
+    const target = await ctx.db.get("jobs", jobId);
+    if (!target || !isRunOf(target, caller.connectionId)) throw new ConvexError(notYours);
+    if (isLiveRun(target, now)) await endMcpRun(ctx, target, now);
+    return { ...undone(await undoAgentRun(ctx, { kind: "agentRun", jobId }, jobId)), undid: "run" as const, runId: jobId as string };
   },
 });
 
@@ -151,7 +156,7 @@ export const platformTools: Record<string, ToolDefinition> = {
   undo: tool({
     title: "Undo",
     description:
-      "Undo one Activity entry (activityId), a whole Agent Run (runId), or every change this connection made in its current run (currentRun: true). Every write tool returns its runId and activityIds. Undo is refused when a later change touched the same fields.",
+      "Undo one of your own changes (activityId), one of your own Agent Runs (runId), or every change in your current run (currentRun: true). Every write tool returns its runId and activityIds. Changes Avi or other agents made cannot be undone here. Undo is refused when a later change touched the same fields.",
     args: { activityId: v.optional(v.string()), runId: v.optional(v.string()), currentRun: v.optional(v.boolean()) },
     returns: v.object({
       undid: v.union(v.literal("activity"), v.literal("run")),

@@ -12,6 +12,7 @@ Every public Convex function is built with one of the builders in `packages/back
 | `ownerMutation` | The owner, signed in, or an active Agent Run (its `agentRun` credential) | `undo`, `undoRun`, and `changeMutation`, which every change is built with |
 | `ownerAction` | The owner, signed in. It checks through the internal query `platform/access:callerKind` before the handler runs | `platform/secrets:save` and `remove`, which must call OpenAI or must not be reachable by an Agent Run |
 | `workerMutation` | A registered Worker, by its token | `jobs.claim`, `heartbeat`, `complete`, `fail`, `things.retire` and `calendar/sync:applyWindow` (needs the `calendar` capability) |
+| `agentQuery`, `agentMutation` | Internal only. An MCP tool passes its verified connection (`caller`). Refused unless the connection belongs to `LIFEOS_OWNER_USER_ID`. `agentMutation` also needs the `lifeos:write` scope and records the change as that connection's Agent Run | Every MCP tool (`planner/agentReads.ts`, `planner/agentWrites.ts`, `platform/agentTools.ts`) |
 
 The owner check reads the caller's Convex Auth session, loads the `users` row it points at, and compares that row's GitHub id with `LIFEOS_OWNER_GITHUB_ID`. A failure is a `ConvexError` whose data is `{ kind, message }`:
 
@@ -25,7 +26,7 @@ oxlint makes the guard hard to skip. Its `no-restricted-imports` rule rejects `q
 These public functions do not go through the builders, on purpose:
 
 - Convex Auth's own functions in `convex/auth.ts` (`startSignInWithGithub`, `completeSignInWithGithub`, `refreshSession`, `signOut`, `isAuthenticated`). They must work before sign-in.
-- The MCP component's functions in `convex/mcp.ts`. The component checks each call with `getUserId`, which returns the owner id only for the owner's Convex Auth session (it runs the internal query `platform/access:isOwner`).
+- The MCP component's functions in `convex/mcp.ts` (`getAuthRequest`, `findAuthRequest`, `authorize`, `listConnections`, `revokeConnection`, `createApiKey`). The component checks each call with `getUserId`, which returns the owner id only for the owner's Convex Auth session (it runs the internal query `platform/access:isOwner`).
 - The `/auth/iphone` and `/auth/mac` HTTP routes in `convex/http.ts`. They read no data. Each redirects to `lifeos://auth` with the same query string, for the iPhone and packaged Mac sign-ins below.
 - The `/oura/callback` HTTP route. Oura sends the browser there after consent, without a Convex session, so it trusts only a one-use `state` that the owner-only `health/oura:connect` wrote less than 10 minutes earlier, and the PKCE verifier stored beside it. It returns no data.
 

@@ -18,6 +18,9 @@ export const latestMcpRun = (ctx: QueryCtx, connectionId: string) => {
     .first();
 };
 
+export const isRunOf = (run: Doc<"jobs"> | null, connectionId: string) =>
+  run !== null && run.idempotencyKey.startsWith(runKeyPrefix(connectionId));
+
 export const isLiveRun = (run: Doc<"jobs">, now: number) => run.status.kind === "claimed" && run.status.leaseUntil >= now;
 
 const mcpWorker = async (ctx: MutationCtx) => {

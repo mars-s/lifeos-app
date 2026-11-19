@@ -163,6 +163,7 @@ No indexes: the guard reads the row by the id the session holds.
 | `by_area_order` (`parent.areaId`, `order`) | Area page. The last key when appending. |
 | `by_parent_kind_order` (`parent.kind`, `order`) | Loose Tasks in order. The last key when appending. |
 | `by_repeat` (`repeat.ruleId`, `repeat.date`) | The idempotency key for generation: one Task per rule per occurrence date. The current instance of an after-completion rule. |
+| `search_title` (search on `title`, filter `status.kind`) | The MCP `search` tool: open Tasks by words in their title. |
 
 ### `areas`
 
@@ -503,6 +504,7 @@ Each slice adds these as new tables, or as variants of `vEntityRef` and `vJob`. 
 ### Agents
 
 - An **Agent Run** is a Job of kind `agent`. Its changes carry the actor `{ kind: "agentRun", jobId }`, and `platform/undo:undoRun` reverts the whole run.
+- An **MCP connection's run** is the same kind of Job, made by `platform/agentRuns.ts` on its first write. Its `idempotencyKey` is `mcp:<connectionId>:<started at>`, so `by_idempotency_key` finds a connection's latest run. It is `claimed` by the Worker named `mcp` (no capabilities, a token nobody holds) with a lease of 10 minutes, and each write extends it. A write after the lease runs out marks the old run `done` and starts a new one. Its `request` is `<connection name> over MCP`.
 - **`agentMessages`**: `jobId`, `role`, `content` (structured, for generative UI), `at`. Index: `by_run_at`. Added with the first conversational agent.
 
 ### Search
@@ -512,10 +514,11 @@ One search across modules: a search index on `title` for `tasks` and `projects`,
 ## How a change flows
 
 1. A public mutation built with `changeMutation` (`platform/change.ts`) resolves the actor. With no `agentRun` argument the actor is Avi. With `agentRun: { token, jobId }` it must be a claimed `agent` Job held by that Worker.
+   An MCP write tool runs the very same change through `changeAs` (`platform/change.ts`), inside an internal mutation built with `agentMutation`, with its connection's run as the actor. `changeMutation` keeps each mutation's spec, so the two paths cannot drift.
 2. The handler validates its input and returns a `Result`. It writes only through the recorder (`platform/activity.ts`), which records each insert, patch and delete in `activityChanges` under one `activity` row.
 3. The mutation returns `serialise(result)` with the `activityId`, so the client can offer undo.
 
-Undo (`platform/undo:undo` and `undoRun`) checks that every touched record still holds the values the action left. If a later action changed them, it refuses with `changed_since` and writes nothing. Undoing a create is refused the same way while the record has Checklist Items, Work Blocks, Focus Sessions or links that the undo would not also remove. Otherwise undo writes the inverse as a new Activity row. A record the undone actions both created and deleted is skipped. Undo refuses to undo an undo or a Things Import. `undoRun` refuses with `run_active` while the run's Job is still claimed, and an Agent Run can act only while its lease holds.
+Undo (`platform/undo:undo` and `undoRun`) checks that every touched record still holds the values the action left. If a later action changed them, it refuses with `changed_since` and writes nothing. Undoing a create is refused the same way while the record has Checklist Items, Work Blocks, Focus Sessions or links that the undo would not also remove. Otherwise undo writes the inverse as a new Activity row. A record the undone actions both created and deleted is skipped. Undo refuses to undo an undo or a Things Import. `undoRun` refuses with `run_active` while the run's Job is claimed and its lease holds, and an Agent Run can act only while its lease holds.
 
 ## How a Things Import lands
 

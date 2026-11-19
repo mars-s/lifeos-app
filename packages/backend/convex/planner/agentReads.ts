@@ -23,7 +23,7 @@ import { vRepeatEnd, vRepeatNext, vSchedule, type When } from "./tables";
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 const SEARCH_LIMIT = 20;
-const FALLBACK_TIME_ZONE = "Australia/Sydney";
+const FALLBACK_TIME_ZONE = "Australia/Melbourne";
 
 export const vTaskSummary = v.object({
   id: v.string(),

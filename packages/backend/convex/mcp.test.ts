@@ -456,6 +456,17 @@ describe("Agent Runs and undo", () => {
     expect(await refused(t, key, "undo", {})).toMatch(/exactly one/);
   });
 
+  test("an agent can undo only its own changes", async () => {
+    const { t, key } = await setup();
+    const other = await connect(t, { name: "Grok" });
+    const own = unwrap(await t.mutation(api.planner.tasks.create, { title: "Avi's own" }));
+    const theirs = await ok<TaskReceipt>(t, other, "create_task", { title: "Grok's" });
+    expect(await refused(t, key, "undo", { activityId: own.activityId })).toMatch(/only undo changes this connection made/);
+    expect(await refused(t, key, "undo", { activityId: theirs.activityIds[0] })).toMatch(/only undo changes this connection made/);
+    expect(await refused(t, key, "undo", { runId: theirs.runId })).toMatch(/only undo changes this connection made/);
+    expect(await t.run(async (ctx) => (await ctx.db.query("tasks").collect()).length)).toBe(2);
+  });
+
   test("Avi can undo a whole MCP run from the app once it has gone idle", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const { t, key } = await setup();
