@@ -1,7 +1,8 @@
 "use client";
 
 import { List as MenuIcon } from "@phosphor-icons/react";
-import { addTransitionType, startTransition, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { getFunctionName, type FunctionReference } from "convex/server";
+import { addTransitionType, startTransition, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "waku";
 import { api } from "@lifeos/backend/api";
 import type { IsoDate } from "@lifeos/backend/date";
@@ -15,7 +16,7 @@ import { ConfirmHost } from "./confirm";
 import { drafts } from "./drafts";
 import { FocusPill, FocusProvider } from "./focus";
 import { FocusSignals } from "./focus-signals";
-import { useLocalDate, useQuietView, useViewState, valueOf } from "./hooks";
+import { useLocalDate, useViewState, valueOf } from "./hooks";
 import { AppMenu } from "./menus";
 import { PanelBoundary, PanelNotice } from "./panel-boundary";
 import { LISTS, parseRoute, routeHref, screenKey, type Route, type Via } from "./route";
@@ -46,15 +47,42 @@ const moveFocus = (step: 1 | -1, main: HTMLElement | null) => {
   return true;
 };
 
-const WarmLists = ({ today }: { today: IsoDate }) => {
-  useQuietView(api.planner.lists.inbox, {});
-  useQuietView(api.planner.today.get, { date: today });
-  useQuietView(api.planner.lists.upcoming, { date: today, days: UPCOMING_DAYS });
-  useQuietView(api.planner.lists.anytime, { date: today });
-  useQuietView(api.planner.lists.someday, {});
-  useQuietView(api.planner.labels.list, {});
-  useQuietView(api.planner.templates.list, {});
+const WARM_AFTER_MS = 300;
+
+const nothing = () => undefined;
+
+const warmViews = (today: IsoDate) =>
+  [
+    { query: api.planner.lists.inbox, args: {} },
+    { query: api.planner.today.get, args: { date: today } },
+    { query: api.planner.lists.upcoming, args: { date: today, days: UPCOMING_DAYS } },
+    { query: api.planner.lists.anytime, args: { date: today } },
+    { query: api.planner.lists.someday, args: {} },
+    { query: api.planner.labels.list, args: {} },
+    { query: api.planner.templates.list, args: {} },
+  ] satisfies { query: FunctionReference<"query">; args: Record<string, unknown> }[];
+
+const WarmView = ({ view, onArrived }: { view: ReturnType<typeof warmViews>[number]; onArrived: () => void }) => {
+  const { value, error } = useViewState(view.query, view.args);
+  const arrived = value !== undefined || error !== null;
+  useEffect(() => {
+    if (arrived) onArrived();
+  }, [arrived, onArrived]);
   return null;
+};
+
+const WarmLists = ({ today, after }: { today: IsoDate; after: boolean }) => {
+  const [warmed, setWarmed] = useState(0);
+  const views = useMemo(() => warmViews(today), [today]);
+  const next = useCallback(() => setWarmed((count) => count + 1), []);
+  useEffect(() => {
+    if (!after) return;
+    const timer = setTimeout(next, WARM_AFTER_MS);
+    return () => clearTimeout(timer);
+  }, [after, next]);
+  return views.slice(0, warmed).map((view, index) => (
+    <WarmView key={getFunctionName(view.query)} view={view} onArrived={index === warmed - 1 ? next : nothing} />
+  ));
 };
 
 const Connected = ({ today, children }: { today: IsoDate; children: ReactNode }) => {
@@ -168,7 +196,7 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
   return (
     <ShellContext value={shell}>
       <FocusProvider>
-      <WarmLists today={today} />
+      <WarmLists today={today} after={sidebar !== undefined || sidebarState.error !== null} />
       <PanelBoundary panel="list" fallback={() => children}>
       <AppMenu sidebar={sidebar}>
       <div className="flex h-dvh bg-surface select-none [-webkit-touch-callout:none]">
