@@ -63,3 +63,19 @@ describe("Spread across the day", () => {
     expect(spread(tasks(30), { window: { start: hm(13, 7), end: hm(17, 30) } })).toEqual({ placed: ["t1 13:10+30"], unfit: [] });
   });
 });
+
+describe("Spread edge cases", () => {
+  test("reads busy time in any order", () => {
+    const lunch = { start: hm(12), end: hm(13) };
+    const standup = { start: hm(9), end: hm(9, 30) };
+    expect(spread(tasks(60, 60, 60), { busy: [lunch, standup] })).toEqual({
+      placed: ["t1 9:40+60", "t2 10:50+60", "t3 13:10+60"],
+      unfit: [],
+    });
+  });
+
+  test("an empty day places nothing, and a window with no room leaves every Task unfit", () => {
+    expect(spread([])).toEqual({ placed: [], unfit: [] });
+    expect(spread(tasks(30, 15), { window: { start: hm(9), end: hm(9, 10) } })).toEqual({ placed: [], unfit: ["t1", "t2"] });
+  });
+});

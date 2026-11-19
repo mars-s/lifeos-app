@@ -399,3 +399,111 @@ test("a stranger or a signed-out caller cannot read or change Recurrence Rules",
   }
   expect((await owner.run((ctx) => ctx.db.get("recurrenceRules", ruleId)))?.next).toEqual({ kind: "due", date: "2026-11-20" });
 });
+
+test("a weekly Sunday rule is created at local midnight on both daylight-saving Sundays in Sydney, once however often the generator runs", async () => {
+  const sundays: Schedule = { kind: "weeks", every: 1, days: [7] };
+  const changes = [
+    { start: "2026-03-23T01:00:00Z", before: "2026-04-04T12:59:59Z", midnight: "2026-04-04T13:00:00Z", dates: ["2026-03-29", "2026-04-05"] },
+    { start: "2026-09-21T01:00:00Z", before: "2026-10-03T13:59:59Z", midnight: "2026-10-03T14:00:00Z", dates: ["2026-09-27", "2026-10-04"] },
+  ];
+  for (const { start, before, midnight, dates } of changes) {
+    at(Date.parse(start));
+    const { make, setRepeat, generate, rule, datesOf } = await setup();
+    const { ruleId } = unwrap(await setRepeat(await make("Call Mum"), sundays, never, "Australia/Sydney"));
+    at(Date.parse(before));
+    await generate();
+    expect(await datesOf(ruleId)).toEqual(dates.slice(0, 1));
+    at(Date.parse(midnight));
+    await generate();
+    await generate();
+    expect(await datesOf(ruleId)).toEqual(dates);
+    expect((await rule(ruleId))?.count).toBe(2);
+  }
+});
+
+test("a monthly rule on the 29th falls on 28 Feb in a common year, and an end date stops it", async () => {
+  at(nineAm("2027-01-20"));
+  const { make, setRepeat, generate, rule, datesOf } = await setup();
+  const monthly: Schedule = { kind: "months", every: 1, on: { kind: "day", day: 29 } };
+  const { ruleId } = unwrap(await setRepeat(await make("Pay the rent"), monthly, { kind: "on", date: "2027-03-28" }));
+  expect((await rule(ruleId))?.next).toEqual({ kind: "due", date: "2027-02-28" });
+  at(nineAm("2027-02-28"));
+  await generate();
+  expect(await datesOf(ruleId)).toEqual(["2027-01-29", "2027-02-28"]);
+  expect((await rule(ruleId))?.next).toEqual({ kind: "ended" });
+  at(nineAm("2027-03-29"));
+  await generate();
+  expect(await datesOf(ruleId)).toEqual(["2027-01-29", "2027-02-28"]);
+});
+
+test("a yearly 29 Feb rule set in a leap year comes back on 28 Feb the next year", async () => {
+  at(nineAm("2028-02-01"));
+  const { make, setRepeat, generate, rule, datesOf } = await setup();
+  const { ruleId } = unwrap(await setRepeat(await make("Leap day drinks"), { kind: "years", every: 1, month: 2, day: 29 }));
+  expect((await rule(ruleId))?.next).toEqual({ kind: "due", date: "2029-02-28" });
+  at(nineAm("2029-02-28"));
+  await generate();
+  expect(await datesOf(ruleId)).toEqual(["2028-02-29", "2029-02-28"]);
+});
+
+test("an edit that leaves an occurrence due today creates it in the same step, and one undo takes both back", async () => {
+  const { t, make, setRepeat, rule, datesOf } = await setup();
+  const taskId = await make("Water the plants");
+  const { ruleId } = unwrap(await setRepeat(taskId, daily));
+  const before = await rule(ruleId);
+  at(nineAm("2026-11-20"));
+  const edited = unwrap(await setRepeat(taskId, { kind: "weekdays" }));
+  expect(await datesOf(ruleId)).toEqual(["2026-11-19", "2026-11-20"]);
+  expect((await rule(ruleId))?.next).toEqual({ kind: "due", date: "2026-11-23" });
+  unwrap(await t.mutation(api.platform.undo.undo, { activityId: edited.activityId! }));
+  expect(await datesOf(ruleId)).toEqual(["2026-11-19"]);
+  expect(await rule(ruleId)).toEqual(before);
+});
+
+test("stopping a rule undoes in one step, and the rule comes due again", async () => {
+  const { t, make, setRepeat, generate, rule, datesOf } = await setup();
+  const taskId = await make("Water the plants");
+  const { ruleId } = unwrap(await setRepeat(taskId, daily));
+  const stopped = unwrap(await t.mutation(api.planner.recurrence.stopRepeat, { taskId }));
+  expect(unwrap(await t.mutation(api.planner.recurrence.stopRepeat, { taskId }))).toMatchObject({ changed: false, activityId: null });
+  unwrap(await t.mutation(api.platform.undo.undo, { activityId: stopped.activityId! }));
+  expect((await rule(ruleId))?.next).toEqual({ kind: "due", date: "2026-11-20" });
+  at(nineAm("2026-11-20"));
+  await generate();
+  expect(await datesOf(ruleId)).toEqual(["2026-11-19", "2026-11-20"]);
+  expect(unwrap(await t.mutation(api.planner.recurrence.stopRepeat, { taskId: await make("Never repeated") })).changed).toBe(false);
+});
+
+test("repeat changes refuse a Task or rule that no longer exists, a bad schedule and an unknown time zone", async () => {
+  const { t, make, setRepeat } = await setup();
+  const gone = unwrap(await t.mutation(api.planner.tasks.create, { title: "Gone" }));
+  unwrap(await t.mutation(api.platform.undo.undo, { activityId: gone.activityId! }));
+  const missing = { ok: false, error: { kind: "not_found", table: "tasks", id: gone.taskId } };
+  expect(await setRepeat(gone.taskId, daily)).toEqual(missing);
+  expect(await t.mutation(api.planner.recurrence.stopRepeat, { taskId: gone.taskId })).toEqual(missing);
+
+  const taskId = await make("Water the plants");
+  expect(await setRepeat(taskId, { kind: "days", every: 0 })).toEqual({ ok: false, error: { kind: "invalid_schedule", reason: "every" } });
+  expect(await setRepeat(taskId, daily, never, "Mars/Olympus")).toEqual({ ok: false, error: { kind: "invalid_schedule", reason: "time_zone" } });
+  expect(await t.query(api.planner.tasks.card, { taskId })).not.toHaveProperty("repeat");
+
+  const { ruleId, activityId } = unwrap(await setRepeat(taskId, daily));
+  unwrap(await t.mutation(api.platform.undo.undo, { activityId: activityId! }));
+  expect(await t.mutation(api.planner.recurrence.skip, { ruleId, date: "2026-11-20" })).toEqual({
+    ok: false,
+    error: { kind: "not_found", table: "recurrenceRules", id: ruleId },
+  });
+});
+
+test("the generator runs again when it fills a batch, so every due rule gets its occurrence", async () => {
+  vi.useFakeTimers();
+  at(nineAm("2026-11-19"));
+  const { t, make, setRepeat, generate, occurrences } = await setup();
+  const ruleIds: Id<"recurrenceRules">[] = [];
+  for (let index = 0; index < 101; index += 1) ruleIds.push(unwrap(await setRepeat(await make(`Chore ${index}`), daily)).ruleId);
+  at(nineAm("2026-11-20"));
+  await generate();
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  const counts = await Promise.all(ruleIds.map(async (ruleId) => (await occurrences(ruleId)).length));
+  expect(counts.every((count) => count === 2)).toBe(true);
+});

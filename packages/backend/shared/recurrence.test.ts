@@ -204,3 +204,39 @@ test("the dates a rule has not created yet stop at the window, the end and the c
   expect(uncreatedDates(dueRule({ kind: "afterCompletion", every: 1, unit: "day" }), day("2026-11-19"), day("2026-11-30"))).toEqual(["2026-11-20"]);
   expect(uncreatedDates({ ...dueRule(daily), next: { kind: "waiting" } }, day("2026-11-19"), day("2026-11-30"))).toEqual([]);
 });
+
+test("a month day of 29, 30 or 31 falls on the last day of February, and on its own day again in March", () => {
+  for (const monthDay of [29, 30, 31]) {
+    const schedule = { kind: "months", every: 1, on: { kind: "day", day: monthDay } } as const;
+    expect(occurrences(schedule, "2027-01-20", 3)).toEqual([`2027-01-${monthDay}`, "2027-02-28", `2027-03-${monthDay}`]);
+    expect(occurrences(schedule, "2028-01-20", 3)).toEqual([`2028-01-${monthDay}`, "2028-02-29", `2028-03-${monthDay}`]);
+  }
+});
+
+test("a weekly rule keeps its weekday through both daylight-saving Sundays", () => {
+  const sundays: Schedule = { kind: "weeks", every: 1, days: [7] };
+  expect(occurrences(sundays, "2026-03-23", 3)).toEqual(["2026-03-29", "2026-04-05", "2026-04-12"]);
+  expect(occurrences(sundays, "2026-09-21", 3)).toEqual(["2026-09-27", "2026-10-04", "2026-10-11"]);
+});
+
+test("the local date follows the zone on both sides of the date line", () => {
+  const noonUtc = instant("2026-11-19T12:00:00Z");
+  expect(["Pacific/Kiritimati", "UTC", "Pacific/Pago_Pago"].map((zone) => localDateIn(zone, noonUtc))).toEqual([
+    "2026-11-20",
+    "2026-11-19",
+    "2026-11-19",
+  ]);
+  expect(localDateIn("Pacific/Pago_Pago", instant("2026-11-19T10:59:59Z"))).toBe("2026-11-18");
+});
+
+test("an nth weekday month schedule is accepted as given", () => {
+  const schedule = { kind: "months", every: 1, on: { kind: "weekday", nth: -1, weekday: 5 } } as const;
+  expect(parseSchedule(schedule)._unsafeUnwrap()).toEqual(schedule);
+});
+
+test("month days read with the right ordinal suffix", () => {
+  const never = { kind: "never" } as const;
+  expect([1, 2, 3, 4, 11, 12, 13, 21, 23, 30].map((n) => describeSchedule({ kind: "months", every: 1, on: { kind: "day", day: n } }, never))).toEqual(
+    ["1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "23rd", "30th"].map((suffix) => `Every month on the ${suffix}`),
+  );
+});

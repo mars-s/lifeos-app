@@ -414,3 +414,77 @@ test("a Spread places one session of a multi-day Task, never its whole Estimate"
   expect(placed(510)).toEqual([SESSION_MINUTES]);
   expect(placed(120)).toEqual([120]);
 });
+
+test("an empty week lists every day with nothing planned and its free time as the Goal, up to 31 days", async () => {
+  const t = await newBackend();
+  const month = unwrap(await t.query(api.planner.plan.week, { from: thursday, days: 31, timeZone: SYDNEY }));
+  expect(month.days).toHaveLength(31);
+  expect(month.days[0]).toMatchObject({ date: thursday, tasks: [], plannedMinutes: 0, guessedMinutes: 0, unestimated: 0, goalSet: false });
+  expect(month.days.every((day) => day.goalMinutes === day.freeMinutes)).toBe(true);
+  for (const days of [32, 1.5])
+    expect(await t.query(api.planner.plan.week, { from: thursday, days, timeZone: SYDNEY })).toEqual({
+      ok: false,
+      error: { kind: "invalid_plan", reason: "range" },
+    });
+});
+
+test("placing a Task where it already sits changes nothing and records no Activity", async () => {
+  const t = await newBackend();
+  const first = await add(t, "First", { when: on(thursday) });
+  const second = await add(t, "Second", { when: on(thursday) });
+  const third = await add(t, "Third", { when: on(thursday) });
+  unwrap(await t.mutation(api.planner.plan.place, { taskId: third, date: thursday, order: [first, second, third] }));
+  expect(unwrap(await t.mutation(api.planner.plan.place, { taskId: second, date: thursday, order: [first, second, third] }))).toMatchObject({
+    moved: 0,
+    activityId: null,
+  });
+  expect(titles((await week(t)).days[0])).toEqual(["First", "Second", "Third"]);
+});
+
+test("placing a This Evening Task on another day keeps it in the evening", async () => {
+  const t = await newBackend();
+  const { taskId } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Read in bed", when: { kind: "scheduled", date: thursday, evening: true } }));
+  unwrap(await t.mutation(api.planner.plan.place, { taskId, date: friday, order: [taskId] }));
+  expect((await t.query(api.planner.tasks.card, { taskId }))?.when).toEqual({ kind: "scheduled", date: friday, evening: true });
+});
+
+test("a place refuses a Task that no longer exists, and passes over gone neighbours in the order", async () => {
+  const t = await newBackend();
+  const kept = await add(t, "Kept", { when: on(thursday) });
+  const gone = unwrap(await t.mutation(api.planner.tasks.create, { title: "Gone", when: on(thursday) }));
+  unwrap(await t.mutation(api.platform.undo.undo, { activityId: gone.activityId! }));
+  expect(await t.mutation(api.planner.plan.place, { taskId: gone.taskId, date: thursday, order: [gone.taskId] })).toEqual({
+    ok: false,
+    error: { kind: "not_found", table: "tasks", id: gone.taskId },
+  });
+  const moved = await add(t, "Moved", { when: on(friday) });
+  unwrap(await t.mutation(api.planner.plan.place, { taskId: moved, date: thursday, order: [gone.taskId, moved, kept] }));
+  expect(titles((await week(t)).days[0])).toEqual(["Moved", "Kept"]);
+});
+
+test("a Task with a Day Plan key for the day sorts ahead of one without, whichever comes first", () => {
+  const keyed = { _id: "keyed", plan: { date: thursday, order: "a0" } };
+  const loose = { _id: "loose" };
+  expect([loose, keyed].toSorted(byDayPlan(thursday, () => 0)).map((task) => task._id)).toEqual(["keyed", "loose"]);
+  expect([keyed, loose].toSorted(byDayPlan(thursday, () => 0)).map((task) => task._id)).toEqual(["keyed", "loose"]);
+});
+
+test("Work Blocks count on their own local day across the daylight-saving change in Sydney", async () => {
+  const t = await newBackend();
+  const taskId = await add(t, "Night shift", { when: on("2026-10-03") });
+  const days = ["2026-10-03", "2026-10-04", "2026-10-05"] as IsoDate[];
+  for (const [date, hour] of [
+    [days[0]!, 23.5],
+    [days[1]!, 0.5],
+    [days[1]!, 3],
+    [days[1]!, 23.5],
+    [days[2]!, 0.5],
+  ] as const)
+    unwrap(await t.mutation(api.planner.workBlocks.create, { taskId, start: at(date, hour), minutes: 30, timeZone: SYDNEY }));
+  const plan = unwrap(await t.query(api.planner.plan.week, { from: days[0]!, days: 3, timeZone: SYDNEY }));
+  expect(plan.days.map((day) => [day.date, day.plannedMinutes])).toEqual([
+    ["2026-10-03", 30],
+    ["2026-10-04", 90],
+    ["2026-10-05", 30],
+  ]);
+});
