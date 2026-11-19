@@ -32,7 +32,7 @@ _Avoid_: due date.
 **Estimate**: how long a Task should take, in minutes. Shown as `0:30`. Also called allocated time in conversation.
 _Avoid_: duration (that belongs to Work Blocks).
 
-**Smart Estimate**: an Estimate LifeOS suggests for a Task that has none, chosen by OpenAI's Decisions API from the Task and Avi's nearest past Tasks, then nudged by how far he usually runs over or under. Up to three guesses replace the preset chips on the card, each with its odds, the most likely one marked with its reason. One becomes the Estimate only when Avi clicks it. The Smart Estimates preference turns it off, and then nothing is sent to OpenAI.
+**Smart Estimate**: an Estimate LifeOS suggests for a Task that has none, chosen by OpenAI's Decisions API from the Task and Avi's nearest past Tasks, then nudged by how far he usually runs over or under. Up to three guesses replace the preset chips on the card, each with its odds, the most likely one marked with its reason. One becomes the Estimate only when Avi clicks it. When Places knows a Trip, each guess adds the Trip there and back and says so. Switching the Smart Estimates Feature off stops it, and then nothing is sent to OpenAI.
 _Avoid_: AI estimate, auto-estimate.
 
 **Work Block**: a slot on the calendar reserved for one Task, with a start and an end. A Task can have several. Creating one never changes the Task's Deadline.
@@ -59,6 +59,16 @@ _Avoid_: target, quota.
 **Break**: the rest between two Pomodoro Focus Sessions on the same Task. It never counts as Actual Time.
 
 **Actual Time**: the sum of a Task's Focus Sessions, without Breaks, pauses or time past a planned length. Compared with its Estimate.
+
+## Places
+
+**Saved Place**: an address Avi enters on the Places settings page: Home, and optionally Work or Uni. It is geocoded once and kept with its coordinates.
+_Avoid_: location (in code), address book.
+
+**Trip**: the nearest place that matches a Task that needs going somewhere ("from Officeworks", "post office"), with its distance and travel time from Home. Avi can pick another branch or dismiss it.
+_Avoid_: errand (fine in UI copy), destination.
+
+**Travel Mode**: how a Trip's travel time is worked out: drive, walk or cycle. Public transport is not available.
 
 ## Health
 
@@ -104,7 +114,12 @@ _Avoid_: Things Bridge, Things sync (except for the `pnpm sync:things` command),
 
 **Home Server**: one thin LXC container on Avi's Proxmox box, on his Tailscale network, with the 2 TB SSD. It runs Workers.
 
-**Module**: one area of the life OS (Planner, Calendar, Notes, Saved Links, Agents). It owns its tables, queries, MCP tools, Job kinds and screens, and shares Areas, entity references, Activity, Labels, search and Jobs with the others.
+**Feature**: an optional capability Avi switches on or off in Settings, such as Smart Estimates or Places. It has its own settings page, the keys it needs, and the other Features it works better with. It plugs into surfaces that already exist (the Task card, the command bar) and owns no screen of its own. Its code lives in a Module, or in its own Module folder when it brings tables.
+_Avoid_: plugin, integration, preference (for a whole capability).
+
+**Feature Status**: what a Feature needs before it works: ready, off, needs a key, or needs setup (such as a home address).
+
+**Module**: one area of the life OS (Planner, Calendar, Notes, Saved Links, Agents). It is always there, unlike a Feature. It owns its tables, queries, MCP tools, Job kinds and screens, and shares Areas, entity references, Activity, Labels, search and Jobs with the others.
 
 **Job**: a unit of background work queued in Core, with a lease, retries and a receipt. An Agent Run is one kind of Job.
 
@@ -136,4 +151,5 @@ LifeOS is the home of Avi's Tasks (Avi, 18 November 2026). They live in Convex. 
 - LifeOS alone holds the planning layer: Estimates, Work Blocks, Focus Sessions, Day Plans and their Goals, Recurrence Rules, Templates, Area and Label colours, and Order Keys.
 - Oura owns Health Days and Oura's Bedtime. LifeOS only reads them and never writes to Oura.
 - Apple Calendar owns External Commitments and Calendars. LifeOS only reads them. Which Calendars count and Working Hours belong to LifeOS.
+- OpenStreetMap owns the shops and places a Trip points at. LifeOS caches what it found per Task and never writes to OpenStreetMap.
 - Apple Calendar will own the timing of Work Blocks once they are written back (not built yet).
