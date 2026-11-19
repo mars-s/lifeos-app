@@ -8,14 +8,14 @@ import { CSS } from "@dnd-kit/utilities";
 import { generateKeyBetween } from "fractional-indexing";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Result } from "neverthrow";
-import { memo, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useEffectEvent, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { PlannerTask, TaskRepeat } from "@lifeos/backend/types";
 import { AreaDot, areaVar } from "@/components/lifeos/area";
 import { formatMinutes } from "@/components/lifeos/format";
 import { ActualMeter } from "@/components/lifeos/focus-timer";
 import { lowerFirst, repeatLabel } from "@/components/lifeos/repeat";
 import { ActualChip, DeadlineMarker, EstimateChip, TaskCheckbox } from "@/components/lifeos/task-row";
-import { Popover } from "@/components/ui/popover-panel";
+import { AnchoredPopover, type AnchoredPopoverProps } from "@/components/ui/popover-panel";
 import { haptic } from "@/lib/haptics";
 import { instant, springLayout } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
@@ -119,34 +119,66 @@ const TimeChip = ({ task, className: wanted, plain = false }: { task: PlannerTas
   );
 };
 
-const EstimateEdit = ({ task, today }: { task: PlannerTask; today: string }) => {
+type EstimatePanel = "unused" | "closed" | "open";
+
+const EstimatePopover = ({
+  task,
+  today,
+  ...popover
+}: { task: PlannerTask; today: string } & Pick<AnchoredPopoverProps, "anchor" | "id" | "open" | "onOpenChange" | "viaKeyboard">) => {
   const actions = useSelectionActions(today);
-  const idle = Math.floor(useActualMs(task) / 60_000) === 0;
   return (
-    <Popover
-      title="Estimate"
-      side="bottom"
-      align="end"
-      className="w-64"
-      trigger={
-        <button
-          type="button"
-          data-no-select
-          aria-label={task.estimateMinutes === undefined ? `Set an Estimate for ${task.title}` : `Change the Estimate for ${task.title}`}
-          className="relative flex h-6 shrink-0 items-center rounded-md outline-offset-2 transition-[scale,opacity] duration-(--dur-press) ease-out before:absolute before:-inset-1.5 active:scale-[0.94]"
-        >
-          {task.estimateMinutes === undefined && idle ? (
-            <span className="inline-flex h-6 items-center rounded-md px-1.5 font-mono text-small text-faint-foreground opacity-0 transition-opacity duration-(--dur-fast) ease-out group-hover/row:opacity-100 group-has-[:focus-visible]/row:opacity-100 [@media(hover:none)]:opacity-100">
-              0:00
-            </span>
-          ) : (
-            <TimeChip task={task} plain />
-          )}
-        </button>
-      }
-    >
+    <AnchoredPopover {...popover} title="Estimate" side="bottom" align="end" className="w-64">
       <TaskEstimateField task={task} onChange={(minutes) => actions.setEstimate([task], minutes)} />
-    </Popover>
+    </AnchoredPopover>
+  );
+};
+
+const EstimateEdit = ({ task, today }: { task: PlannerTask; today: string }) => {
+  const idle = Math.floor(useActualMs(task) / 60_000) === 0;
+  const button = useRef<HTMLButtonElement>(null);
+  const panelId = useId();
+  const [panel, setPanel] = useState<EstimatePanel>("unused");
+  const [viaKeyboard, setViaKeyboard] = useState(false);
+  const open = panel === "open";
+  return (
+    <>
+      <button
+        ref={button}
+        type="button"
+        data-no-select
+        data-state={open ? "open" : "closed"}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        aria-label={task.estimateMinutes === undefined ? `Set an Estimate for ${task.title}` : `Change the Estimate for ${task.title}`}
+        onPointerDown={() => setViaKeyboard(false)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") setViaKeyboard(true);
+        }}
+        onClick={() => setPanel(open ? "closed" : "open")}
+        className="relative flex h-6 shrink-0 items-center rounded-md outline-offset-2 transition-[scale,opacity] duration-(--dur-press) ease-out before:absolute before:-inset-1.5 active:scale-[0.94]"
+      >
+        {task.estimateMinutes === undefined && idle ? (
+          <span className="inline-flex h-6 items-center rounded-md px-1.5 font-mono text-small text-faint-foreground opacity-0 transition-opacity duration-(--dur-fast) ease-out group-hover/row:opacity-100 group-has-[:focus-visible]/row:opacity-100 [@media(hover:none)]:opacity-100">
+            0:00
+          </span>
+        ) : (
+          <TimeChip task={task} plain />
+        )}
+      </button>
+      {panel !== "unused" && (
+        <EstimatePopover
+          task={task}
+          today={today}
+          anchor={button}
+          id={panelId}
+          open={open}
+          onOpenChange={(next) => setPanel(next ? "open" : "closed")}
+          viaKeyboard={viaKeyboard}
+        />
+      )}
+    </>
   );
 };
 
