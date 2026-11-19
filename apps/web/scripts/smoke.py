@@ -269,10 +269,10 @@ def run(playwright, theme, width):
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
-    convex("scratch:seed", json.dumps({"today": TODAY, "timeZone": ZONE}))
     with sync_playwright() as playwright:
         for theme in THEMES:
             for width in WIDTHS:
+                convex("scratch:seed", json.dumps({"today": TODAY, "timeZone": ZONE}))
                 run(playwright, theme, width)
     print(f"\n{len(problems)} problem(s). Screenshots in {OUT}")
     sys.exit(1 if problems else 0)

@@ -9,7 +9,7 @@ Needs the throwaway backend from local-backend.sh and the web app running in dev
 
 scratch:seedPlaces stands in for a saved Home and a Trip found by Places, so nothing is sent to OpenStreetMap or OpenAI.
 The map tiles come from OpenFreeMap, so the map needs the network.
-BASE, CONVEX_URL and THEME (light or dark) change the run. It exits non-zero on a failure.
+BASE, CONVEX_URL, THEME (light or dark) and WIDTH change the run. It exits non-zero on a failure.
 """
 
 import json
@@ -25,10 +25,12 @@ BASE = os.environ.get("BASE", "http://localhost:4061")
 CONVEX_URL = os.environ.get("CONVEX_URL", "http://127.0.0.1:3210")
 SCRATCH = os.environ.get("SCRATCH", "/tmp/lifeos-local-backend")
 THEME = os.environ.get("THEME", "light")
+WIDTH = int(os.environ.get("WIDTH", "1280"))
 OUT = Path(sys.argv[1] if len(sys.argv) > 1 else sys.exit(__doc__))
 NAMESPACE = re.sub(r"[^a-zA-Z0-9]", "", CONVEX_URL)
 TITLE = "Get moleskine notebooks from officeworks"
 MOD = "Meta" if sys.platform == "darwin" else "Control"
+MAP_ASSET = re.compile(r"/(?:trip-map|maplibre-gl)[^/?]*\.(?:[mc]?js|tsx|css)(?:\?|$)")
 failed = []
 
 
@@ -52,8 +54,10 @@ def main():
     convex("scratch:seedPlaces", json.dumps({"title": TITLE}))
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True, args=["--use-angle=swiftshader", "--enable-unsafe-swiftshader"])
-        context = browser.new_context(viewport={"width": 1280, "height": 900}, color_scheme=THEME, device_scale_factor=2)
+        context = browser.new_context(viewport={"width": WIDTH, "height": 900}, color_scheme=THEME, device_scale_factor=2)
         page = context.new_page()
+        map_requests = []
+        page.on("request", lambda request: map_requests.append(request.url) if MAP_ASSET.search(request.url) else None)
         page.on("pageerror", lambda error: failed.append(f"page error: {error}") or print(f"FAIL  page error: {error}"))
         page.goto(f"{BASE}/design")
         page.evaluate(
@@ -127,10 +131,16 @@ def main():
         page.goto(f"{BASE}/today")
         page.wait_for_selector("#main [data-task-key]")
         page.wait_for_timeout(800)
+        expect("lists and Settings leave the map code unloaded", map_requests, [])
         row = page.locator("#main [data-task-key]", has_text=TITLE).first
+        convex("scratch:tripState", json.dumps({"title": TITLE, "state": "looking"}))
         row.locator("[data-arrow-item]").first.click()
         page.keyboard.press("Enter")
         card = page.locator("[data-open-card]").first
+        card.get_by_role("region", name="Finding a trip").wait_for()
+        page.wait_for_timeout(500)
+        expect("a Trip lookup leaves the map code unloaded", map_requests, [])
+        convex("scratch:tripState", json.dumps({"title": TITLE, "state": "found"}))
         trip = card.locator("section[aria-label^='Trip to']")
         trip.wait_for()
         expect("the card names the nearest branch", trip.get_attribute("aria-label"), "Trip to Officeworks, Ultimo")
@@ -138,6 +148,7 @@ def main():
         maps = trip.get_by_role("link", name="Open in Maps")
         expect("Open in Maps goes to Apple Maps", (maps.get_attribute("href") or "").startswith("https://maps.apple.com/?daddr=-33.8813"), True)
         page.wait_for_selector(".trip-map canvas", timeout=20_000)
+        expect("the visible map fetches MapLibre", any("maplibre-gl" in url for url in map_requests), True)
         page.wait_for_timeout(4000)
         box = card.bounding_box()
         page.screenshot(path=str(OUT / f"app-task-place-map-{THEME}.png"), clip={**box, "y": box["y"] - 8, "height": box["height"] + 16})
