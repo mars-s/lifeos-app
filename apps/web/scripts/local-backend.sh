@@ -41,7 +41,6 @@ const SEEDED = [
   "healthDays",
   "ouraConnection",
   "estimateSuggestions",
-  "preferences",
   "secrets",
   "dayPlans",
   "features",

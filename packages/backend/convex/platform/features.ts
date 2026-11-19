@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { ok } from "neverthrow";
 import type { WithoutSystemFields } from "convex/server";
-import { internalMutation, type QueryCtx } from "../_generated/server";
+import type { QueryCtx } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
 import {
   FEATURE_IDS,
@@ -28,8 +28,6 @@ const featureRow = <F extends FeatureId>(ctx: QueryCtx, feature: F) =>
     .withIndex("by_feature", (q) => q.eq("feature", feature))
     .unique() as Promise<FeatureRow<F> | null>;
 
-const legacySmartEstimates = async (ctx: QueryCtx) => (await ctx.db.query("preferences").first())?.smartEstimates;
-
 const SETUP_DONE = {
   home: async (ctx: QueryCtx) =>
     (await ctx.db
@@ -52,8 +50,7 @@ const statusOf = async (ctx: QueryCtx, feature: FeatureId, enabled: boolean) => 
 
 export const featureState = async <F extends FeatureId>(ctx: QueryCtx, feature: F) => {
   const row = await featureRow(ctx, feature);
-  const legacy = feature === "smartEstimates" && !row ? await legacySmartEstimates(ctx) : undefined;
-  const enabled = row?.enabled ?? legacy ?? FEATURES[feature].enabledByDefault;
+  const enabled = row?.enabled ?? FEATURES[feature].enabledByDefault;
   const settings = (row?.settings ?? FEATURES[feature].defaultSettings) as FeatureSettings[F];
   const status: FeatureStatus = await statusOf(ctx, feature, enabled);
   return { feature, enabled, settings, status };
@@ -87,18 +84,4 @@ export const configure = changeMutation({
   args: { choice: vFeatureChoice },
   handler: async (ctx, { choice }, record) =>
     ok<{ changed: boolean }, never>({ changed: await write(ctx, record, choice.feature, { settings: choice.settings }) }),
-});
-
-export const adoptPreferences = internalMutation({
-  args: {},
-  returns: v.object({ adopted: v.boolean() }),
-  handler: async (ctx) => {
-    const legacy = await ctx.db.query("preferences").first();
-    if (!legacy) return { adopted: false };
-    if (!(await featureRow(ctx, "smartEstimates"))) {
-      await ctx.db.insert("features", { feature: "smartEstimates", enabled: legacy.smartEstimates, settings: FEATURES.smartEstimates.defaultSettings });
-    }
-    await ctx.db.delete("preferences", legacy._id);
-    return { adopted: true };
-  },
 });

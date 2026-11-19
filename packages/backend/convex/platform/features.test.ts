@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { api, internal } from "../_generated/api";
+import { api } from "../_generated/api";
 import { newBackend, newSignedOutBackend, strangerSession, unwrap, type Backend } from "../backend.test-utils";
 
 const stateOf = async (t: Backend, feature: string) => (await t.query(api.platform.features.list, {})).find((state) => state.feature === feature);
@@ -78,24 +78,5 @@ describe("the Feature registry", () => {
     await expect(
       stranger.mutation(api.platform.features.configure, { choice: { feature: "places", settings: { travelMode: "walk" } } }),
     ).rejects.toThrow(/not your LifeOS/);
-  });
-});
-
-describe("adopting the old Smart Estimates preference", () => {
-  test("an old off switch keeps Smart Estimates off before and after it is adopted, and adopting twice is harmless", async () => {
-    const t = await newBackend();
-    await t.run((ctx) => ctx.db.insert("preferences", { smartEstimates: false }));
-    expect((await stateOf(t, "smartEstimates"))?.enabled).toBe(false);
-
-    expect(await t.mutation(internal.platform.features.adoptPreferences, {})).toEqual({ adopted: true });
-    expect(await t.mutation(internal.platform.features.adoptPreferences, {})).toEqual({ adopted: false });
-    expect(await stateOf(t, "smartEstimates")).toMatchObject({ enabled: false, status: { kind: "off" } });
-    expect(await t.run(async (ctx) => ctx.db.query("preferences").collect())).toEqual([]);
-  });
-
-  test("with no old preference nothing is written", async () => {
-    const t = await newBackend();
-    expect(await t.mutation(internal.platform.features.adoptPreferences, {})).toEqual({ adopted: false });
-    expect(await t.run(async (ctx) => ctx.db.query("features").collect())).toEqual([]);
   });
 });

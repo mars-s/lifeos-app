@@ -43,7 +43,7 @@ The changes inside one Activity row, in order. Each holds enough to invert itsel
 | --- | --- |
 | `activityId` | `Id<"activity">` |
 | `seq` | Position inside the action |
-| `entity` | Record reference (any Entity Reference, an `entityLinks` row, or a setting row: `calendars`, `workingHours`, `preferences`, `dayPlans`) |
+| `entity` | Record reference (any Entity Reference, an `entityLinks` row, or a setting row: `calendars`, `workingHours`, `dayPlans`, `features`, `taskTrips`) |
 | `change` | `insert { after }`, `patch { before, after }` or `delete { before }`. `before` and `after` hold only the changed fields. |
 
 | Index | Serves |
@@ -103,11 +103,7 @@ The table is a union with one member per Feature, so a Places row cannot hold Sm
 
 - `platform/features:list` returns every Feature with its effective `enabled`, `settings` and Feature Status.
 - `setEnabled` and `configure` are `changeMutation`s. Undoing the first change deletes the row, which brings the defaults back.
-- `adoptPreferences` (internal) moves the old `preferences.smartEstimates` switch into a `features` row and deletes it. Until it runs, `list` reads the old row, so nothing changes for Avi.
-
-### `preferences`
-
-Legacy. One row holding the old `smartEstimates` boolean. It is read only until `platform/features:adoptPreferences` moves it into `features`, then the table goes.
+- It replaced the old one-row `preferences` table (one `smartEstimates` boolean) on 19 November 2026. That table was empty on the live deployment, so no value had to move.
 
 ### `secrets`
 
