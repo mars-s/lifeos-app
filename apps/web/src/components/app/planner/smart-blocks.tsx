@@ -428,7 +428,7 @@ export const SmartZones = ({
     ] satisfies MenuGroup[];
 
   return (
-    <div data-zone-layer="" className="pointer-events-none absolute inset-0">
+    <div data-zone-layer="" data-no-select="" className="pointer-events-none absolute inset-0">
       {shown.map((occurrence) => {
         const day = dates.indexOf(occurrence.date as IsoDate);
         const minutes = occurrence.endMinute - occurrence.startMinute;
@@ -626,6 +626,7 @@ export const SmartBlockBar = ({
     <div
       role="region"
       aria-label="Smart Block"
+      data-no-select=""
       className="absolute inset-x-2 bottom-2 z-40 flex max-h-[min(30rem,60%)] animate-fade-in flex-col overflow-hidden rounded-xl bg-popover px-3 pt-2.5 pb-2 shadow-float"
     >
       <div className="flex items-center gap-2">

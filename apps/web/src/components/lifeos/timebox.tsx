@@ -470,6 +470,7 @@ export const Timebox = ({
                 onPointerMove={onDraw ? drawTo : undefined}
                 onPointerUp={onDraw ? drawEnd : undefined}
                 onPointerCancel={onDraw ? drawEnd : undefined}
+                data-no-select={onDraw ? "" : undefined}
                 className={cn("relative", onDraw && "cursor-crosshair", index > 0 && "shadow-[inset_1px_0_0_color-mix(in_oklab,var(--foreground)_6%,transparent)]")}
               >
                 {dayLayers?.[index]}

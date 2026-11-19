@@ -89,6 +89,7 @@ def main():
         ghosts = page.locator("[data-spread-preview]").count()
         expect("drawing a window previews its fill as ghost blocks", ghosts > 0, True)
         expect("nothing is written before Enter", page.locator("[data-block-id]").count(), blocks_before)
+        expect("drawing selects no Tasks", page.get_by_text(re.compile("^[0-9]+ selected$")).count(), 0)
         proposed = bar.get_by_role("list", name="Proposed Tasks").locator("li")
         first = bar.get_by_role("button", name=re.compile("^Leave out ")).first.get_attribute("aria-label")[len("Leave out ") :]
         print(f"info  {proposed.count()} proposed, first is {first!r}")
