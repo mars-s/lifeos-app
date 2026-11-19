@@ -154,7 +154,7 @@ export const TimeboxPane = ({
             <button
               type="button"
               onClick={() => onView({ mode, anchor: today })}
-              className="h-7 rounded-full px-2.5 text-small font-medium text-brand transition-[background-color,scale] duration-(--dur-press) ease-out hover:bg-brand/[0.1] active:scale-[0.97]"
+              className="h-7 rounded-full px-2.5 text-small font-medium text-brand transition-[background-color,scale] duration-(--dur-press) ease-out outline-none hover:bg-brand/[0.1] focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-[0.97]"
             >
               Today
             </button>
