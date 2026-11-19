@@ -25,13 +25,13 @@ const decisionsAnswering = (answers: Record<string, unknown>[], status = 200) =>
   return asked;
 };
 
-const choosing = (choice: string, { runnerUp = "1 hour", vague = 0.04 } = {}) =>
+const choosing = (choice: string, { runnerUp = "1 hour", vague = 0.04, confidence = 0.81 } = {}) =>
   decisionsAnswering([
     {
       type: "choice",
       name: "estimate",
       choice,
-      confidence: 0.81,
+      confidence,
       probabilities: [
         { value: choice, probability: 0.86 },
         { value: runnerUp, probability: 0.1 },
@@ -272,7 +272,7 @@ describe("guessing an Estimate", () => {
 
   test("a vague Task, a refused key or a refusal falls back to the presets with the reason", async () => {
     const t = await newBackend();
-    choosing("30 minutes", { vague: 0.92 });
+    choosing("30 minutes", { vague: 0.92, confidence: 0.4 });
     const { taskId } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Stuff for later" }));
     await settle(t);
     expect(await viewFor(t, taskId)).toEqual({ kind: "fallback", why: "vague" });
@@ -293,7 +293,7 @@ describe("big work", () => {
   test("a massive Task can be guessed in days, follows the Working Hours, and the guess can be saved as the Estimate", async () => {
     const t = await newBackend();
     unwrap(await t.mutation(api.calendar.workingHours.set, { startMinute: 9 * 60, endMinute: 17 * 60 }));
-    choosing("1 working week", { runnerUp: "2 working weeks" });
+    choosing("1 working week", { runnerUp: "2 working weeks", vague: 0.92, confidence: 0.99 });
     const { taskId } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Rewrite the entire db in Rust" }));
     await settle(t);
     expect(await viewFor(t, taskId)).toMatchObject({

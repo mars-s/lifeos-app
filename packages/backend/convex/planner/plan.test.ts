@@ -4,7 +4,7 @@ import type { Id } from "../_generated/dataModel";
 import { newBackend, registerWorker, unwrap, type Backend } from "../backend.test-utils";
 import { zonedMoment } from "../calendar/model";
 import type { IsoDate } from "../../shared/date";
-import { byDayPlan, dayLoad, placeInDay } from "../../shared/plan";
+import { blockMinutesFor, byDayPlan, dayLoad, placeInDay } from "../../shared/plan";
 
 const SYDNEY = "Australia/Sydney";
 const thursday = "2026-11-19" as IsoDate;
@@ -339,4 +339,8 @@ test("a Goal must be whole minutes within one day, on a real date", async () => 
   });
   unwrap(await t.mutation(api.planner.plan.setGoal, { date: thursday, minutes: 0 }));
   expect((await week(t)).days[0]).toMatchObject({ goalMinutes: 0, goalSet: true });
+});
+
+test("a dropped Task gets a block from its Estimate in 15 minute steps, and a multi-day Estimate gets one 4 hour session", () => {
+  expect([undefined, 5, 50, 90, 2550].map(blockMinutesFor)).toEqual([30, 15, 45, 90, 240]);
 });

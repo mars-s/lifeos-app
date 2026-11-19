@@ -15,6 +15,7 @@ import {
   bucketsFor,
   guessesFrom,
   isPlaceholderTitle,
+  isTooVague,
   DECISIONS_MODEL,
   DECISIONS_URL,
   decisionRequest,
@@ -22,7 +23,6 @@ import {
   parseDecision,
   reasonFor,
   trimNotes,
-  VAGUE_THRESHOLD,
   type Bucket,
   type Calibration,
   type Decision,
@@ -298,7 +298,7 @@ export const suggest = internalAction({
     const at = Date.now();
     const outcome: SuggestionOutcome = result.match(
       ({ pick, confidence, probabilities, vague, model }) => {
-        if (vague >= VAGUE_THRESHOLD) return { kind: "unclear" as const, vague, inputsHash, at };
+        if (isTooVague({ vague, confidence })) return { kind: "unclear" as const, vague, inputsHash, at };
         const { guesses, likely: minutes } = guessesFrom(buckets, { pick, confidence, probabilities }, calibration ?? undefined);
         return {
           kind: "suggested" as const,

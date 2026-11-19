@@ -180,7 +180,7 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
           })}
         />
       )}
-      <TaskEstimateField task={task} onChange={(minutes) => void actions.setEstimate(minutes)} />
+      <TaskEstimateField task={task} onChange={(minutes) => void actions.setEstimate(minutes)} onSteps={() => setComposing(true)} />
       <FocusSection task={task} today={today} />
       <div className="-ml-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1.5">
         <WhenPicker when={task.when} label={whenLabel(task.when, today)} today={today} onChange={actions.setWhen} />

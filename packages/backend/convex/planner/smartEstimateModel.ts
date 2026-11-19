@@ -7,6 +7,9 @@ export const QUESTION_NAME = "estimate";
 export const VAGUE_QUESTION = "too_vague";
 export const PROMPT_CACHE_KEY = "lifeos-smart-estimate";
 export const VAGUE_THRESHOLD = 0.7;
+export const SURE_CONFIDENCE = 0.6;
+
+export const isTooVague = ({ vague, confidence }: { vague: number; confidence: number }) => vague >= VAGUE_THRESHOLD && confidence < SURE_CONFIDENCE;
 export const GUESS_FLOOR = 0.03;
 export const GUESS_LIMIT = 3;
 const PLACEHOLDER_TITLES = new Set(["new task", "untitled", "task", "todo", "to do", "to-do"]);
@@ -221,7 +224,7 @@ export const decisionRequest = (signal: EstimateSignal, buckets: readonly Bucket
     {
       type: "predicate",
       name: VAGUE_QUESTION,
-      instructions: "Is this Task too vague to estimate, such as a bare word or a placeholder with no clear piece of work?",
+      instructions: "Is this Task too unclear to estimate, because you cannot tell what work it means, such as a placeholder or a bare word like stuff or misc? A big or open-ended piece of work is not unclear when you can tell what it is.",
     },
   ],
 });

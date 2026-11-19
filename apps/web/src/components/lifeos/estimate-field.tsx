@@ -14,12 +14,20 @@ export type EstimateGuess = { minutes: number; probability: number };
 
 export type SmartEstimate =
   | { kind: "thinking" }
-  | { kind: "guesses"; guesses: readonly EstimateGuess[]; likely: number; reason: string }
+  | { kind: "guesses"; guesses: readonly EstimateGuess[]; likely: number; reason: string; dayMinutes: number }
   | { kind: "note"; note: string };
 
 const percent = new Intl.NumberFormat("en-AU", { style: "percent", maximumFractionDigits: 0 });
 
 const GHOSTS = [0, 160, 320] as const;
+
+const workingDays = (minutes: number, dayMinutes: number) =>
+  minutes >= dayMinutes && minutes % dayMinutes === 0 ? minutes / dayMinutes : undefined;
+
+const plainUnits = (days: number) => {
+  if (days % 5 === 0) return days === 5 ? "1 week" : `${days / 5} weeks`;
+  return days === 1 ? "1 day" : `${days} days`;
+};
 
 const CHIP =
   "relative h-7 rounded-md px-2 font-mono text-small transition-[background-color,color,scale,opacity] duration-(--dur-press) ease-out before:absolute before:-inset-x-0.5 before:-inset-y-2 active:scale-[0.94]";
@@ -65,11 +73,13 @@ export const EstimateField = ({
   minutes,
   smart,
   onChange,
+  onSteps,
   className,
 }: {
   minutes: number | undefined;
   smart?: SmartEstimate | undefined;
   onChange: (minutes: number | null) => void;
+  onSteps?: (() => void) | undefined;
   className?: string;
 }) => {
   const [draft, setDraft] = useState<string | null>(null);
@@ -77,6 +87,7 @@ export const EstimateField = ({
   const chips: readonly { minutes: number; probability: number | undefined }[] = chipsFor(smart);
   const custom = minutes !== undefined && !chips.some((chip) => chip.minutes === minutes);
   const guessed = smart?.kind === "guesses" ? smart : undefined;
+  const big = guessed !== undefined && guessed.likely >= guessed.dayMinutes;
 
   const commit = () => {
     if (draft === null) return;
@@ -104,12 +115,15 @@ export const EstimateField = ({
         const selected = minutes === chip;
         const likely = guessed !== undefined && guessed.likely === chip;
         const odds = probability === undefined ? undefined : percent.format(probability);
+        const days = guessed ? workingDays(chip, guessed.dayMinutes) : undefined;
+        const label = days === undefined ? formatMinutes(chip) : plainUnits(days);
+        const dayNote = days === undefined || !guessed ? "" : ` A day here is your Working Hours, ${formatMinutes(guessed.dayMinutes)}.`;
         const button = (
           <button
             key={chip}
             type="button"
             aria-pressed={selected}
-            aria-label={odds ? `${formatMinutes(chip)}, ${odds} likely${likely ? ", the best guess" : ""}` : undefined}
+            aria-label={odds ? `${label}, ${odds} likely${likely ? ", the best guess" : ""}` : undefined}
             onClick={(event) => {
               if (event.detail > 0) haptic("toggle");
               setDraft(null);
@@ -121,15 +135,16 @@ export const EstimateField = ({
               selected ? "bg-brand text-brand-foreground" : "bg-foreground/[0.06] text-foreground/80 hover:bg-foreground/[0.1]",
               probability !== undefined && GUESS,
               likely && !selected && LIKELY,
+              days !== undefined && "font-sans",
             )}
           >
-            {formatMinutes(chip)}
+            {label}
             {probability !== undefined && <Odds probability={probability} selected={selected} />}
             {likely && <Spark />}
           </button>
         );
         return guessed && odds ? (
-          <Tooltip key={chip} content={likely ? `${odds} likely. ${guessed.reason}` : `${odds} likely`} side="top" align="start">
+          <Tooltip key={chip} content={likely ? `${odds} likely. ${guessed.reason}${dayNote}` : `${odds} likely.${dayNote}`} side="top" align="start">
             {button}
           </Tooltip>
         ) : (
@@ -177,6 +192,20 @@ export const EstimateField = ({
       <span role="status" className={cn("text-micro text-negative", !refused && "sr-only")}>
         {refused ? "Try 45, 1h30 or 1:30" : ""}
       </span>
+      {big && (
+        <p className="flex basis-full items-center gap-2 text-micro text-pretty text-muted-foreground @md:pl-[4.125rem]">
+          Big one. Split it into a Project?
+          {onSteps && (
+            <button
+              type="button"
+              onClick={onSteps}
+              className="relative rounded-sm font-medium text-brand transition-[opacity] duration-(--dur-press) ease-out before:absolute before:-inset-x-1 before:-inset-y-2 hover:opacity-80"
+            >
+              Break it into steps
+            </button>
+          )}
+        </p>
+      )}
       {smart?.kind === "note" && (
         <p role="status" className="basis-full text-micro text-pretty text-faint-foreground @md:pl-[4.125rem]">
           {smart.note}

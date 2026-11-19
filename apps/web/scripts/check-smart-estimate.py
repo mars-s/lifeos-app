@@ -106,13 +106,28 @@ def main():
         page.wait_for_timeout(600)
         expect("undo clears it again", best.get_attribute("aria-pressed"), "false")
 
+        suggest(guesses=[{"minutes": 1530, "probability": 0.05}, {"minutes": 2550, "probability": 0.79}, {"minutes": 5100, "probability": 0.15}], reason="From the title and notes.")
+        week = group.get_by_role("button", name="1 week, 79% likely, the best guess")
+        week.wait_for()
+        expect("big guesses read in days and weeks", chip_labels()[:3], ["3 days, 5% likely", "1 week, 79% likely, the best guess", "2 weeks, 15% likely"])
+        week.hover()
+        expect(
+            "the hover says what a day means",
+            page.get_by_role("tooltip").filter(has_text="Working Hours").inner_text(),
+            "79% likely. From the title and notes. A day here is your Working Hours, 8:30.",
+        )
+        expect("a big guess suggests splitting it", group.get_by_text("Big one. Split it into a Project?").count(), 1)
+        shot("big")
+
         suggest(state="vague")
         group.get_by_text("Too vague to guess").wait_for()
         expect("a vague Task falls back to the presets", chip_labels(), ["0:10", "0:15", "0:30", "1:00", "2:00"])
         shot("vague")
 
-        suggest(guesses=GUESSES, reason=REASON)
-        best.wait_for()
+        suggest(guesses=[{"minutes": 2550, "probability": 0.79}, {"minutes": 5100, "probability": 0.15}], reason="From the title and notes.")
+        group.get_by_role("button", name="Break it into steps").click()
+        page.wait_for_timeout(400)
+        expect("breaking it into steps opens the Checklist", page.evaluate("document.activeElement?.closest('[data-open-card]') !== null && document.activeElement?.tagName"), "INPUT")
         page.keyboard.press("Escape")
         page.keyboard.press("ControlOrMeta+k")
         page.wait_for_selector("[cmdk-root]")

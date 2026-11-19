@@ -27,11 +27,20 @@ const fallbackNote = (view: FailedView) => {
 const smartFor = (view: EstimateView | undefined, patient: boolean) => {
   if (!view || view.kind === "presets") return undefined;
   if (view.kind === "thinking") return patient ? ({ kind: "thinking" } satisfies SmartEstimate) : ({ kind: "note", note: "Still waiting on OpenAI. Pick one for now." } satisfies SmartEstimate);
-  if (view.kind === "guesses") return { kind: "guesses", guesses: view.guesses, likely: view.likely, reason: view.reason } satisfies SmartEstimate;
+  if (view.kind === "guesses")
+    return { kind: "guesses", guesses: view.guesses, likely: view.likely, reason: view.reason, dayMinutes: view.dayMinutes } satisfies SmartEstimate;
   return { kind: "note", note: fallbackNote(view) } satisfies SmartEstimate;
 };
 
-export const TaskEstimateField = ({ task, onChange }: { task: PlannerTask; onChange: (minutes: number | null) => void }) => {
+export const TaskEstimateField = ({
+  task,
+  onChange,
+  onSteps,
+}: {
+  task: PlannerTask;
+  onChange: (minutes: number | null) => void;
+  onSteps?: () => void;
+}) => {
   const saved = !isDraftTask(task._id);
   const unestimated = saved && task.estimateMinutes === undefined;
   const view = useQuietView(api.planner.smartEstimates.forTask, saved ? { taskId: task._id } : "skip");
@@ -52,7 +61,7 @@ export const TaskEstimateField = ({ task, onChange }: { task: PlannerTask; onCha
     const timer = setTimeout(() => setGaveUpOn(round), THINKING_PATIENCE_MS);
     return () => clearTimeout(timer);
   }, [thinking, round]);
-  return <EstimateField minutes={task.estimateMinutes} smart={smartFor(view, gaveUpOn !== round)} onChange={onChange} />;
+  return <EstimateField minutes={task.estimateMinutes} smart={smartFor(view, gaveUpOn !== round)} onChange={onChange} onSteps={onSteps} />;
 };
 
 const withSmartEstimates = (enabled: boolean) => (store: OptimisticLocalStore) => {

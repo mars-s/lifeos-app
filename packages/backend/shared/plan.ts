@@ -6,6 +6,7 @@ type Planned = { readonly _id: string; readonly plan?: DayPlanMark | undefined }
 
 export const DEFAULT_BLOCK_MINUTES = 30;
 export const BLOCK_STEP_MINUTES = 15;
+export const MAX_DROPPED_BLOCK_MINUTES = 4 * 60;
 
 export const planOrder = (task: Planned, date: string) => (task.plan?.date === date ? task.plan.order : undefined);
 
@@ -77,4 +78,4 @@ export const goalMinutesOf = (freeMinutes: number, goalMinutes: number | undefin
 export const blockMinutesFor = (estimateMinutes: number | undefined) =>
   estimateMinutes === undefined
     ? DEFAULT_BLOCK_MINUTES
-    : Math.max(BLOCK_STEP_MINUTES, Math.round(estimateMinutes / BLOCK_STEP_MINUTES) * BLOCK_STEP_MINUTES);
+    : Math.min(MAX_DROPPED_BLOCK_MINUTES, Math.max(BLOCK_STEP_MINUTES, Math.round(estimateMinutes / BLOCK_STEP_MINUTES) * BLOCK_STEP_MINUTES));
