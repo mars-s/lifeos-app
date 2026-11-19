@@ -40,7 +40,7 @@ import { areaVar } from "@/components/lifeos/area";
 import { AreaGlyph } from "@/components/lifeos/area-icon";
 import { formatMinutes } from "@/components/lifeos/format";
 import { ProgressPie } from "@/components/lifeos/progress-ring";
-import { NEVER, baseDate, repeatDay, repeatLabel, repeatPresets, sameSchedule } from "@/components/lifeos/repeat";
+import { NEVER, baseDate, repeatDay, repeatLabel, repeatPresets, sameSchedule, type RepeatMode } from "@/components/lifeos/repeat";
 import { isDraftId } from "../container-actions";
 import { shortDay, weekdayLong, whenLabel } from "../dates";
 import type { ActiveFocus } from "../focus";
@@ -63,6 +63,7 @@ export type BarItem = {
   keys?: string;
   run?: () => void;
   page?: Page;
+  repeatEditor?: RepeatMode;
   task?: PlannerTask;
   recent?: Recent;
   figure?: boolean;
@@ -213,7 +214,27 @@ export const repeatItems = (task: PlannerTask, today: IsoDate, act: ReturnType<t
       run: () => act.set(schedule, end),
     } satisfies BarItem;
   });
-  if (!repeat) return presets;
+  const after = repeat?.schedule.kind === "afterCompletion";
+  const editors = [
+    {
+      id: "repeat:after",
+      group: "Repeat",
+      label: after ? repeatLabel(repeat.schedule, NEVER) : "After I finish it…",
+      text: "after i finish it repeat after completion",
+      leading: repeatGlyph(after),
+      ...(after ? { detail: "Now" } : {}),
+      repeatEditor: "afterCompletion",
+    },
+    {
+      id: "repeat:custom",
+      group: "Repeat",
+      label: "Custom…",
+      text: "custom repeat schedule",
+      leading: repeatGlyph(false),
+      repeatEditor: "calendar",
+    },
+  ] satisfies BarItem[];
+  if (!repeat) return [...presets, ...editors];
   return [
     ...(repeat.next.kind === "due"
       ? [
@@ -229,6 +250,7 @@ export const repeatItems = (task: PlannerTask, today: IsoDate, act: ReturnType<t
         ]
       : []),
     ...presets,
+    ...editors,
     {
       id: "repeat:stop",
       group: "Repeat",

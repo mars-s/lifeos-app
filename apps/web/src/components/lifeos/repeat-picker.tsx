@@ -152,7 +152,7 @@ export const RepeatCustom = ({
   onCancel: () => void;
   onCommit: (schedule: Schedule, end: RepeatEnd) => void;
 }) => {
-  const [draft, setDraft] = useState(() => draftFrom(schedule, end, base, schedule ? (schedule.kind === "afterCompletion" ? "afterCompletion" : "calendar") : mode));
+  const [draft, setDraft] = useState(() => ({ ...draftFrom(schedule, end, base, mode), mode }));
   const edit = (patch: Partial<RepeatDraft>) => setDraft((current) => ({ ...current, ...patch }));
   const valid = isValidDraft(draft);
   const unitWord = draft.mode === "afterCompletion" ? plural(draft.afterEvery, draft.afterUnit) : plural(draft.every, draft.unit.slice(0, -1));

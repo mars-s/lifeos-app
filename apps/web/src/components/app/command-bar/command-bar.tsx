@@ -2,10 +2,12 @@
 
 import { MagnifyingGlass, X } from "@phosphor-icons/react";
 import { Command } from "cmdk";
-import { useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { api } from "@lifeos/backend/api";
 import type { PlannerTask, SidebarView } from "@lifeos/backend/types";
+import { NEVER, baseDate, type RepeatMode } from "@/components/lifeos/repeat";
+import { RepeatCustom } from "@/components/lifeos/repeat-picker";
 import { canUndo, undoLast } from "@/components/lifeos/undo";
 import { Kbd, KeyCombo } from "@/components/ui/key-hint";
 import { cn } from "@/lib/utils";
@@ -137,7 +139,15 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
   const [page, setPage] = useState<Page>("root");
   const [query, setQuery] = useState("");
   const [active, setActive] = useState("");
+  const [repeatEditor, setRepeatEditor] = useState<RepeatMode | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const editor = useRef<HTMLDivElement>(null);
+  const [one, ...others] = targets;
+  const repeatable = one && others.length === 0 && one.status.kind === "open" && !isDraftTask(one._id) ? one : undefined;
+  useLayoutEffect(() => {
+    const field = repeatEditor ? editor.current?.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]') : input.current;
+    field?.focus({ preventScroll: true });
+  }, [repeatEditor]);
 
   const items = useMemo<BarItem[]>(() => {
     const go = (to: Route) => navigate(to, "keyboard");
@@ -156,8 +166,6 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
     if (page === "deadline") return rank(wanted, deadlineItems(targets, today, wanted, act), (item) => item.text, PAGE_LIMIT).map(({ item }) => item);
     if (page === "estimate") return rank(wanted, estimateItems(targets, wanted, act), (item) => item.text, PAGE_LIMIT).map(({ item }) => item);
     if (page === "move") return rank(wanted, moveItems(targets, sidebar, act), (item) => item.text, PAGE_LIMIT).map(({ item }) => item);
-    const [one, ...others] = targets;
-    const repeatable = one && others.length === 0 && one.status.kind === "open" && !isDraftTask(one._id) ? one : undefined;
     if (page === "repeat") {
       return repeatable
         ? rank(wanted, repeatItems(repeatable, today as IsoDate, repeatActions(change, repeatable, today)), (item) => item.text, PAGE_LIMIT).map(({ item }) => item)
@@ -252,11 +260,15 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
         run: () => bar.capture(wanted),
       } satisfies BarItem,
     ];
-  }, [act, change, convertToProject, focus, focusDo, index, navigate, newTask, page, query, route, setDraft, setOpenCard, sidebar, features, targets, templateDo, templates, templatesOn, today]);
+  }, [act, change, convertToProject, focus, focusDo, index, navigate, newTask, page, query, repeatable, route, setDraft, setOpenCard, sidebar, features, targets, templateDo, templates, templatesOn, today]);
 
   const highlighted = items.find((item) => item.id === active);
 
   const run = (item: BarItem) => {
+    if (item.repeatEditor) {
+      setRepeatEditor(item.repeatEditor);
+      return;
+    }
     if (item.page) {
       setPage(item.page);
       setQuery("");
@@ -268,6 +280,10 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
   };
 
   const back = () => {
+    if (repeatEditor) {
+      setRepeatEditor(null);
+      return true;
+    }
     if (page !== "root") {
       setPage("root");
       setQuery("");
@@ -275,6 +291,29 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
     }
     return false;
   };
+
+  if (repeatEditor && repeatable) {
+    const current = repeatable.repeat?.active ? repeatable.repeat : undefined;
+    return (
+      <BarDialog title="Repeat" onClose={bar.close} onEscape={back} className="w-[min(20rem,calc(100vw-2rem))]">
+        <div ref={editor} className="max-h-[74dvh] overflow-y-auto overscroll-contain rounded-2xl bg-popover p-3 text-foreground shadow-float">
+          <RepeatCustom
+            schedule={current?.schedule}
+            end={current?.end ?? NEVER}
+            base={baseDate(repeatable.when, today as IsoDate)}
+            today={today}
+            mode={repeatEditor}
+            cancelLabel="Back"
+            onCancel={() => setRepeatEditor(null)}
+            onCommit={(schedule, end) => {
+              bar.close();
+              repeatActions(change, repeatable, today).set(schedule, end);
+            }}
+          />
+        </div>
+      </BarDialog>
+    );
+  }
 
   return (
     <BarDialog title="Command bar" onClose={bar.close} onEscape={back}>
@@ -347,7 +386,7 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
         <div className="flex h-9 items-center gap-4 px-4 text-small text-muted-foreground">
           <span className="flex items-center gap-1.5">
             <KeyCombo keys="enter" />
-            {highlighted?.page ? "Choose" : highlighted?.task ? "Open" : "Run"}
+            {highlighted?.page || highlighted?.repeatEditor ? "Choose" : highlighted?.task ? "Open" : "Run"}
           </span>
           {page === "root" && highlighted?.task && (
             <span className="flex items-center gap-1.5">
