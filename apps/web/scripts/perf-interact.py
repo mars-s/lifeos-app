@@ -7,9 +7,10 @@ perf-load.py for the commands). It reseeds before each screen, with scratch:seed
 
 Each step reports the slowest input-to-paint time the browser measured (Event Timing, the number INP
 is built from), the main-thread time blocked in long tasks, and for drags the frame times. The CPU is
-slowed THROTTLE times. BASE, CONVEX_URL, THROTTLE and ONLY (comma-separated step names) change the
-run. PROFILE=<step> also writes a CPU profile of that one step beside the output, and TRACE=<step>
-prints where the browser spent that step (script, style, layout, paint).
+slowed THROTTLE times, and RUNS above 1 reports the median. BASE, CONVEX_URL, THROTTLE, RUNS and
+ONLY (comma-separated step names) change the run. PROFILE=<step> also writes a CPU profile of that
+one step beside the output, and TRACE=<step> prints where the browser spent that step (script,
+style, layout, paint).
 """
 
 import json
@@ -28,6 +29,7 @@ BASE = os.environ.get("BASE", "http://localhost:4070")
 CONVEX_URL = os.environ.get("CONVEX_URL", "http://127.0.0.1:3210")
 SCRATCH = os.environ.get("SCRATCH", "/tmp/lifeos-local-backend")
 THROTTLE = float(os.environ.get("THROTTLE", "4"))
+RUNS = int(os.environ.get("RUNS", "1"))
 ONLY = [name for name in os.environ.get("ONLY", "").split(",") if name]
 PROFILE = os.environ.get("PROFILE", "")
 TRACE = os.environ.get("TRACE", "")
@@ -256,9 +258,8 @@ def measured(page, cdp, step):
     }
 
 
-with sync_playwright() as playwright:
-    browser = playwright.chromium.launch()
-    report = {}
+def run_once(browser):
+    seen = {}
     for screen, selector, steps in STEPS:
         wanted = [step for step in steps if not ONLY or step.__name__ in ONLY]
         if not wanted:
@@ -276,9 +277,22 @@ with sync_playwright() as playwright:
                 continue
             result = measured(page, cdp, step)
             if step in wanted:
-                report[step.__name__] = result
-                print(f"{step.__name__:26}", result, flush=True)
+                seen[step.__name__] = result
         context.close()
+    return seen
+
+
+with sync_playwright() as playwright:
+    browser = playwright.chromium.launch()
+    runs = [run_once(browser) for _ in range(RUNS)]
     browser.close()
 
-OUT.write_text(json.dumps({"throttle": THROTTLE, "steps": report}, indent=2))
+report = {}
+for name, first in runs[0].items():
+    report[name] = {
+        field: value if isinstance(value, str) else round(statistics.median(run[name][field] for run in runs))
+        for field, value in first.items()
+    }
+    print(f"{name:26}", report[name], flush=True)
+
+OUT.write_text(json.dumps({"throttle": THROTTLE, "runs": RUNS, "steps": report}, indent=2))

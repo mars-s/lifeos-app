@@ -337,9 +337,12 @@ const sameFields = (a: object, b: object) => {
   return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
 };
 
-const sameRow = (before: TaskItemProps, after: TaskItemProps) =>
-  sameFields({ ...before, show: null, card: isShut(before.card) || before.card }, { ...after, show: null, card: isShut(after.card) || after.card }) &&
-  sameFields(before.show ?? NO_SHOW, after.show ?? NO_SHOW);
+const sameRow = (before: TaskItemProps, after: TaskItemProps) => {
+  const { show: shownBefore = NO_SHOW, card: cardBefore, ...restBefore } = before;
+  const { show: shownAfter = NO_SHOW, card: cardAfter, ...restAfter } = after;
+  const sameCard = cardBefore === cardAfter || (isShut(cardBefore) && isShut(cardAfter));
+  return sameCard && sameFields(restBefore, restAfter) && sameFields(shownBefore, shownAfter);
+};
 
 const TaskItemRow = ({ task, itemKey, show = NO_SHOW, sortable, today, card, onCard: setOpenCard }: TaskItemProps) => {
   const reduce = useReducedMotion();
