@@ -24,6 +24,7 @@ pub(crate) enum Permission {
     Calendar,
     ThingsData,
     Keychain,
+    Notifications,
 }
 
 /// The part of setup that survives a restart, kept as JSON in the app's config folder.

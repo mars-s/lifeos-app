@@ -3,6 +3,7 @@ mod calendar;
 mod capture;
 mod convex;
 mod haptics;
+mod notifications;
 mod permissions;
 mod setup;
 mod things_import;
@@ -28,6 +29,8 @@ pub fn run() -> tauri::Result<()> {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             haptics::haptic,
+            notifications::schedule_alert,
+            notifications::cancel_alert,
             capture::hide_capture,
             capture::show_capture,
             permissions::permissions,

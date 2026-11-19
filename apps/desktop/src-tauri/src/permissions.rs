@@ -12,7 +12,7 @@ use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
 
 use crate::{
-    convex,
+    convex, notifications,
     setup::{Permission, Run, Setup},
 };
 
@@ -21,6 +21,8 @@ const THINGS_CONTAINER_SUFFIX: &str = ".com.culturedcode.ThingsMac";
 const APP_DATA_SERVICE: &str = "SystemPolicyAppData";
 const CALENDAR_SETTINGS: &str =
     "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars";
+const NOTIFICATION_SETTINGS: &str =
+    "x-apple.systempreferences:com.apple.Notifications-Settings.extension";
 const FULL_DISK_SETTINGS: &str =
     "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles";
 
@@ -40,6 +42,7 @@ pub(crate) struct Permissions {
     calendar: Status,
     things_data: Status,
     keychain: Status,
+    notifications: Status,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -64,6 +67,7 @@ pub(crate) async fn permissions(setup: State<'_, Arc<Setup>>) -> Result<Permissi
             calendar,
             things_data: status(&setup, Permission::ThingsData),
             keychain: status(&setup, Permission::Keychain),
+            notifications: status(&setup, Permission::Notifications),
         }
     })
     .await
@@ -158,6 +162,7 @@ fn status(setup: &Setup, permission: Permission) -> Status {
                 Status::Denied
             }
         }
+        Permission::Notifications => notifications::status(),
     }
 }
 
@@ -180,6 +185,12 @@ fn request(app: &AppHandle, setup: &Setup, permission: Permission, before: Statu
                 open_settings(app, FULL_DISK_SETTINGS);
                 before
             }
+        }
+        (Permission::Notifications, Status::NotAsked) => notifications::request(),
+        (Permission::Notifications, Status::Denied) => {
+            let pane = format!("{NOTIFICATION_SETTINGS}?id={}", app.config().identifier);
+            open_settings(app, &pane);
+            before
         }
         (Permission::Keychain, Status::NotAsked | Status::Denied) => {
             setup.mark_asked(permission);

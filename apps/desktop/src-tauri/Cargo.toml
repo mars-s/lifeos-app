@@ -26,7 +26,8 @@ block2 = "0.6"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSColor", "NSColorSpace", "NSHapticFeedback", "NSRunningApplication", "NSWorkspace"] }
 objc2-event-kit = { version = "0.3", default-features = false, features = ["std", "block2", "objc2-app-kit", "EKCalendar", "EKCalendarItem", "EKEvent", "EKEventStore", "EKObject", "EKParticipant", "EKSource", "EKTypes"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "NSArray", "NSDate", "NSError", "NSNotification", "NSObject", "NSOperation", "NSPredicate", "NSString"] }
+objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "block2", "UNNotificationContent", "UNNotificationRequest", "UNNotificationSettings", "UNNotificationSound", "UNNotificationTrigger", "UNUserNotificationCenter"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "NSArray", "NSBundle", "NSDate", "NSError", "NSNotification", "NSObject", "NSOperation", "NSPredicate", "NSString"] }
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "warn"
