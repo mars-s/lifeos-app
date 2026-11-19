@@ -101,8 +101,8 @@ const WHOLE: Lane = { lane: 0, lanes: 1 };
 
 const sleepTint = (kind: TimeboxSleep["kind"]) =>
   kind === "slept"
-    ? { fill: 11, hatch: 26, edge: 55 }
-    : { fill: 5, hatch: 20, edge: 42 };
+    ? { fill: 11, hatch: 26 }
+    : { fill: 5, hatch: 20 };
 
 const SleepLabel = ({ edge, tight }: { edge: SleepEdge; tight: boolean }) => (
   <span className="flex min-w-0 items-baseline gap-1.5 text-micro leading-4">
@@ -117,10 +117,6 @@ const SleepBand = ({ band, days, tight }: { band: TimeboxSleep; days: number; ti
   const closes = band.end < DAY_MINUTES;
   const tint = sleepTint(band.kind);
   const roomy = height >= (band.top && band.bottom ? 44 : 22);
-  const edges = [
-    opens && `inset 0 1.5px 0 color-mix(in oklab, var(--sleep) ${tint.edge}%, transparent)`,
-    closes && `inset 0 -1.5px 0 color-mix(in oklab, var(--sleep) ${tint.edge}%, transparent)`,
-  ].filter(Boolean);
   return (
     <div
       title={band.title}
@@ -133,7 +129,6 @@ const SleepBand = ({ band, days, tight }: { band: TimeboxSleep; days: number; ti
         height,
         backgroundColor: `color-mix(in oklab, var(--sleep) ${tint.fill}%, var(--surface-inset))`,
         backgroundImage: `repeating-linear-gradient(-45deg, transparent 0 5px, color-mix(in oklab, var(--sleep) ${tint.hatch}%, transparent) 5px 6px)`,
-        boxShadow: edges.join(", ") || undefined,
       }}
     >
       {band.windowEnd !== null && band.windowEnd > band.start && (
