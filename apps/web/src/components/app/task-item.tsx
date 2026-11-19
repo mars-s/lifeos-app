@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, CalendarDots, ListChecks, Moon, Note, Play, Stack, Star, Tray, X, type Icon } from "@phosphor-icons/react";
+import { Archive, CalendarDots, ListChecks, Moon, Note, Stack, Star, Tray, X, type Icon } from "@phosphor-icons/react";
 import { DndContext, KeyboardSensor, MouseSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -19,7 +19,7 @@ import { instant, springLayout } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
 import { clockTime, deadlineMark, isToday, localDate, shortDay, whenLabel } from "./dates";
 import { drafts, isDraftTask, useDraftCount, useRows } from "./drafts";
-import { FocusBadge, useActualMs, useFocusActions, useFocusOn } from "./focus";
+import { FocusBadge, useActualMs, useFocusOn } from "./focus";
 import { PanelBoundary } from "./panel-boundary";
 import { routeHref } from "./route";
 import { selection, useLingering, useSelected } from "./selection";
@@ -149,23 +149,7 @@ const EstimateEdit = ({ task, today }: { task: PlannerTask; today: string }) => 
 
 const RowFocus = ({ task }: { task: PlannerTask }) => {
   const active = useFocusOn(task._id);
-  const { start } = useFocusActions();
-  if (active) return <FocusBadge active={active} />;
-  return (
-    <button
-      type="button"
-      data-no-select
-      aria-label={`Start a Focus Session on ${task.title}`}
-      title="Start a Focus Session (F)"
-      onClick={(event) => {
-        if (event.detail > 0) haptic("toggle");
-        start(task, event.detail === 0 ? "keyboard" : "pointer");
-      }}
-      className="relative hidden size-6 shrink-0 place-items-center rounded-full text-muted-foreground opacity-0 transition-[opacity,background-color,color,scale] duration-(--dur-press) ease-out before:absolute before:-inset-1.5 hover:bg-foreground/[0.08] hover:text-foreground focus-visible:opacity-100 active:scale-[0.9] @sm:grid [@media(hover:hover)]:group-hover/row:opacity-100 [@media(hover:none)]:hidden"
-    >
-      <Play weight="fill" className="size-3" aria-hidden="true" />
-    </button>
-  );
+  return active ? <FocusBadge active={active} /> : null;
 };
 
 const TileMeta = ({ task, today, planned }: { task: PlannerTask; today: string; planned: number | undefined }) =>

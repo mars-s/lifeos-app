@@ -18,6 +18,7 @@ import { generateKeyBetween } from "fractional-indexing";
 import { useReducedMotion } from "motion/react";
 import { Result } from "neverthrow";
 import { createContext, use, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { IsoDate } from "@lifeos/backend/date";
 import { blockMinutesFor } from "@lifeos/backend/plan";
 import type { PlannerTask } from "@lifeos/backend/types";
@@ -269,9 +270,13 @@ export const PlannerDrag = ({
         onDragCancel={() => keep(null)}
       >
         {children}
-        <DragOverlay dropAnimation={reduce || landedOnCalendar ? null : DROP} zIndex={60}>
-          {hold ? <Lifted task={hold.task} faded={hold.cal !== null} /> : null}
-        </DragOverlay>
+        {typeof document !== "undefined" &&
+          createPortal(
+            <DragOverlay dropAnimation={reduce || landedOnCalendar ? null : DROP} zIndex={60}>
+              {hold ? <Lifted task={hold.task} faded={hold.cal !== null} /> : null}
+            </DragOverlay>,
+            document.body,
+          )}
       </DndContext>
     </DragContext>
   );

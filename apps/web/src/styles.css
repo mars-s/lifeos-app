@@ -205,7 +205,7 @@ li[data-selected]:has(+ li[data-selected]) .task-selected {
   --ease-drawer: var(--ease-drawer);
 
   --animate-pending: pending 1.2s var(--ease-in-out) infinite;
-  --animate-screen-in: screen-in 200ms var(--ease-out) both;
+  --animate-screen-in: screen-in 200ms var(--ease-out) backwards;
   --animate-delayed-in: delayed-in 200ms var(--ease-out) 160ms both;
   --animate-refuse: refuse 260ms var(--ease-out);
   --animate-dot-in: dot-in 220ms var(--ease-out) both;
