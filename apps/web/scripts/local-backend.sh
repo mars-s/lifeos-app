@@ -17,6 +17,7 @@ import { components, internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
 import { localIsoDate } from "../shared/date";
 import { activeSession } from "./planner/focus";
+import { settle } from "./planner/rollups";
 import { seedPlanner } from "./planner/seed.test-utils";
 import { seedTimebox } from "./planner/planSeed.test-utils";
 import { seedSleep } from "./health/sleepSeed.test-utils";
@@ -63,6 +64,9 @@ export const seed = internalMutation({
     await seedPlanner(ctx, today, Date.now());
     await seedTimebox(ctx, today, args.timeZone ?? "Australia/Sydney");
     await seedSleep(ctx, today, args.timeZone ?? "Australia/Sydney");
+    const tasks = new Set((await ctx.db.query("tasks").collect()).map((task) => task._id));
+    const projects = new Set((await ctx.db.query("projects").collect()).map((project) => project._id));
+    await settle(ctx, { tasks, projects });
     return null;
   },
 });
@@ -93,7 +97,7 @@ export const seedBulk = internalMutation({
         order: orders[made] ?? "zz",
       };
       made += 1;
-      return fields;
+      return { ...fields, rollup: { checklistItems: 0, workBlocks: 0, focusSessions: 0 } };
     };
     const parentOf = (index: number, everyNth: number) => {
       const project = projects[index % Math.max(1, projects.length)];
@@ -111,6 +115,7 @@ export const seedBulk = internalMutation({
           parent: parentOf(index + day + 30, 3),
           status: { kind: "open" },
           estimateMinutes: [15, 30, 45, 60, 90][index % 5],
+          rollup: { checklistItems: 0, workBlocks: index < 5 ? 1 : 0, focusSessions: 0 },
           ...(index % 4 === 0 ? { deadline: addDays(today, day + 2) } : {}),
         });
         if (index < 5)
@@ -137,6 +142,7 @@ export const seedBulk = internalMutation({
         parent: { kind: "loose" },
         status: { kind: "completed", at: now - index * 3_600_000 },
       });
+    await settle(ctx, { tasks: new Set(), projects: new Set(projects.map((project) => project._id)) });
     return made;
   },
 });

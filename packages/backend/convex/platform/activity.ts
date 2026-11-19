@@ -1,12 +1,13 @@
 import type { WithoutSystemFields } from "convex/server";
 import type { MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
+import { nothingTouched, noteWrite, settle } from "../planner/rollups";
 import type { Actor, Change, RecordRef, UndoTarget } from "./tables";
 
 type RecordTable = RecordRef["table"];
 type Fields = Record<string, unknown>;
 
-const unrecordedKeys = new Set(["_id", "_creationTime", "things"]);
+const unrecordedKeys = new Set(["_id", "_creationTime", "things", "rollup", "progress"]);
 
 const canonical = (value: unknown) =>
   JSON.stringify(value ?? null, (_key, inner: unknown) =>
@@ -31,6 +32,7 @@ const pick = (fields: Fields, keys: readonly string[]) => Object.fromEntries(key
 export const startRecording = (ctx: MutationCtx, actor: Actor, action: string, undoes?: UndoTarget) => {
   let activityId: Id<"activity"> | null = null;
   let seq = 0;
+  const touched = nothingTouched();
 
   const log = async (entity: RecordRef, change: Change) => {
     activityId ??= await ctx.db.insert("activity", { actor, action, at: Date.now(), ...(undoes ? { undoes } : {}) });
@@ -40,6 +42,7 @@ export const startRecording = (ctx: MutationCtx, actor: Actor, action: string, u
 
   const insert = async <T extends RecordTable>(table: T, doc: WithoutSystemFields<Doc<T>>) => {
     const id = await ctx.db.insert(table, doc);
+    noteWrite(touched, table, id, null, doc);
     await log({ table, id } as RecordRef, { kind: "insert", after: toStored(recordedFields(doc)) });
     return id;
   };
@@ -53,6 +56,7 @@ export const startRecording = (ctx: MutationCtx, actor: Actor, action: string, u
     if (keys.length === 0) return false;
     const after = pick(fields, keys);
     await ctx.db.patch(id, after as never);
+    noteWrite(touched, table, id, current, { ...current, ...after });
     await log(
       { table, id } as RecordRef,
       { kind: "patch", before: toStored(pick(current, keys)), after: toStored(after) },
@@ -64,11 +68,15 @@ export const startRecording = (ctx: MutationCtx, actor: Actor, action: string, u
     const current = await ctx.db.get(id);
     if (!current) return false;
     await ctx.db.delete(id);
+    noteWrite(touched, table, id, current, null);
     await log({ table, id } as RecordRef, { kind: "delete", before: toStored(recordedFields(current)) });
     return true;
   };
 
-  const finish = () => activityId;
+  const finish = async () => {
+    await settle(ctx, touched);
+    return activityId;
+  };
 
   return { insert, patch, remove, finish };
 };

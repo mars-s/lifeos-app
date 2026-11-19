@@ -73,6 +73,10 @@ export const vSuggestionOutcome = v.union(
   v.object({ kind: v.literal("failed"), error: vSmartEstimateError, inputsHash: v.string(), at: v.number() }),
 );
 
+export const vTaskRollup = v.object({ checklistItems: v.number(), workBlocks: v.number(), focusSessions: v.number() });
+
+export const vProgress = v.object({ done: v.number(), total: v.number() });
+
 export const vWeekday = v.union(...([1, 2, 3, 4, 5, 6, 7] as const).map((day) => v.literal(day)));
 
 export const vMonthDay = v.union(
@@ -216,7 +220,7 @@ export const plannerTables = {
     .index("by_things_id", ["things.id"])
     .index("by_order", ["order"])
     .index("by_trashed", ["trashedAt"]),
-  projects: defineTable({ ...projectFields, things: v.optional(thingsLink(vProjectBase)) })
+  projects: defineTable({ ...projectFields, progress: v.optional(vProgress), things: v.optional(thingsLink(vProjectBase)) })
     .index("by_things_id", ["things.id"])
     .index("by_area_order", ["areaId", "order"])
     .index("by_trashed", ["trashedAt"]),
@@ -230,6 +234,7 @@ export const plannerTables = {
   tasks: defineTable({
     ...taskFields,
     repeat: v.optional(v.object({ ruleId: v.id("recurrenceRules"), date: v.string() })),
+    rollup: v.optional(vTaskRollup),
     things: v.optional(thingsLink(vTaskBase).extend({ todayIndex: v.number() })),
   })
     .index("by_things_id", ["things.id"])

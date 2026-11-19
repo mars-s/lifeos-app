@@ -11,12 +11,11 @@ import {
   enrich,
   isLive,
   loadContainers,
-  progressOf,
   projectProgress,
   projectSummary,
-  projectTasks,
   type TaskRow,
 } from "./rows";
+import { progressOf, tasksOfProject } from "./rollups";
 import type { When } from "./tables";
 
 const LIST_LIMIT = 1000;
@@ -51,7 +50,7 @@ const groupByContainer = async (ctx: QueryCtx, tasks: Doc<"tasks">[], keepProjec
     container: {
       kind: "project",
       project: projectSummary(project),
-      progress: await projectProgress(ctx, project._id),
+      progress: await projectProgress(ctx, project),
       ...(area ? { area: areaSummary(area) } : {}),
     } satisfies Container,
     tasks: inProject(project._id),
@@ -114,7 +113,7 @@ export const someday = ownerQuery({
         parked.map(async ({ project, area }) => ({
           ...projectSummary(project),
           area: area && areaSummary(area),
-          progress: await projectProgress(ctx, project._id),
+          progress: await projectProgress(ctx, project),
         })),
       ),
     };
@@ -220,7 +219,7 @@ export const area = ownerQuery({
           ...projectSummary(project),
           when: project.when,
           deadline: project.deadline,
-          progress: await projectProgress(ctx, project._id),
+          progress: await projectProgress(ctx, project),
         })),
       ),
     };
@@ -251,7 +250,7 @@ export const project = ownerQuery({
         .query("headings")
         .withIndex("by_project_order", (q) => q.eq("projectId", projectId))
         .take(HEADING_LIMIT),
-      projectTasks(ctx, projectId),
+      tasksOfProject(ctx, projectId),
     ]);
     return {
       project: {

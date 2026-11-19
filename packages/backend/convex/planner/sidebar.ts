@@ -13,7 +13,7 @@ const projectEntry = async (ctx: QueryCtx, project: Doc<"projects">) => ({
   ...projectSummary(project),
   order: project.order,
   someday: project.when.kind === "someday",
-  progress: await projectProgress(ctx, project._id),
+  progress: await projectProgress(ctx, project),
 });
 
 const loadSidebar = async (ctx: QueryCtx, date: IsoDate) => {

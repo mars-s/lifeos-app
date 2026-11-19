@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import { api } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { newBackend, unwrap, type Backend } from "../backend.test-utils";
+import { settle } from "./rollups";
 
 const TABLES = ["projects", "tasks", "checklistItems", "workBlocks", "focusSessions", "entityLinks"] as const;
 
@@ -39,7 +40,7 @@ const addHistory = (t: Backend, taskId: Id<"tasks">) =>
       status: { kind: "open" },
       order: "a0",
     });
-    return {
+    const added = {
       blockId: await ctx.db.insert("workBlocks", {
         taskId,
         start: Date.parse("2026-11-20T09:00:00+11:00"),
@@ -56,6 +57,8 @@ const addHistory = (t: Backend, taskId: Id<"tasks">) =>
       }),
       linkId: await ctx.db.insert("entityLinks", { from: { table: "tasks", id: otherId }, to: { table: "tasks", id: taskId } }),
     };
+    await settle(ctx, { tasks: new Set([taskId, otherId]), projects: new Set() });
+    return added;
   });
 
 const projectTasks = (t: Backend, projectId: Id<"projects">) =>

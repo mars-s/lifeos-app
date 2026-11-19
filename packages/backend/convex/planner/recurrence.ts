@@ -119,7 +119,11 @@ export const generate = internalMutation({
       .query("recurrenceRules")
       .withIndex("by_next", (q) => q.eq("next.kind", "due").lte("next.date", horizon))
       .paginate({ cursor: cursor ?? null, numItems: RULE_BATCH });
-    for (const rule of page) await settle(ctx, startRecording(ctx, RECURRENCE, "recurrence.generate"), rule._id, now);
+    for (const rule of page) {
+      const record = startRecording(ctx, RECURRENCE, "recurrence.generate");
+      await settle(ctx, record, rule._id, now);
+      await record.finish();
+    }
     if (!isDone) await ctx.scheduler.runAfter(0, internal.planner.recurrence.generate, { cursor: continueCursor });
     return null;
   },

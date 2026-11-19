@@ -154,6 +154,7 @@ No indexes: the guard reads the row by the id the session holds.
 | `order` | Order Key inside its parent | LifeOS |
 | `plan` | Optional `{ date, order }`: the Task's place in one day's **Day Plan**. It only counts while `date` is the day the Task is planned on, so an order made for Thursday never leaks into Friday | LifeOS |
 | `repeat` | Optional `{ ruleId, date }`: the Recurrence Rule this Task is an occurrence of, and the occurrence date | LifeOS |
+| `rollup` | Optional `{ checklistItems, workBlocks, focusSessions }`: how many of each a list row shows (live Work Blocks, Focus Sessions that count towards Actual Time). Derived, see below | Derived |
 | `things` | Optional `{ id, todayIndex, base? }`: the Things id, its position in Things' Today, and the imported fields as Things last had them | Things Import |
 
 | Index | Serves |
@@ -174,7 +175,13 @@ No indexes: the guard reads the row by the id the session holds.
 
 ### `projects`
 
-`title`, `notes`, optional `areaId`, `when`, optional `deadline`, `labelIds`, `status`, optional `trashedAt`, `order`, optional `things { id, base? }`. Indexes: `by_things_id`, `by_area_order` (`areaId`, `order`) for the sidebar and Area page, `by_trashed` (`trashedAt`, the Trash list).
+`title`, `notes`, optional `areaId`, `when`, optional `deadline`, `labelIds`, `status`, optional `trashedAt`, `order`, optional `things { id, base? }`. Indexes: `by_things_id`, `by_area_order` (`areaId`, `order`) for the sidebar and Area page, `by_trashed` (`trashedAt`, the Trash list). Derived: optional `progress { done, total }`, the Project's live Tasks and how many of them are closed, which the sidebar, Area page and lists show without reading every Task.
+
+### Derived fields
+
+`tasks.rollup` and `projects.progress` are caches the change recorder keeps (`planner/rollups.ts`). When a recorded change writes a Checklist Item, Work Block or Focus Session, or inserts a Task, `finish` recounts that Task's `rollup`. When it inserts or removes a Task, or changes its `status`, `parent` or `trashedAt`, it recounts `progress` on the old and new Project. Each count happens once per change, at the end, so a change that touches 200 Tasks of one Project recounts it once. They are never recorded as Activity and undo ignores them, because undo's own writes recount them.
+
+A row skips the Checklist, Work Block or Focus Session read when the count is 0, so a list reads one document per Task that has none. A Task with no `rollup` (written before it existed, or by a test straight to the database) is read in full, and a Project with no `progress` counts its Tasks, so a missing value is only slower, never wrong. `planner/rollups:backfill` (`table: "tasks"`, then it schedules `projects`) fills both in batches of 100, half a second apart so it stays well under the write limit. It is safe to run again.
 
 ### `headings`
 
@@ -328,7 +335,7 @@ Each screen reads one query that returns exactly what it draws. All go through `
 
 | Query | Screen | Reads |
 | --- | --- | --- |
-| `planner/sidebar:get` (`date`) | The sidebar: Inbox and Today counts, Areas in order, each with its open Projects and their progress | `tasks.by_trashed_status_when`, `areas.by_order`, `projects.by_area_order`, `tasks.by_project_order` |
+| `planner/sidebar:get` (`date`) | The sidebar: Inbox and Today counts, Areas in order, each with its open Projects and their `progress` | `tasks.by_trashed_status_when`, `areas.by_order`, `projects.by_area_order` |
 | `planner/today:get` (`date`) | Today and This Evening | `tasks.by_trashed_status_when`, `tasks.by_trashed_status_deadline` |
 | `planner/lists:inbox` | Inbox | `tasks.by_trashed_status_when` |
 | `planner/lists:anytime` (`date`) | Anytime, grouped by Area and Project, with Today's Tasks included. Projects parked in Someday or scheduled later are left out | as the sidebar |
@@ -347,7 +354,7 @@ Each screen reads one query that returns exactly what it draws. All go through `
 | `planner/templates:list` | Templates in order, with their Labels, Area, Project and Checklist count | `templates.by_order` |
 | `planner/trash:list` | Trash: trashed Areas, Projects and Tasks, newest first. A record that went to Trash with its Area or Project is counted on that row, not listed again | `tasks.by_trashed_closed_at`, `projects.by_trashed`, `areas.by_trashed` |
 
-Every list row has the same shape (`enrich` in `planner/rows.ts`): the Task, plus its Area (title and colour), its Project, its Labels, its Checklist Items (with their Order Keys), its Work Blocks that are not removed, and `focus`: its Actual Time in milliseconds and its 12 newest Focus Sessions. A session shorter than a minute is left out of both. A Task with a Recurrence Rule also carries `repeat { ruleId, date, active, schedule, end, next }`, where `active` is false once the rule has ended. A Task card opens from the row it already has, with no second read.
+Every list row has the same shape (`enrich` in `planner/rows.ts`): the Task, plus its Area (title and colour), its Project, its Labels, its Checklist Items (with their Order Keys), its Work Blocks that are not removed, and `focus`: its Actual Time in milliseconds and its 12 newest Focus Sessions. A session shorter than a minute is left out of both. The Task's `rollup` decides which of those three reads happen, and the row leaves `rollup` out. A Task with a Recurrence Rule also carries `repeat { ruleId, date, active, schedule, end, next }`, where `active` is false once the rule has ended. A Task card opens from the row it already has, with no second read.
 
 The card writes through `planner/tasks` (`rename`, `setNotes`, `setWhen`, `setDeadline`, `setEstimate`, `setLabels`), `planner/checklist` (`add`, `edit`, `tick`, `reorder`, `remove`) and `planner/labels` (`create`, `setColour`, `rename`, `remove`). `tasks:reorder` sets one Task's Order Key, for drag to reorder. `labels:rename` refuses a name another Label holds (`name_taken`). `labels:remove` takes the Label off every open Task and deletes it. It cannot be undone, because undo cannot bring a record back under its old id. `labels:create` takes an optional `taskId` and adds the new Label to that Task in the same action, so one undo removes both. A Label name is used once, ignoring case: creating it again returns the Label that exists.
 

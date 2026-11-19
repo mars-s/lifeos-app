@@ -1,13 +1,18 @@
 import type { QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
-import { MINUTE_MS, focusedMs } from "../../shared/focus";
+import {
+  checklistOf,
+  countedSessions,
+  focusSessionsOf,
+  liveBlocks,
+  progressOf,
+  tasksOfProject,
+  workBlocksOf,
+  type TaskRollup,
+} from "./rollups";
 
-const CHECKLIST_LIMIT = 100;
-const WORK_BLOCK_LIMIT = 100;
-const FOCUS_LIMIT = 300;
 const FOCUS_HISTORY = 12;
 const CONTAINER_LIMIT = 200;
-const PROJECT_TASK_LIMIT = 1000;
 
 export const compare = <T extends string | number>(a: T, b: T) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -20,14 +25,14 @@ export const areaSummary = ({ _id, title, colour, icon }: Doc<"areas">) => ({ _i
 export const projectSummary = ({ _id, title }: Doc<"projects">) => ({ _id, title });
 
 const focusSummary = (sessions: Doc<"focusSessions">[]) => {
-  const done = sessions.flatMap(({ _id, kind, start, state, removedAt, ...clock }) =>
-    kind === "focus" && state.kind === "ended" && removedAt === undefined
-      ? [{ _id, start, end: state.at, ms: focusedMs({ ...clock, start, state }, state.at) }]
-      : [],
-  );
-  const counted = done.filter((session) => session.ms >= MINUTE_MS);
+  const counted = countedSessions(sessions);
   return { ms: counted.reduce((sum, session) => sum + session.ms, 0), sessions: counted.slice(0, FOCUS_HISTORY) };
 };
+
+const holds = (task: Doc<"tasks">, children: keyof TaskRollup) => task.rollup === undefined || task.rollup[children] > 0;
+
+const childrenOf = <T>(ctx: QueryCtx, task: Doc<"tasks">, children: keyof TaskRollup, read: (ctx: QueryCtx, taskId: Id<"tasks">) => Promise<T[]>) =>
+  holds(task, children) ? read(ctx, task._id) : Promise.resolve<T[]>([]);
 
 export const isLive = (record: { trashedAt?: number }) => record.trashedAt === undefined;
 
@@ -48,36 +53,14 @@ export const enrich = async (ctx: QueryCtx, tasks: Doc<"tasks">[]) => {
     Promise.all([...areaIds].map((id) => ctx.db.get("areas", id))),
     Promise.all([...labelIds].map((id) => ctx.db.get("labels", id))),
     Promise.all([...ruleIds].map((id) => ctx.db.get("recurrenceRules", id))),
-    Promise.all(
-      tasks.map((task) =>
-        ctx.db
-          .query("checklistItems")
-          .withIndex("by_task_order", (q) => q.eq("taskId", task._id))
-          .take(CHECKLIST_LIMIT),
-      ),
-    ),
-    Promise.all(
-      tasks.map((task) =>
-        ctx.db
-          .query("workBlocks")
-          .withIndex("by_task_start", (q) => q.eq("taskId", task._id))
-          .take(WORK_BLOCK_LIMIT),
-      ),
-    ),
-    Promise.all(
-      tasks.map((task) =>
-        ctx.db
-          .query("focusSessions")
-          .withIndex("by_task_start", (q) => q.eq("taskId", task._id))
-          .order("desc")
-          .take(FOCUS_LIMIT),
-      ),
-    ),
+    Promise.all(tasks.map((task) => childrenOf(ctx, task, "checklistItems", checklistOf))),
+    Promise.all(tasks.map((task) => childrenOf(ctx, task, "workBlocks", workBlocksOf))),
+    Promise.all(tasks.map((task) => childrenOf(ctx, task, "focusSessions", focusSessionsOf))),
   ]);
   const areas = byId(found(areaDocs));
   const labels = byId(found(labelDocs));
   const rules = byId(found(ruleDocs));
-  return tasks.map(({ things: _link, repeat, ...task }, index) => {
+  return tasks.map(({ things: _link, rollup: _rollup, repeat, ...task }, index) => {
     const project = task.parent.kind === "project" ? projects.get(task.parent.projectId) : undefined;
     const rule = repeat ? rules.get(repeat.ruleId) : undefined;
     const areaId = task.parent.kind === "area" ? task.parent.areaId : project?.areaId;
@@ -92,9 +75,7 @@ export const enrich = async (ctx: QueryCtx, tasks: Doc<"tasks">[]) => {
         return label ? [{ _id: label._id, name: label.name, colour: label.colour }] : [];
       }),
       checklist: (checklists[index] ?? []).map(({ _id, title, done, order }) => ({ _id, title, done, order })),
-      workBlocks: (blocks[index] ?? [])
-        .filter((block) => block.removedAt === undefined)
-        .map(({ _id, start, minutes, done }) => ({ _id, start, minutes, done })),
+      workBlocks: liveBlocks(blocks[index] ?? []).map(({ _id, start, minutes, done }) => ({ _id, start, minutes, done })),
       focus: focusSummary(sessions[index] ?? []),
       ...(repeat && rule
         ? { repeat: { ...repeat, active: rule.next.kind !== "ended", schedule: rule.schedule, end: rule.end, next: rule.next } }
@@ -125,18 +106,5 @@ export const loadContainers = async (ctx: QueryCtx) => {
   };
 };
 
-export const projectTasks = async (ctx: QueryCtx, projectId: Id<"projects">) =>
-  (
-    await ctx.db
-      .query("tasks")
-      .withIndex("by_project_order", (q) => q.eq("parent.projectId", projectId))
-      .take(PROJECT_TASK_LIMIT)
-  ).filter(isLive);
-
-export const progressOf = (tasks: Doc<"tasks">[]) => ({
-  done: tasks.filter((task) => task.status.kind !== "open").length,
-  total: tasks.length,
-});
-
-export const projectProgress = async (ctx: QueryCtx, projectId: Id<"projects">) =>
-  progressOf(await projectTasks(ctx, projectId));
+export const projectProgress = async (ctx: QueryCtx, project: Doc<"projects">) =>
+  project.progress ?? progressOf(await tasksOfProject(ctx, project._id));

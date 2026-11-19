@@ -46,6 +46,7 @@ import type * as planner_model from "../planner/model.js";
 import type * as planner_plan from "../planner/plan.js";
 import type * as planner_projects from "../planner/projects.js";
 import type * as planner_recurrence from "../planner/recurrence.js";
+import type * as planner_rollups from "../planner/rollups.js";
 import type * as planner_rows from "../planner/rows.js";
 import type * as planner_selection from "../planner/selection.js";
 import type * as planner_shape from "../planner/shape.js";
@@ -121,6 +122,7 @@ declare const fullApi: ApiFromModules<{
   "planner/plan": typeof planner_plan;
   "planner/projects": typeof planner_projects;
   "planner/recurrence": typeof planner_recurrence;
+  "planner/rollups": typeof planner_rollups;
   "planner/rows": typeof planner_rows;
   "planner/selection": typeof planner_selection;
   "planner/shape": typeof planner_shape;

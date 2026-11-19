@@ -119,6 +119,7 @@ const stage = <V extends GenericValidator>(
         if (typeof outcome === "string") counts[outcome] += 1;
         else skipped.push(outcome);
       }
+      await record.finish();
       return serialise(ok<{ counts: StageCounts; skipped: Skipped[] }, ImportError>({ counts, skipped }));
     },
   });

@@ -41,10 +41,11 @@ const queries = [
 
 const taskIn = (value) => {
   if (value === null || typeof value !== "object") return null;
-  if (!Array.isArray(value) && "checklist" in value && "labelIds" in value) return value;
+  if (!Array.isArray(value) && "checklist" in value && "labelIds" in value) return value._id;
+  if (!Array.isArray(value) && "taskId" in value && "task" in value) return value.taskId;
   for (const inner of Object.values(value)) {
-    const task = taskIn(inner);
-    if (task) return task;
+    const taskId = taskIn(inner);
+    if (taskId) return taskId;
   }
   return null;
 };
@@ -58,10 +59,10 @@ for (const [name, args] of queries) {
   let kb = 0;
   let cold = false;
   for (let run = 0; run < runs; run += 1) {
-    const task = taskIn(await ask(name, args)) ?? (name === "planner/sidebar:get" ? taskIn(await ask("planner/lists:anytime", { date: today })) : null);
-    if (task) {
+    const taskId = taskIn(await ask(name, args)) ?? (name === "planner/sidebar:get" ? taskIn(await ask("planner/lists:inbox", {})) : null);
+    if (taskId) {
       cold = true;
-      await client.mutation(makeFunctionReference("planner/tasks:setNotes"), { taskId: task._id, notes: `perf ${run}` });
+      await client.mutation(makeFunctionReference("planner/tasks:setNotes"), { taskId, notes: `perf ${run}` });
     }
     const start = performance.now();
     const answer = await ask(name, args);
