@@ -338,10 +338,11 @@ const sameFields = (a: object, b: object) => {
 };
 
 const sameRow = (before: TaskItemProps, after: TaskItemProps) => {
-  const { show: shownBefore = NO_SHOW, card: cardBefore, ...restBefore } = before;
-  const { show: shownAfter = NO_SHOW, card: cardAfter, ...restAfter } = after;
+  const { show: { tileLeft: leftBefore, ...shownBefore } = NO_SHOW, card: cardBefore, ...restBefore } = before;
+  const { show: { tileLeft: leftAfter, ...shownAfter } = NO_SHOW, card: cardAfter, ...restAfter } = after;
   const sameCard = cardBefore === cardAfter || (isShut(cardBefore) && isShut(cardAfter));
-  return sameCard && sameFields(restBefore, restAfter) && sameFields(shownBefore, shownAfter);
+  const sameLeft = leftBefore?.get(before.task._id) === leftAfter?.get(after.task._id);
+  return sameCard && sameLeft && sameFields(restBefore, restAfter) && sameFields(shownBefore, shownAfter);
 };
 
 const TaskItemRow = ({ task, itemKey, show = NO_SHOW, sortable, today, card, onCard: setOpenCard }: TaskItemProps) => {
