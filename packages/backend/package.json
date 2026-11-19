@@ -13,6 +13,7 @@
     "./capture": "./shared/capture.ts",
     "./focus": "./shared/focus.ts",
     "./plan": "./shared/plan.ts",
+    "./spread": "./shared/spread.ts",
     "./types": {
       "types": "./shared/types.ts"
     }

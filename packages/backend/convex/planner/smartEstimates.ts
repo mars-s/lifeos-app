@@ -103,6 +103,12 @@ export const forTask = ownerQuery({
   },
 });
 
+export const guessesFor = async (ctx: QueryCtx, tasks: readonly Doc<"tasks">[]) => {
+  if (!(await smartEstimatesOn(ctx))) return [];
+  const rows = await Promise.all(tasks.filter((task) => task.estimateMinutes === undefined).map((task) => suggestionRow(ctx, task._id)));
+  return rows.flatMap((row) => (row?.outcome.kind === "suggested" ? [{ taskId: row.taskId, minutes: row.outcome.minutes }] : []));
+};
+
 export const status = ownerQuery({
   args: {},
   handler: async (ctx) => ({ enabled: (await preferencesOf(ctx)).smartEstimates, configured: await secretAvailable(ctx, "openai") }),

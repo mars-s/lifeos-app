@@ -85,3 +85,57 @@ test("a list row carries its Task's Work Blocks in start order, without the remo
     ],
   ]);
 });
+
+test("spreading a day creates every Work Block in one Activity entry, and one undo removes them all", async () => {
+  const t = await newBackend();
+  const make = async (title: string) =>
+    unwrap(await t.mutation(api.planner.tasks.create, { title, deadline: "2026-11-27", when: { kind: "scheduled", date: "2026-11-19", evening: false } }))
+      .taskId;
+  const essay = await make("Essay");
+  const bank = await make("Call the bank");
+  const spread = unwrap(
+    await t.mutation(api.planner.workBlocks.spread, {
+      timeZone: "Australia/Sydney",
+      blocks: [
+        { taskId: essay, start: nineAm, minutes: 60 },
+        { taskId: bank, start: nineAm + 70 * 60_000, minutes: 30 },
+      ],
+    }),
+  );
+  expect(spread.blockIds).toHaveLength(2);
+  const range = async () => unwrap(await t.query(api.planner.workBlocks.range, { from: nineAm - hour, to: nineAm + 12 * hour }));
+  expect((await range()).map((block) => [block.task.title, block.minutes])).toEqual([
+    ["Essay", 60],
+    ["Call the bank", 30],
+  ]);
+  expect((await t.query(api.planner.tasks.card, { taskId: essay }))?.deadline).toBe("2026-11-27");
+  const entries = await t.run(async (ctx) => ctx.db.query("activity").filter((q) => q.eq(q.field("action"), "workBlock.spread")).collect());
+  expect(entries).toHaveLength(1);
+
+  unwrap(await t.mutation(api.platform.undo.undo, { activityId: spread.activityId! }));
+  expect(await range()).toEqual([]);
+});
+
+test("a spread that overlaps an existing Work Block, or itself, or names a closed Task, changes nothing", async () => {
+  const { t, taskId } = await setup();
+  unwrap(await t.mutation(api.planner.workBlocks.create, { taskId, start: nineAm, minutes: 60, timeZone: "Australia/Sydney" }));
+  const other = unwrap(await t.mutation(api.planner.tasks.create, { title: "Read" })).taskId;
+  const attempt = (blocks: { taskId: typeof taskId; start: number; minutes: number }[]) =>
+    t.mutation(api.planner.workBlocks.spread, { timeZone: "Australia/Sydney", blocks });
+
+  expect(await attempt([{ taskId: other, start: nineAm + 30 * 60_000, minutes: 30 }])).toEqual({
+    ok: false,
+    error: { kind: "invalid_block", reason: "overlap" },
+  });
+  expect(
+    await attempt([
+      { taskId: other, start: nineAm + 2 * hour, minutes: 60 },
+      { taskId: other, start: nineAm + 2.5 * hour, minutes: 30 },
+    ]),
+  ).toEqual({ ok: false, error: { kind: "invalid_block", reason: "overlap" } });
+  unwrap(await t.mutation(api.planner.tasks.complete, { taskId: other }));
+  expect(await attempt([{ taskId: other, start: nineAm + 3 * hour, minutes: 30 }])).toMatchObject({ ok: false, error: { kind: "not_found" } });
+  expect(await attempt([])).toMatchObject({ ok: false, error: { kind: "selection_too_large" } });
+  const blocks = unwrap(await t.query(api.planner.workBlocks.range, { from: nineAm - hour, to: nineAm + 12 * hour }));
+  expect(blocks).toHaveLength(1);
+});

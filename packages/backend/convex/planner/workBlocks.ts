@@ -9,8 +9,11 @@ import { changeMutation } from "../platform/change";
 import { parseRange } from "../calendar/commitments";
 import { parseIsoDate } from "../../shared/date";
 import { serialise } from "../../shared/result";
+import { MAX_SPREAD_BLOCKS } from "../../shared/spread";
 import { load, type PlannerError } from "./model";
 import { enrich, isLive } from "./rows";
+
+const MINUTE_MS = 60_000;
 
 const MAX_BLOCK_MINUTES = 24 * 60;
 const RANGE_LIMIT = 1000;
@@ -62,6 +65,48 @@ export const create = changeMutation({
       done: false,
     });
     return ok<{ blockId: Id<"workBlocks"> }, PlannerError>({ blockId });
+  },
+});
+
+const vSpreadBlock = v.object({ taskId: v.id("tasks"), start: v.number(), minutes: v.number() });
+
+type Moment = { readonly start: number; readonly minutes: number };
+
+const endOf = (block: Moment) => block.start + block.minutes * MINUTE_MS;
+
+const overlaps = (a: Moment, b: Moment) => a.start < endOf(b) && b.start < endOf(a);
+
+const spreadRefused = (error: PlannerError) => err<{ blockIds: Id<"workBlocks">[] }, PlannerError>(error);
+
+export const spread = changeMutation({
+  action: "workBlock.spread",
+  args: { blocks: v.array(vSpreadBlock), timeZone: v.string() },
+  handler: async (ctx, { blocks, timeZone }, record) => {
+    if (blocks.length === 0 || blocks.length > MAX_SPREAD_BLOCKS) return spreadRefused({ kind: "selection_too_large", limit: MAX_SPREAD_BLOCKS });
+    const fields = Result.combine([
+      parseTimeZone(timeZone),
+      ...blocks.flatMap((block) => [parseStart(block.start), parseMinutes(block.minutes)]),
+    ]);
+    if (fields.isErr()) return spreadRefused(fields.error);
+    const tasks = await Promise.all(blocks.map((block) => ctx.db.get("tasks", block.taskId)));
+    const closed = blocks.find((_, index) => {
+      const task = tasks[index];
+      return !task || !isLive(task) || task.status.kind !== "open";
+    });
+    if (closed) return spreadRefused({ kind: "not_found", table: "tasks", id: closed.taskId });
+    const earliest = Math.min(...blocks.map((block) => block.start));
+    const latest = Math.max(...blocks.map(endOf));
+    const existing = await ctx.db
+      .query("workBlocks")
+      .withIndex("by_removed_start", (q) => q.eq("removedAt", undefined).gte("start", earliest - MAX_BLOCK_MINUTES * MINUTE_MS).lt("start", latest))
+      .take(RANGE_LIMIT);
+    const clash = blocks.some(
+      (block, index) => existing.some((other) => overlaps(block, other)) || blocks.slice(index + 1).some((other) => overlaps(block, other)),
+    );
+    if (clash) return spreadRefused({ kind: "invalid_block", reason: "overlap" });
+    const blockIds: Id<"workBlocks">[] = [];
+    for (const block of blocks) blockIds.push(await record.insert("workBlocks", { ...block, timeZone, done: false }));
+    return ok<{ blockIds: Id<"workBlocks">[] }, PlannerError>({ blockIds });
   },
 });
 

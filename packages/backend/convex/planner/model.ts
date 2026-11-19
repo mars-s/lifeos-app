@@ -19,8 +19,8 @@ export type PlannerError =
   | { readonly kind: "invalid_icon"; readonly icon: string }
   | { readonly kind: "selection_too_large"; readonly limit: number }
   | { readonly kind: "heading_outside_project"; readonly headingId: string }
-  | { readonly kind: "invalid_block"; readonly reason: "start" | "minutes" | "time_zone" }
-  | { readonly kind: "invalid_plan"; readonly reason: "range" | "time_zone" | "order" }
+  | { readonly kind: "invalid_block"; readonly reason: "start" | "minutes" | "time_zone" | "overlap" }
+  | { readonly kind: "invalid_plan"; readonly reason: "range" | "time_zone" | "order" | "goal" }
   | {
       readonly kind: "invalid_focus";
       readonly reason: "minutes" | "task_closed" | "not_active" | "not_ended" | "not_timed" | "not_pomodoro" | "on_break";

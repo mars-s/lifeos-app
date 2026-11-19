@@ -211,4 +211,5 @@ export const plannerTables = {
     retiredAt: v.optional(v.number()),
   }),
   thingsTombstones: defineTable({ thingsId: v.string() }).index("by_things_id", ["thingsId"]),
+  dayPlans: defineTable({ date: v.string(), goalMinutes: v.optional(v.number()) }).index("by_date", ["date"]),
 };

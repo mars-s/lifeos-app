@@ -1,10 +1,10 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { newBackend, registerWorker, unwrap, type Backend } from "../backend.test-utils";
 import { zonedMoment } from "../calendar/model";
 import type { IsoDate } from "../../shared/date";
-import { byDayPlan, placeInDay, plannedMinutes } from "../../shared/plan";
+import { byDayPlan, dayLoad, placeInDay } from "../../shared/plan";
 
 const SYDNEY = "Australia/Sydney";
 const thursday = "2026-11-19" as IsoDate;
@@ -218,12 +218,125 @@ test("placing between two keyed Tasks writes one key, and placing among unkeyed 
   expect(sorted.map((task) => task._id)).toEqual(["a", "b", "c"]);
 });
 
-test("planned minutes count a Task's Work Blocks instead of its Estimate, plus blocks for Tasks planned elsewhere", () => {
+test("a day's load counts Work Blocks over Estimates, Smart Estimates as guesses, and the rest as not estimated", () => {
+  const study = { colour: "violet" };
   const tasks = [
-    { _id: "a", estimateMinutes: 60 },
+    { _id: "a", estimateMinutes: 60, area: study },
     { _id: "b", estimateMinutes: 30 },
     { _id: "c" },
+    { _id: "d", area: study },
   ];
-  expect(plannedMinutes(tasks, [])).toBe(90);
-  expect(plannedMinutes(tasks, [{ taskId: "a", minutes: 45 }, { taskId: "a", minutes: 45 }, { taskId: "z", minutes: 15 }])).toBe(135);
+  const guesses = new Map([["c", 20]]);
+  const plain = dayLoad(tasks, [], (taskId) => guesses.get(taskId));
+  expect(plain).toMatchObject({ plannedMinutes: 90, guessedMinutes: 20, unestimated: 1 });
+  expect(plain.slices.map((slice) => [slice.id, slice.area?.colour ?? null, slice.minutes, slice.source])).toEqual([
+    ["a", "violet", 60, "estimate"],
+    ["b", null, 30, "estimate"],
+    ["c", null, 20, "guess"],
+  ]);
+
+  const blocks = [
+    { _id: "w1", taskId: "a", minutes: 45 },
+    { _id: "w2", taskId: "a", minutes: 45 },
+    { _id: "w3", taskId: "z", minutes: 15, area: study },
+  ];
+  expect(dayLoad(tasks, blocks, () => undefined)).toMatchObject({ plannedMinutes: 135, guessedMinutes: 0, unestimated: 2 });
+});
+
+const suggest = (t: Backend, taskId: Id<"tasks">, minutes: number) =>
+  t.run(async (ctx) => {
+    await ctx.db.insert("estimateSuggestions", {
+      taskId,
+      requestedAt: 1,
+      outcome: {
+        kind: "suggested",
+        minutes,
+        guesses: [{ minutes, probability: 0.8 }],
+        modelMinutes: minutes,
+        reason: "Like a past Task",
+        confidence: 0.8,
+        probabilities: [],
+        model: "gpt-6-luna",
+        inputsHash: "hash",
+        at: 1,
+      },
+    });
+  });
+
+const tooVague = (t: Backend, taskId: Id<"tasks">) =>
+  t.run(async (ctx) => {
+    await ctx.db.insert("estimateSuggestions", { taskId, requestedAt: 1, outcome: { kind: "unclear", vague: 0.9, inputsHash: "hash", at: 1 } });
+  });
+
+test("the meter counts every planned Task, with or without an Area, and shows Smart Estimates as guesses", async () => {
+  const t = await newBackend();
+  const { areaId } = unwrap(await t.mutation(api.planner.areas.create, { title: "University" }));
+  const essay = await add(t, "Essay", { when: on(thursday), estimateMinutes: 90 });
+  unwrap(await t.mutation(api.planner.tasks.move, { taskId: essay, parent: { kind: "area", areaId } }));
+  await add(t, "Call the bank", { when: on(thursday), estimateMinutes: 30 });
+  const guessed = await add(t, "Tidy the desk", { when: on(thursday) });
+  const vague = await add(t, "Plan the trip", { when: on(thursday) });
+  await add(t, "Something else", { when: on(thursday) });
+  await suggest(t, guessed, 20);
+  await tooVague(t, vague);
+
+  const thursdayLoad = async () => (await week(t)).days[0];
+  expect(await thursdayLoad()).toMatchObject({ plannedMinutes: 120, guessedMinutes: 0, unestimated: 3 });
+
+  vi.stubEnv("OPENAI_API_KEY", "sk-test");
+  expect(await thursdayLoad()).toMatchObject({ plannedMinutes: 120, guessedMinutes: 20, unestimated: 2 });
+  expect((await week(t)).guesses).toEqual([{ taskId: guessed, minutes: 20 }]);
+
+  unwrap(await t.mutation(api.platform.preferences.setSmartEstimates, { enabled: false }));
+  expect(await thursdayLoad()).toMatchObject({ plannedMinutes: 120, guessedMinutes: 0, unestimated: 3 });
+  vi.unstubAllEnvs();
+});
+
+test("a day's Goal defaults to its free time, can be set and reset, and each change undoes in one step", async () => {
+  const t = await newBackend();
+  await meeting(t, 10, 11.5);
+  const goals = async () => (await week(t)).days.map((day) => [day.goalMinutes, day.goalSet]);
+  expect(await goals()).toEqual([
+    [420, false],
+    [510, false],
+  ]);
+
+  const set = unwrap(await t.mutation(api.planner.plan.setGoal, { date: thursday, minutes: 240 }));
+  expect(set.changed).toBe(true);
+  expect(await goals()).toEqual([
+    [240, true],
+    [510, false],
+  ]);
+
+  const raised = unwrap(await t.mutation(api.planner.plan.setGoal, { date: thursday, minutes: 360 }));
+  const reset = unwrap(await t.mutation(api.planner.plan.setGoal, { date: thursday, minutes: null }));
+  expect(await goals()).toEqual([
+    [420, false],
+    [510, false],
+  ]);
+
+  unwrap(await t.mutation(api.platform.undo.undo, { activityId: reset.activityId! }));
+  expect((await goals())[0]).toEqual([360, true]);
+  unwrap(await t.mutation(api.platform.undo.undo, { activityId: raised.activityId! }));
+  expect((await goals())[0]).toEqual([240, true]);
+  unwrap(await t.mutation(api.platform.undo.undo, { activityId: set.activityId! }));
+  expect((await goals())[0]).toEqual([420, false]);
+
+  const nothing = unwrap(await t.mutation(api.planner.plan.setGoal, { date: friday, minutes: null }));
+  expect(nothing).toMatchObject({ changed: false, activityId: null });
+});
+
+test("a Goal must be whole minutes within one day, on a real date", async () => {
+  const t = await newBackend();
+  for (const minutes of [-15, 12.5, 24 * 60 + 1])
+    expect(await t.mutation(api.planner.plan.setGoal, { date: thursday, minutes })).toEqual({
+      ok: false,
+      error: { kind: "invalid_plan", reason: "goal" },
+    });
+  expect(await t.mutation(api.planner.plan.setGoal, { date: "2026-02-30", minutes: 60 })).toEqual({
+    ok: false,
+    error: { kind: "invalid_plan", reason: "range" },
+  });
+  unwrap(await t.mutation(api.planner.plan.setGoal, { date: thursday, minutes: 0 }));
+  expect((await week(t)).days[0]).toMatchObject({ goalMinutes: 0, goalSet: true });
 });
