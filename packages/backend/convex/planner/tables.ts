@@ -59,10 +59,11 @@ export const vSuggestionOutcome = v.union(
     confidence: v.number(),
     probabilities: v.array(v.object({ minutes: v.number(), probability: v.number() })),
     model: v.string(),
+    answeredBy: v.optional(v.string()),
     inputsHash: v.string(),
     at: v.number(),
   }),
-  v.object({ kind: v.literal("unclear"), vague: v.number(), inputsHash: v.string(), at: v.number() }),
+  v.object({ kind: v.literal("unclear"), vague: v.number(), answeredBy: v.optional(v.string()), inputsHash: v.string(), at: v.number() }),
   v.object({ kind: v.literal("failed"), error: vSmartEstimateError, inputsHash: v.string(), at: v.number() }),
 );
 

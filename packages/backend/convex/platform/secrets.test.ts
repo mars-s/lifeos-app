@@ -2,9 +2,8 @@ import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
-import { newBackend, newSignedOutBackend, strangerSession, unwrap, type Backend } from "../backend.test-utils";
-import { DECISIONS_URL } from "../planner/smartEstimateModel";
-import { OPENAI_MODELS_URL } from "./secrets";
+import { PROVIDERS } from "../../shared/ai";
+import { DECISIONS_URL, newAiBackend as newBackend, newSignedOutBackend, strangerSession, unwrap, type Backend } from "../backend.test-utils";
 
 const GOOD_KEY = "sk-proj-goodkey-wxyz";
 const ENV_KEY = "sk-env-fallback";
@@ -16,7 +15,7 @@ const openAiAnswering = () => {
   const checked: (string | null)[] = [];
   const asked: (string | null)[] = [];
   openai.resetHandlers(
-    http.get(OPENAI_MODELS_URL, ({ request }) => {
+    http.get(PROVIDERS.openai.keyCheckUrl, ({ request }) => {
       const authorization = request.headers.get("authorization");
       checked.push(authorization);
       return authorization === `Bearer ${GOOD_KEY}`
@@ -43,7 +42,7 @@ const settle = (t: Backend) => t.finishAllScheduledFunctions(vi.runAllTimers);
 const keyStatus = (t: Backend) => t.query(api.platform.secrets.status, { name: "openai" });
 
 const smartStatus = async (t: Backend) => {
-  const state = (await t.query(api.platform.features.list, {})).find(({ feature }) => feature === "smartEstimates");
+  const state = (await t.query(api.platform.features.list, {})).find(({ feature }) => feature === "ai");
   return { enabled: state?.enabled, configured: state?.status.kind !== "needs_key" };
 };
 

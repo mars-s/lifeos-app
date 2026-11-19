@@ -2,7 +2,9 @@ import { v } from "convex/values";
 import type { WithoutSystemFields } from "convex/server";
 import { Result, err, ok } from "neverthrow";
 import type { Doc, Id } from "../_generated/dataModel";
+import type { QueryCtx } from "../_generated/server";
 import { ownerQuery } from "../platform/access";
+import { featureState } from "../platform/features";
 import { changeMutation } from "../platform/change";
 import { parseIsoDate } from "../../shared/date";
 import {
@@ -44,6 +46,10 @@ const parseDeadlineOffset = (days: number | null) =>
       ? ok<number | undefined, PlannerError>(days)
       : err<number | undefined, PlannerError>({ kind: "invalid_template", reason: "deadline_offset" });
 
+const templatesOn = async (ctx: QueryCtx) => (await featureState(ctx, "templates")).enabled;
+
+const SWITCHED_OFF = { kind: "feature_off", feature: "templates" } as const satisfies PlannerError;
+
 export const list = ownerQuery({
   args: {},
   handler: async (ctx) => {
@@ -68,6 +74,7 @@ export const saveFromTask = changeMutation({
   action: "template.save",
   args: { taskId: v.id("tasks"), today: v.string() },
   handler: async (ctx, { taskId, today }, record) => {
+    if (!(await templatesOn(ctx))) return err<{ templateId: Id<"templates"> }, PlannerError>(SWITCHED_OFF);
     const inputs = Result.combine([await load(ctx, "tasks", taskId), parseDay(today)]);
     if (inputs.isErr()) return err<{ templateId: Id<"templates"> }, PlannerError>(inputs.error);
     const [task, day] = inputs.value;
@@ -81,6 +88,7 @@ export const createTask = changeMutation({
   action: "template.createTask",
   args: { templateId: v.id("templates"), when: vWhen, parent: v.optional(vParent), today: v.string() },
   handler: async (ctx, { templateId, when, parent, today }, record) => {
+    if (!(await templatesOn(ctx))) return err<{ taskId: Id<"tasks"> }, PlannerError>(SWITCHED_OFF);
     const inputs = Result.combine([
       await load(ctx, "templates", templateId),
       parseWhen(when),
@@ -112,6 +120,7 @@ export const update = changeMutation({
     deadlineOffsetDays: v.optional(v.union(v.number(), v.null())),
   },
   handler: async (ctx, { templateId, ...input }, record) => {
+    if (!(await templatesOn(ctx))) return err<{ changed: boolean }, PlannerError>(SWITCHED_OFF);
     const template = await load(ctx, "templates", templateId);
     if (template.isErr()) return err<{ changed: boolean }, PlannerError>(template.error);
     const fields = Result.combine([
@@ -137,6 +146,7 @@ export const remove = changeMutation({
   action: "template.remove",
   args: { templateId: v.id("templates") },
   handler: async (ctx, { templateId }, record) => {
+    if (!(await templatesOn(ctx))) return err<{ changed: boolean }, PlannerError>(SWITCHED_OFF);
     const template = await load(ctx, "templates", templateId);
     if (template.isErr()) return err<{ changed: boolean }, PlannerError>(template.error);
     return ok<{ changed: boolean }, PlannerError>({ changed: await record.remove("templates", templateId) });

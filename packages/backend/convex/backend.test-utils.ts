@@ -6,6 +6,7 @@ import { createFunctionHandle } from "convex/server";
 import { convexTest } from "convex-test";
 import { vi } from "vitest";
 import { components, internal } from "./_generated/api";
+import { PROVIDERS } from "../shared/ai";
 import type { SerialisedResult } from "../shared/result";
 import { sha256Hex } from "./platform/workers";
 import schema from "./schema";
@@ -62,6 +63,21 @@ export const strangerSession = async (t: SignedOutBackend) => {
 export const newBackend = async () => signInWithGithub(newSignedOutBackend(), ownerGithubId, "avi");
 
 export type Backend = Awaited<ReturnType<typeof newBackend>>;
+
+export const DECISIONS_URL = `${PROVIDERS.openai.baseUrl}/decisions`;
+export const OPENAI_CHAT_URL = `${PROVIDERS.openai.baseUrl}/chat/completions`;
+export const GO_CHAT_URL = `${PROVIDERS.opencodeGo.baseUrl}/chat/completions`;
+
+export const switchAiOn = (t: Backend, routes: Record<string, { on: boolean; model: string }> = {}) =>
+  t.run(async (ctx) => {
+    await ctx.db.insert("features", { feature: "ai", enabled: true, settings: { routes } });
+  });
+
+export const newAiBackend = async () => {
+  const t = await newBackend();
+  await switchAiOn(t);
+  return t;
+};
 
 export const registerWorker = async (t: Backend, name: string, capabilities: Capability[]) => {
   const token = `${name}-token`;

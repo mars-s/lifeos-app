@@ -3,6 +3,7 @@ import { err, errAsync, ok, okAsync, Result, ResultAsync } from "neverthrow";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { env, internalMutation, internalQuery, type ActionCtx, type QueryCtx } from "../_generated/server";
+import { PROVIDERS, USER_AGENT } from "../../shared/ai";
 import { serialise, type SerialisedResult } from "../../shared/result";
 import { ownerAction, ownerQuery } from "./access";
 import { vSecretName, type SecretName } from "./tables";
@@ -16,16 +17,15 @@ export type SecretError =
 
 export type SavedSecret = { readonly last4: string; readonly savedAt: number };
 
-export const OPENAI_MODELS_URL = "https://api.openai.com/v1/models";
 
 const SEALING_KEY_BYTES = 32;
 const IV_BYTES = 12;
 
+const checkAt = (url: string) => (key: string) => fetch(url, { headers: { authorization: `Bearer ${key}`, "user-agent": USER_AGENT } });
+
 const SECRETS = {
-  openai: {
-    fromEnv: () => env.OPENAI_API_KEY,
-    check: (key: string) => fetch(OPENAI_MODELS_URL, { headers: { authorization: `Bearer ${key}` } }),
-  },
+  openai: { fromEnv: () => env.OPENAI_API_KEY, check: checkAt(PROVIDERS.openai.keyCheckUrl) },
+  opencodeGo: { fromEnv: () => env.OPENCODE_GO_API_KEY, check: checkAt(PROVIDERS.opencodeGo.keyCheckUrl) },
 } satisfies Record<SecretName, { fromEnv: () => string | undefined; check: (key: string) => Promise<Response> }>;
 
 const bytesOf = Result.fromThrowable(

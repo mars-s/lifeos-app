@@ -6,7 +6,8 @@ import { internalMutation, internalQuery, type QueryCtx } from "../_generated/se
 import { serialise, type SerialisedResult } from "../../shared/result";
 import { vPlaceLabel, type PlaceLabel } from "../../shared/features";
 import { ownerAction, ownerQuery } from "../platform/access";
-import { geocodeUrl, normalisedAddress, parseGeocode, USER_AGENT, type Geocoded } from "./model";
+import { geocodeUrl, normalisedAddress, parseGeocode, type Geocoded } from "./model";
+import { USER_AGENT } from "../../shared/ai";
 import { vPosition } from "./tables";
 
 export type SavePlaceError =

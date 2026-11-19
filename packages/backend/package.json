@@ -15,6 +15,7 @@
     "./plan": "./shared/plan.ts",
     "./spread": "./shared/spread.ts",
     "./features": "./shared/features.ts",
+    "./ai": "./shared/ai.ts",
     "./recurrence": "./shared/recurrence.ts",
     "./types": {
       "types": "./shared/types.ts"

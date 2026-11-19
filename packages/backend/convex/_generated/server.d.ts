@@ -35,6 +35,7 @@ type Env = {
   readonly LIFEOS_OWNER_GITHUB_ID: string;
   readonly LIFEOS_SECRETS_KEY: string | undefined;
   readonly OPENAI_API_KEY: string | undefined;
+  readonly OPENCODE_GO_API_KEY: string | undefined;
   readonly OURA_CLIENT_ID: string | undefined;
   readonly OURA_CLIENT_SECRET: string | undefined;
   readonly SITE_URL: string;

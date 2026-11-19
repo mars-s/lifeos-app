@@ -1,6 +1,6 @@
 import { defineTable } from "convex/server";
 import { v, type Infer } from "convex/values";
-import { vPlacesSettings, vSmartEstimatesSettings } from "../../shared/features";
+import { vFeatureRow } from "../../shared/features";
 
 export const vEntityRef = v.union(
   v.object({ table: v.literal("areas"), id: v.id("areas") }),
@@ -45,7 +45,7 @@ export const vUndoTarget = v.union(
   v.object({ kind: v.literal("run"), jobId: v.id("jobs") }),
 );
 
-export const vSecretName = v.literal("openai");
+export const vSecretName = v.union(v.literal("openai"), v.literal("opencodeGo"));
 
 export const vJobKind = v.literal("agent");
 
@@ -106,12 +106,7 @@ export const platformTables = {
     .index("by_idempotency_key", ["idempotencyKey"])
     .index("by_kind_status_available", ["job.kind", "status.kind", "status.availableAt"])
     .index("by_kind_status_lease", ["job.kind", "status.kind", "status.leaseUntil"]),
-  features: defineTable(
-    v.union(
-      v.object({ feature: v.literal("smartEstimates"), enabled: v.boolean(), settings: vSmartEstimatesSettings }),
-      v.object({ feature: v.literal("places"), enabled: v.boolean(), settings: vPlacesSettings }),
-    ),
-  ).index("by_feature", ["feature"]),
+  features: defineTable(vFeatureRow).index("by_feature", ["feature"]),
   secrets: defineTable({
     name: vSecretName,
     iv: v.string(),

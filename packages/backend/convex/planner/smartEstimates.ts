@@ -1,15 +1,16 @@
 import { v } from "convex/values";
-import { errAsync, ResultAsync, type Result } from "neverthrow";
 import { internal } from "../_generated/api";
 import { internalAction, internalMutation, internalQuery, type MutationCtx, type QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { focusedMs, MINUTE_MS } from "../../shared/focus";
 import { ownerMutation, ownerQuery } from "../platform/access";
-import { featureReady, featureState, featureUses } from "../platform/features";
+import type { ModelId } from "../../shared/ai";
+import { attemptsFor, capabilityChain, capabilityReady } from "../ai/routing";
+import { askChoice } from "../ai/transport";
+import { featureUses } from "../platform/features";
 import { roundTripMinutes } from "../places/model";
 import { chosenTrip } from "../places/trips";
 import { workingHoursOf } from "../calendar/workingHours";
-import { revealSecret } from "../platform/secrets";
 import { sha256Hex } from "../platform/workers";
 import {
   calibrationOf,
@@ -18,16 +19,12 @@ import {
   guessesFrom,
   isPlaceholderTitle,
   isTooVague,
-  DECISIONS_MODEL,
-  DECISIONS_URL,
-  decisionRequest,
+  estimateAsk,
   nearestExamples,
   parseDecision,
   reasonFor,
   trimNotes,
-  type Bucket,
   type Calibration,
-  type Decision,
   type EstimateSignal,
   type Guess,
   type PastTask,
@@ -54,7 +51,7 @@ const suggestionRow = (ctx: QueryCtx, taskId: Id<"tasks">) =>
     .unique();
 
 export const requestSuggestion = async (ctx: MutationCtx, taskId: Id<"tasks">, { onlyFirst = false } = {}) => {
-  if (!(await featureReady(ctx, "smartEstimates"))) return false;
+  if (!(await capabilityReady(ctx, "smartEstimates"))) return false;
   const task = await ctx.db.get("tasks", taskId);
   if (!task || !wantsSuggestion(task)) return false;
   const row = await suggestionRow(ctx, taskId);
@@ -73,7 +70,7 @@ export const request = ownerMutation({
 
 const workingDayMinutes = ({ startMinute, endMinute }: { startMinute: number; endMinute: number }) => endMinute - startMinute;
 
-const smartEstimatesOn = (ctx: QueryCtx) => featureReady(ctx, "smartEstimates");
+const smartEstimatesOn = (ctx: QueryCtx) => capabilityReady(ctx, "smartEstimates");
 
 export type EstimateView =
   | { kind: "presets" }
@@ -82,7 +79,7 @@ export type EstimateView =
   | { kind: "fallback"; why: "untitled" | "vague" | "failed"; error?: SmartEstimateError["kind"] };
 
 const tripTime = async (ctx: QueryCtx, taskId: Id<"tasks">) => {
-  if (!(await featureUses(ctx, "smartEstimates", "places"))) return null;
+  if (!(await featureUses(ctx, "ai", "places"))) return null;
   const trip = await chosenTrip(ctx, taskId);
   return trip ? ({ name: trip.name, minutes: roundTripMinutes(trip.seconds) } satisfies TripTime) : null;
 };
@@ -206,7 +203,7 @@ export type SuggestionPlan =
   | { kind: "skip" }
   | { kind: "settle" }
   | { kind: "gone" }
-  | { kind: "ask"; signal: EstimateSignal; calibration: Calibration | null; dayMinutes: number; cachedHash: string | null };
+  | { kind: "ask"; signal: EstimateSignal; calibration: Calibration | null; dayMinutes: number; chain: ModelId[]; cachedHash: string | null };
 
 export const planFor = internalQuery({
   args: { taskId: v.id("tasks"), requestedAt: v.number() },
@@ -216,7 +213,8 @@ export const planFor = internalQuery({
     if (!row || row.requestedAt !== requestedAt) return skip;
     const task = await ctx.db.get("tasks", taskId);
     if (!task) return { kind: "gone" } satisfies SuggestionPlan;
-    if (!wantsSuggestion(task) || !(await featureState(ctx, "smartEstimates")).enabled) return { kind: "settle" } satisfies SuggestionPlan;
+    const chain = await capabilityChain(ctx, "smartEstimates");
+    if (!wantsSuggestion(task) || chain.length === 0) return { kind: "settle" } satisfies SuggestionPlan;
     const lookups = await lookupsFor(ctx);
     const [{ signal, projectKey }, checklist, history] = await Promise.all([
       contextOf(ctx, lookups, task),
@@ -226,7 +224,7 @@ export const planFor = internalQuery({
         .take(CHECKLIST_LIMIT),
       historyFor(ctx, lookups, taskId),
     ]);
-    const travelAdded = await featureUses(ctx, "smartEstimates", "places");
+    const travelAdded = await featureUses(ctx, "ai", "places");
     const taskSignal = { ...signal, checklistItems: checklist.length, ...(travelAdded ? { travel: TRAVEL_ADDED } : {}) };
     const examples = nearestExamples({ ...taskSignal, ...(projectKey ? { projectKey } : {}) }, history);
     return {
@@ -234,6 +232,7 @@ export const planFor = internalQuery({
       signal: { task: taskSignal, examples },
       calibration: calibrationOf(examples, history) ?? null,
       dayMinutes: workingDayMinutes(await workingHoursOf(ctx)),
+      chain,
       cachedHash: row.outcome.kind === "suggested" || row.outcome.kind === "unclear" ? row.outcome.inputsHash : null,
     } satisfies SuggestionPlan;
   },
@@ -260,32 +259,6 @@ export const forget = internalMutation({
   },
 });
 
-const failureOf = (response: Response) => {
-  if (response.status === 401 || response.status === 403) return { kind: "unauthorised" } satisfies SmartEstimateError;
-  if (response.status === 429) return { kind: "rate_limited" } satisfies SmartEstimateError;
-  return { kind: "unavailable", status: response.status } satisfies SmartEstimateError;
-};
-
-const askDecisions = (key: string | undefined, signal: EstimateSignal, buckets: readonly Bucket[]) => {
-  if (!key) return errAsync<Decision, SmartEstimateError>({ kind: "not_configured" });
-  const unreachable: SmartEstimateError = { kind: "unavailable" };
-  const unreadable: SmartEstimateError = { kind: "invalid_response" };
-  return ResultAsync.fromPromise(
-    fetch(DECISIONS_URL, {
-      method: "POST",
-      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-      body: JSON.stringify(decisionRequest(signal, buckets)),
-    }),
-    () => unreachable,
-  )
-    .andThen((response) =>
-      response.ok
-        ? ResultAsync.fromPromise(response.json() as Promise<unknown>, () => unreadable)
-        : errAsync<unknown, SmartEstimateError>(failureOf(response)),
-    )
-    .andThen((body) => parseDecision(buckets, body));
-};
-
 export const suggest = internalAction({
   args: { taskId: v.id("tasks"), requestedAt: v.number() },
   returns: v.null(),
@@ -296,16 +269,16 @@ export const suggest = internalAction({
     if (plan.kind !== "ask") return null;
     const { signal, calibration, dayMinutes } = plan;
     const buckets = bucketsFor(dayMinutes);
-    const inputsHash = await sha256Hex(canonicalJson({ model: DECISIONS_MODEL, signal, calibration, buckets }));
+    const inputsHash = await sha256Hex(canonicalJson({ model: plan.chain[0], signal, calibration, buckets }));
     if (plan.cachedHash === inputsHash) {
       await ctx.runMutation(internal.planner.smartEstimates.record, args);
       return null;
     }
-    const result: Result<Decision, SmartEstimateError> = await askDecisions(await revealSecret(ctx, "openai"), signal, buckets);
+    const answer = await askChoice(await attemptsFor(ctx, plan.chain), estimateAsk(signal, buckets), (body) => parseDecision(buckets, body));
     const at = Date.now();
-    const outcome: SuggestionOutcome = result.match(
-      ({ pick, confidence, probabilities, vague, model }) => {
-        if (isTooVague({ vague, confidence })) return { kind: "unclear" as const, vague, inputsHash, at };
+    const outcome: SuggestionOutcome = answer.match(
+      ({ answeredBy, value: { pick, confidence, probabilities, vague, model } }) => {
+        if (isTooVague({ vague, confidence })) return { kind: "unclear" as const, vague, answeredBy, inputsHash, at };
         const { guesses, likely: minutes } = guessesFrom(buckets, { pick, confidence, probabilities }, calibration ?? undefined);
         return {
           kind: "suggested" as const,
@@ -316,6 +289,7 @@ export const suggest = internalAction({
           confidence,
           probabilities,
           model,
+          answeredBy,
           inputsHash,
           at,
         };

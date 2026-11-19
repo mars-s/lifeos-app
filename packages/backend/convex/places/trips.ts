@@ -6,10 +6,12 @@ import { internalAction, internalMutation, internalQuery, type MutationCtx, type
 import type { TravelMode } from "../../shared/features";
 import { ownerMutation, ownerQuery } from "../platform/access";
 import { changeMutation } from "../platform/change";
+import { attemptsFor, capabilityChain } from "../ai/routing";
+import { askChoice } from "../ai/transport";
 import { featureReady, featureState } from "../platform/features";
-import { revealSecret } from "../platform/secrets";
 import { sha256Hex } from "../platform/workers";
-import { canonicalJson, DECISIONS_MODEL, DECISIONS_URL } from "../planner/smartEstimateModel";
+import { USER_AGENT, type ModelId } from "../../shared/ai";
+import { canonicalJson } from "../planner/smartEstimateModel";
 import {
   nearestPlaces,
   OVERPASS_URL,
@@ -19,8 +21,7 @@ import {
   roundedPosition,
   routingUrl,
   TRIP_THRESHOLD,
-  tripRequest,
-  USER_AGENT,
+  tripAsk,
   withTravel,
   type TripDecision,
 } from "./model";
@@ -124,7 +125,7 @@ export const dismiss = changeMutation({
 export type TripPlan =
   | { kind: "skip" }
   | { kind: "gone" }
-  | { kind: "ask"; title: string; from: Position; mode: TravelMode; cachedHash: string | null };
+  | { kind: "ask"; title: string; from: Position; mode: TravelMode; chain: ModelId[]; cachedHash: string | null };
 
 export const planFor = internalQuery({
   args: { taskId: v.id("tasks"), requestedAt: v.number() },
@@ -135,13 +136,15 @@ export const planFor = internalQuery({
     const task = await ctx.db.get("tasks", taskId);
     if (!task) return { kind: "gone" } satisfies TripPlan;
     const [places, home] = await Promise.all([featureState(ctx, "places"), homeOf(ctx)]);
-    if (!wantsTrip(task) || places.status.kind !== "ready" || !home) return skip;
+    const chain = await capabilityChain(ctx, "tripDetection");
+    if (!wantsTrip(task) || places.status.kind !== "ready" || !home || chain.length === 0) return skip;
     const cachedHash = row.outcome.kind === "waiting" || row.outcome.kind === "failed" ? null : row.outcome.inputsHash;
     return {
       kind: "ask",
       title: task.title,
       from: roundedPosition(home.position),
       mode: places.settings.travelMode,
+      chain,
       cachedHash,
     } satisfies TripPlan;
   },
@@ -185,17 +188,6 @@ const jsonFrom = (pending: Promise<Response>) =>
       : errAsync<unknown, PlacesError>(failureOf(response)),
   );
 
-const askTrip = (key: string | undefined, title: string, phrases: readonly string[]) => {
-  if (!key) return errAsync<TripDecision, PlacesError>({ kind: "not_configured" });
-  return jsonFrom(
-    fetch(DECISIONS_URL, {
-      method: "POST",
-      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-      body: JSON.stringify(tripRequest(title, phrases)),
-    }),
-  ).andThen(parseTripDecision);
-};
-
 const searchNear = (query: string, from: Position) =>
   jsonFrom(
     fetch(OVERPASS_URL, {
@@ -234,11 +226,12 @@ export const locate = internalAction({
     if (plan.kind !== "ask") return null;
     const { title, from, mode } = plan;
     const phrases = placePhrases(title);
-    const inputsHash = await sha256Hex(canonicalJson({ model: DECISIONS_MODEL, title, phrases, from, mode }));
+    const inputsHash = await sha256Hex(canonicalJson({ model: plan.chain[0], title, phrases, from, mode }));
     if (plan.cachedHash === inputsHash) return null;
-    const result: Result<Found, PlacesError> = await askTrip(await revealSecret(ctx, "openai"), title, phrases).andThen((decision) =>
-      tripFor(decision, from, mode),
-    );
+    const decided = await askChoice(await attemptsFor(ctx, plan.chain), tripAsk(title, phrases), parseTripDecision);
+    const result: Result<Found & { answeredBy?: string }, PlacesError> = decided.isErr()
+      ? err(decided.error)
+      : await tripFor(decided.value.value, from, mode).map((found) => ({ ...found, answeredBy: decided.value.answeredBy }));
     const at = Date.now();
     const outcome: TripOutcome = result.match(
       (found) => ({ ...found, inputsHash, at }),

@@ -16,24 +16,30 @@ describe("the Feature registry", () => {
   test("before Avi touches anything, each Feature takes its registry default and says what it needs", async () => {
     const t = await newBackend();
     expect(await t.query(api.platform.features.list, {})).toEqual([
-      { feature: "smartEstimates", enabled: true, settings: {}, status: { kind: "ready" } },
+      { feature: "ai", enabled: false, settings: { routes: {} }, status: { kind: "off" } },
       { feature: "places", enabled: false, settings: { travelMode: "drive" }, status: { kind: "off" } },
+      { feature: "templates", enabled: true, settings: {}, status: { kind: "ready" } },
     ]);
     expect(await t.run(async (ctx) => ctx.db.query("features").collect())).toEqual([]);
   });
 
-  test("a Feature switched on says which key or setup is missing until it is there", async () => {
+  test("a Feature switched on says which key, Feature or setup is missing until it is there", async () => {
     vi.stubEnv("OPENAI_API_KEY", undefined);
     const t = await newBackend();
     unwrap(await t.mutation(api.platform.features.setEnabled, { feature: "places", enabled: true }));
-    expect((await stateOf(t, "places"))?.status).toEqual({ kind: "needs_key", secret: "openai" });
-    expect((await stateOf(t, "smartEstimates"))?.status).toEqual({ kind: "needs_key", secret: "openai" });
+    unwrap(await t.mutation(api.platform.features.setEnabled, { feature: "ai", enabled: true }));
+    expect((await stateOf(t, "ai"))?.status).toEqual({ kind: "needs_key" });
+    expect((await stateOf(t, "places"))?.status).toEqual({ kind: "needs_feature", feature: "ai" });
 
-    vi.stubEnv("OPENAI_API_KEY", "sk-env");
+    vi.stubEnv("OPENCODE_GO_API_KEY", "go-env");
+    expect((await stateOf(t, "ai"))?.status).toEqual({ kind: "ready" });
     expect((await stateOf(t, "places"))?.status).toEqual({ kind: "needs_setup", setup: "home" });
 
     await saveHome(t);
     expect((await stateOf(t, "places"))?.status).toEqual({ kind: "ready" });
+
+    unwrap(await t.mutation(api.platform.features.setEnabled, { feature: "ai", enabled: false }));
+    expect((await stateOf(t, "places"))?.status).toEqual({ kind: "needs_feature", feature: "ai" });
   });
 
   test("switching and configuring land in Activity and undo back to the defaults", async () => {
@@ -52,8 +58,8 @@ describe("the Feature registry", () => {
 
   test("the same switch twice records nothing the second time", async () => {
     const t = await newBackend();
-    unwrap(await t.mutation(api.platform.features.setEnabled, { feature: "smartEstimates", enabled: false }));
-    expect(unwrap(await t.mutation(api.platform.features.setEnabled, { feature: "smartEstimates", enabled: false }))).toEqual({
+    unwrap(await t.mutation(api.platform.features.setEnabled, { feature: "templates", enabled: false }));
+    expect(unwrap(await t.mutation(api.platform.features.setEnabled, { feature: "templates", enabled: false }))).toEqual({
       changed: false,
       activityId: null,
     });
@@ -65,7 +71,7 @@ describe("the Feature registry", () => {
       t.mutation(api.platform.features.configure, { choice: { feature: "places", settings: { travelMode: "train" } } } as never),
     ).rejects.toThrow(/travelMode/);
     await expect(
-      t.mutation(api.platform.features.configure, { choice: { feature: "smartEstimates", settings: { travelMode: "walk" } } } as never),
+      t.mutation(api.platform.features.configure, { choice: { feature: "templates", settings: { travelMode: "walk" } } } as never),
     ).rejects.toThrow(/travelMode/);
   });
 

@@ -35,6 +35,7 @@ export type PlannerError =
   | ScheduleError
   | { readonly kind: "stale_occurrence"; readonly ruleId: string; readonly date: string }
   | { readonly kind: "invalid_template"; readonly reason: "checklist" | "deadline_offset" }
+  | { readonly kind: "feature_off"; readonly feature: "templates" }
   | {
       readonly kind: "invalid_focus";
       readonly reason: "minutes" | "task_closed" | "not_active" | "not_ended" | "not_timed" | "not_pomodoro" | "on_break";

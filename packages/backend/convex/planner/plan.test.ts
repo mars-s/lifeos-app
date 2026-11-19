@@ -1,7 +1,7 @@
 import { expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { newBackend, registerWorker, unwrap, type Backend } from "../backend.test-utils";
+import { newBackend, registerWorker, switchAiOn, unwrap, type Backend } from "../backend.test-utils";
 import { zonedMoment } from "../calendar/model";
 import type { IsoDate } from "../../shared/date";
 import { blockMinutesFor, byDayPlan, dayLoad, placeInDay } from "../../shared/plan";
@@ -270,6 +270,7 @@ const tooVague = (t: Backend, taskId: Id<"tasks">) =>
 
 test("the meter counts every planned Task, with or without an Area, and shows Smart Estimates as guesses", async () => {
   const t = await newBackend();
+  await switchAiOn(t);
   const { areaId } = unwrap(await t.mutation(api.planner.areas.create, { title: "University" }));
   const essay = await add(t, "Essay", { when: on(thursday), estimateMinutes: 90 });
   unwrap(await t.mutation(api.planner.tasks.move, { taskId: essay, parent: { kind: "area", areaId } }));
@@ -287,7 +288,7 @@ test("the meter counts every planned Task, with or without an Area, and shows Sm
   expect(await thursdayLoad()).toMatchObject({ plannedMinutes: 120, guessedMinutes: 20, unestimated: 2 });
   expect((await week(t)).guesses).toEqual([{ taskId: guessed, minutes: 20 }]);
 
-  unwrap(await t.mutation(api.platform.features.setEnabled, { feature: "smartEstimates", enabled: false }));
+  unwrap(await t.mutation(api.platform.features.setEnabled, { feature: "ai", enabled: false }));
   expect(await thursdayLoad()).toMatchObject({ plannedMinutes: 120, guessedMinutes: 0, unestimated: 3 });
   vi.unstubAllEnvs();
 });

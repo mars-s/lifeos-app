@@ -1,8 +1,7 @@
 import { err, ok } from "neverthrow";
+import type { ChoiceAsk } from "../ai/transport";
 import type { SmartEstimateError } from "./tables";
 
-export const DECISIONS_URL = "https://api.openai.com/v1/decisions";
-export const DECISIONS_MODEL = "gpt-6-luna";
 export const QUESTION_NAME = "estimate";
 export const VAGUE_QUESTION = "too_vague";
 export const PROMPT_CACHE_KEY = "lifeos-smart-estimate";
@@ -206,18 +205,13 @@ export const taskText = (task: TaskSignal) =>
     ...line("Travel", task.travel),
   ].join("\n");
 
-export const decisionRequest = (signal: EstimateSignal, buckets: readonly Bucket[]) => ({
-  model: DECISIONS_MODEL,
-  prompt_cache_key: PROMPT_CACHE_KEY,
-  input: [
-    { role: "developer", content: INSTRUCTIONS },
-    {
-      role: "user",
-      content: [
-        { type: "input_text", text: taskText(signal.task) },
-        ...(signal.examples.length > 0 ? [{ type: "input_json", data: { similarPastTasks: signal.examples } }] : []),
-      ],
-    },
+export const estimateAsk = (signal: EstimateSignal, buckets: readonly Bucket[]) =>
+  ({
+  cacheKey: PROMPT_CACHE_KEY,
+  instructions: INSTRUCTIONS,
+  parts: [
+    { type: "input_text", text: taskText(signal.task) },
+    ...(signal.examples.length > 0 ? [{ type: "input_json" as const, data: { similarPastTasks: signal.examples } }] : []),
   ],
   questions: [
     {
@@ -232,7 +226,7 @@ export const decisionRequest = (signal: EstimateSignal, buckets: readonly Bucket
       instructions: "Is this Task too unclear to estimate, because you cannot tell what work it means, such as a placeholder or a bare word like stuff or misc? A big or open-ended piece of work is not unclear when you can tell what it is.",
     },
   ],
-});
+}) satisfies ChoiceAsk;
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 
@@ -261,7 +255,7 @@ export const parseDecision = (buckets: readonly Bucket[], body: unknown) => {
     confidence: typeof answer.confidence === "number" ? answer.confidence : 0,
     probabilities: probabilitiesOf(buckets, answer.probabilities),
     vague: vague?.type === "predicate" && typeof vague.probability === "number" ? vague.probability : 0,
-    model: typeof body.model === "string" ? body.model : DECISIONS_MODEL,
+    model: typeof body.model === "string" ? body.model : "unknown",
   });
 };
 

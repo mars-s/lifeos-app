@@ -8,6 +8,11 @@
  * @module
  */
 
+import type * as ai_migrations from "../ai/migrations.js";
+import type * as ai_routing from "../ai/routing.js";
+import type * as ai_steps from "../ai/steps.js";
+import type * as ai_tables from "../ai/tables.js";
+import type * as ai_transport from "../ai/transport.js";
 import type * as auth from "../auth.js";
 import type * as calendar_calendars from "../calendar/calendars.js";
 import type * as calendar_capacity from "../calendar/capacity.js";
@@ -75,6 +80,11 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "ai/migrations": typeof ai_migrations;
+  "ai/routing": typeof ai_routing;
+  "ai/steps": typeof ai_steps;
+  "ai/tables": typeof ai_tables;
+  "ai/transport": typeof ai_transport;
   auth: typeof auth;
   "calendar/calendars": typeof calendar_calendars;
   "calendar/capacity": typeof calendar_capacity;

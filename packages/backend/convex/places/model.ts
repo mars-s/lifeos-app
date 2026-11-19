@@ -1,9 +1,8 @@
 import { err, ok } from "neverthrow";
 import type { TravelMode } from "../../shared/features";
-import { DECISIONS_MODEL } from "../planner/smartEstimateModel";
+import type { ChoiceAsk } from "../ai/transport";
 import type { Place, PlacesError, Position } from "./tables";
 
-export const USER_AGENT = "LifeOS/1.0 (personal planner)";
 export const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 export const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 export const ROUTING_URL = "https://routing.openstreetmap.de";
@@ -65,13 +64,11 @@ export const placePhrases = (title: string) => {
 const INSTRUCTIONS =
   "Decide whether one person's Task needs them to travel in person to a shop, business or public place, and which place. The JSON holds the Task title. A Task done online, at home, or by phone needs no trip.";
 
-export const tripRequest = (title: string, phrases: readonly string[]) => ({
-  model: DECISIONS_MODEL,
-  prompt_cache_key: "lifeos-places",
-  input: [
-    { role: "developer", content: INSTRUCTIONS },
-    { role: "user", content: [{ type: "input_json", data: { title } }] },
-  ],
+export const tripAsk = (title: string, phrases: readonly string[]) =>
+  ({
+  cacheKey: "lifeos-places",
+  instructions: INSTRUCTIONS,
+  parts: [{ type: "input_json", data: { title } }],
   questions: [
     {
       type: "predicate",
@@ -89,7 +86,7 @@ export const tripRequest = (title: string, phrases: readonly string[]) => ({
       ],
     },
   ],
-});
+}) satisfies ChoiceAsk;
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 

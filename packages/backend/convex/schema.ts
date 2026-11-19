@@ -1,4 +1,5 @@
 import { defineSchema } from "convex/server";
+import { aiTables } from "./ai/tables";
 import { calendarTables } from "./calendar/tables";
 import { healthTables } from "./health/tables";
 import { placesTables } from "./places/tables";
@@ -11,4 +12,5 @@ export default defineSchema({
   ...calendarTables,
   ...healthTables,
   ...placesTables,
+  ...aiTables,
 });

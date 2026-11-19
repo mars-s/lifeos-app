@@ -6,9 +6,11 @@ import type { Doc } from "../_generated/dataModel";
 import {
   FEATURE_IDS,
   FEATURES,
+  isFeatureId,
   vFeatureChoice,
   vFeatureId,
   type FeatureId,
+  type FeatureSecret,
   type FeatureSettings,
   type FeatureSetup,
   type FeatureStatus,
@@ -36,11 +38,17 @@ const SETUP_DONE = {
       .unique()) !== null,
 } satisfies Record<FeatureSetup, (ctx: QueryCtx) => Promise<boolean>>;
 
+const hasAnyKey = async (ctx: QueryCtx, keys: readonly FeatureSecret[]) => {
+  for (const secret of keys) if (await secretAvailable(ctx, secret)) return true;
+  return keys.length === 0;
+};
+
 const statusOf = async (ctx: QueryCtx, feature: FeatureId, enabled: boolean) => {
   if (!enabled) return { kind: "off" } satisfies FeatureStatus;
-  const spec = FEATURES[feature];
-  for (const secret of spec.secrets) {
-    if (!(await secretAvailable(ctx, secret))) return { kind: "needs_key", secret } satisfies FeatureStatus;
+  const spec: { keys: readonly FeatureSecret[]; requires: readonly string[]; setup: readonly FeatureSetup[] } = FEATURES[feature];
+  if (!(await hasAnyKey(ctx, spec.keys))) return { kind: "needs_key" } satisfies FeatureStatus;
+  for (const required of spec.requires.filter(isFeatureId)) {
+    if (!(await featureReady(ctx, required))) return { kind: "needs_feature", feature: required } satisfies FeatureStatus;
   }
   for (const setup of spec.setup) {
     if (!(await SETUP_DONE[setup](ctx))) return { kind: "needs_setup", setup } satisfies FeatureStatus;
@@ -65,7 +73,7 @@ export const list = ownerQuery({
   handler: (ctx) => Promise.all(FEATURE_IDS.map((feature) => featureState(ctx, feature))),
 });
 
-const write = async (ctx: QueryCtx, record: Recorder, feature: FeatureId, fields: Partial<Pick<FeatureFields, "enabled" | "settings">>) => {
+export const writeFeature = async (ctx: QueryCtx, record: Recorder, feature: FeatureId, fields: Partial<Pick<FeatureFields, "enabled" | "settings">>) => {
   const row = await featureRow(ctx, feature);
   if (row) return record.patch("features", row._id, fields);
   const { enabled, settings } = await featureState(ctx, feature);
@@ -76,12 +84,12 @@ const write = async (ctx: QueryCtx, record: Recorder, feature: FeatureId, fields
 export const setEnabled = changeMutation({
   action: "features.setEnabled",
   args: { feature: vFeatureId, enabled: v.boolean() },
-  handler: async (ctx, { feature, enabled }, record) => ok<{ changed: boolean }, never>({ changed: await write(ctx, record, feature, { enabled }) }),
+  handler: async (ctx, { feature, enabled }, record) => ok<{ changed: boolean }, never>({ changed: await writeFeature(ctx, record, feature, { enabled }) }),
 });
 
 export const configure = changeMutation({
   action: "features.configure",
   args: { choice: vFeatureChoice },
   handler: async (ctx, { choice }, record) =>
-    ok<{ changed: boolean }, never>({ changed: await write(ctx, record, choice.feature, { settings: choice.settings }) }),
+    ok<{ changed: boolean }, never>({ changed: await writeFeature(ctx, record, choice.feature, { settings: choice.settings }) }),
 });

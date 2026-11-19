@@ -3,8 +3,7 @@ import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { newBackend, newSignedOutBackend, strangerSession, unwrap, type Backend } from "../backend.test-utils";
-import { DECISIONS_URL } from "../planner/smartEstimateModel";
+import { DECISIONS_URL, newAiBackend as newBackend, newSignedOutBackend, strangerSession, unwrap, type Backend } from "../backend.test-utils";
 import { kindOf, NOMINATIM_URL, OVERPASS_URL, placePhrases, ROUTING_URL } from "./model";
 
 const ADDRESS = "12 Harbour Street, Haymarket NSW 2000";

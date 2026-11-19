@@ -3,8 +3,8 @@ import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { newBackend, unwrap, type Backend } from "../backend.test-utils";
-import { bucketsFor, calibrationOf, DECISIONS_URL, guessesFrom, isPlaceholderTitle, isTooVague, nearestExamples, nudged, parseDecision, type PastTask } from "./smartEstimateModel";
+import { DECISIONS_URL, newAiBackend as newBackend, unwrap, type Backend } from "../backend.test-utils";
+import { bucketsFor, calibrationOf, guessesFrom, isPlaceholderTitle, isTooVague, nearestExamples, nudged, parseDecision, type PastTask } from "./smartEstimateModel";
 
 const BUCKETS = bucketsFor(510);
 
@@ -340,17 +340,17 @@ describe("big work", () => {
 });
 
 const smartStatus = async (t: Backend) => {
-  const state = (await t.query(api.platform.features.list, {})).find(({ feature }) => feature === "smartEstimates");
+  const state = (await t.query(api.platform.features.list, {})).find(({ feature }) => feature === "ai");
   return { enabled: state?.enabled, configured: state?.status.kind !== "needs_key" };
 };
 
-describe("the Smart Estimates Feature", () => {
-  test("off means no OpenAI call and the presets, and the switch itself undoes", async () => {
+describe("Smart Estimates under AI", () => {
+  test("AI off means no call and the presets, and the switch itself undoes", async () => {
     const t = await newBackend();
     const asked = choosing("30 minutes");
     expect(await smartStatus(t)).toEqual({ enabled: true, configured: true });
 
-    const { activityId } = unwrap(await t.mutation(api.platform.features.setEnabled, { feature: "smartEstimates", enabled: false }));
+    const { activityId } = unwrap(await t.mutation(api.platform.features.setEnabled, { feature: "ai", enabled: false }));
     const { taskId } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Book dentist" }));
     expect(await t.mutation(api.planner.smartEstimates.request, { taskId })).toEqual({ requested: false });
     await settle(t);

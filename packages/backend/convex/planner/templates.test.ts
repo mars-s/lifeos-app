@@ -1,5 +1,5 @@
-import { expect, test } from "vitest";
-import { api } from "../_generated/api";
+import { afterEach, expect, test, vi } from "vitest";
+import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import {
   newBackend,
@@ -172,4 +172,42 @@ test("a stranger or a signed-out caller cannot read or change Templates", async 
     ).toEqual(Array.from({ length: 5 }, () => kind));
   }
   expect(await owner.query(api.planner.templates.list, {})).toEqual([expect.objectContaining({ title: "Weekly review" })]);
+});
+
+afterEach(() => vi.useRealTimers());
+
+test("with Templates switched off, every Template change is refused, the Templates are kept, and repeats made from one keep coming", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(Date.UTC(2026, 10, 19, 1));
+  const t = await newBackend();
+  const { taskId } = await shapedTask(t);
+  const { templateId } = unwrap(await t.mutation(api.planner.templates.saveFromTask, { taskId, today }));
+  const { taskId: made } = unwrap(
+    await t.mutation(api.planner.templates.createTask, { templateId, when: { kind: "scheduled", date: today, evening: false }, today }),
+  );
+  unwrap(
+    await t.mutation(api.planner.recurrence.setRepeat, {
+      taskId: made,
+      schedule: { kind: "days", every: 1 },
+      end: { kind: "never" },
+      timeZone: "Australia/Melbourne",
+    }),
+  );
+
+  const { activityId } = unwrap(await t.mutation(api.platform.features.setEnabled, { feature: "templates", enabled: false }));
+  const off = { ok: false, error: { kind: "feature_off", feature: "templates" } };
+  expect(await t.mutation(api.planner.templates.saveFromTask, { taskId, today })).toEqual(off);
+  expect(await t.mutation(api.planner.templates.createTask, { templateId, when: { kind: "anytime" }, today })).toEqual(off);
+  expect(await t.mutation(api.planner.templates.update, { templateId, title: "Renamed" })).toEqual(off);
+  expect(await t.mutation(api.planner.templates.remove, { templateId })).toEqual(off);
+  expect((await templates(t)).map(({ title }) => title)).toEqual(["Weekly review"]);
+
+  const generated = () => t.run(async (ctx) => (await ctx.db.query("tasks").collect()).filter((task) => task.repeat !== undefined).length);
+  const before = await generated();
+  vi.setSystemTime(Date.UTC(2026, 10, 21, 1));
+  await t.mutation(internal.planner.recurrence.generate, {});
+  expect(await generated()).toBeGreaterThan(before);
+
+  unwrap(await t.mutation(api.platform.undo.undo, { activityId: activityId! }));
+  expect(unwrap(await t.mutation(api.planner.templates.update, { templateId, title: "Renamed" }))).toMatchObject({ changed: true });
 });

@@ -22,7 +22,7 @@ export const vPlace = v.object({
   travel: v.optional(v.object({ seconds: v.number(), metres: v.number() })),
 });
 
-const vLooked = { inputsHash: v.string(), at: v.number() };
+const vLooked = { inputsHash: v.string(), at: v.number(), answeredBy: v.optional(v.string()) };
 const vSearched = { query: v.string(), mode: vTravelMode, from: vPosition };
 
 export const vTripOutcome = v.union(
