@@ -48,9 +48,8 @@ const SyncLine = ({ syncedAt }: { syncedAt: number | null }) => {
   );
 };
 
-export const CalendarsButton = () => {
+export const CalendarSwitches = ({ className }: { className?: string }) => {
   const view = useQuietView(api.calendar.calendars.list, {});
-  const hours = useQuietView(api.calendar.workingHours.get, {});
   const change = useChange();
   const toggle = (calendar: CalendarRow, included: boolean) =>
     void change({
@@ -61,6 +60,29 @@ export const CalendarsButton = () => {
       revert: setIncluded(calendar, !included),
       slot: `calendar:${calendar._id}`,
     });
+  return (
+    <div className={className}>
+      {groupBySource(view?.calendars ?? []).map(([source, calendars]) => (
+        <section key={source} aria-label={source} className="pb-1.5">
+          <h3 className="px-2.5 pt-1 pb-0.5 text-micro text-faint-foreground">{source}</h3>
+          <ul>
+            {calendars.map((calendar) => (
+              <li key={calendar._id} className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5">
+                <span aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ backgroundColor: calendar.colour }} />
+                <span className="min-w-0 flex-1 truncate text-small">{calendar.title}</span>
+                <Switch aria-label={`Count ${calendar.title}`} checked={calendar.included} onCheckedChange={(included) => toggle(calendar, included)} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
+  );
+};
+
+export const CalendarsButton = () => {
+  const view = useQuietView(api.calendar.calendars.list, {});
+  const hours = useQuietView(api.calendar.workingHours.get, {});
   return (
     <Popover
       side="top"
@@ -79,26 +101,7 @@ export const CalendarsButton = () => {
       }
     >
       <SyncLine syncedAt={view?.syncedAt ?? null} />
-      <div className="max-h-80 overflow-y-auto overscroll-contain">
-        {groupBySource(view?.calendars ?? []).map(([source, calendars]) => (
-          <section key={source} aria-label={source} className="pb-1.5">
-            <h3 className="px-2.5 pt-1 pb-0.5 text-micro text-faint-foreground">{source}</h3>
-            <ul>
-              {calendars.map((calendar) => (
-                <li key={calendar._id} className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5">
-                  <span aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ backgroundColor: calendar.colour }} />
-                  <span className="min-w-0 flex-1 truncate text-small">{calendar.title}</span>
-                  <Switch
-                    aria-label={`Count ${calendar.title}`}
-                    checked={calendar.included}
-                    onCheckedChange={(included) => toggle(calendar, included)}
-                  />
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
-      </div>
+      <CalendarSwitches className="max-h-80 overflow-y-auto overscroll-contain" />
       {hours && (
         <p className="px-2.5 pt-1 pb-1.5 text-small text-muted-foreground">
           Working hours{" "}

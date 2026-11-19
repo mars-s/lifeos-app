@@ -54,6 +54,13 @@ test("a session that is not the owner's is refused by queries, the change builde
   expect((await owner.query(api.planner.tasks.card, { taskId }))?.title).toBe("Draft intro");
 });
 
+test("the owner's account names his GitHub login, and nobody else can read it", async () => {
+  const { anonymous, owner } = await ownerWork();
+  expect(await owner.query(api.platform.access.account, {})).toEqual({ login: "avi" });
+  expect(await refusal(anonymous.query(api.platform.access.account, {}))).toEqual(signedOut);
+  expect(await refusal((await strangerSession(anonymous)).query(api.platform.access.account, {}))).toEqual(notOwner);
+});
+
 test("the owner reads, changes and undoes", async () => {
   const { owner, taskId, activityId } = await ownerWork();
   expect(unwrap(await owner.query(api.planner.today.get, { date: "2026-11-18" })).tasks).toEqual([]);

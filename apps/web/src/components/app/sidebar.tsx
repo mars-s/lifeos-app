@@ -1,21 +1,18 @@
 "use client";
 
-import { useAuthActions } from "@convex-dev/auth/react";
 import { DndContext, MouseSensor, closestCenter, useSensor, useSensors, type CollisionDetection, type DragEndEvent } from "@dnd-kit/core";
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Archive, CalendarDots, CheckSquare, Kanban, Plus, Shapes, SignOut, Stack, Star, Trash, Tray, type Icon } from "@phosphor-icons/react";
+import { Archive, CalendarDots, CheckSquare, GearSix, Kanban, Plus, Shapes, Stack, Star, Trash, Tray, type Icon } from "@phosphor-icons/react";
 import { generateKeyBetween } from "fractional-indexing";
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { api } from "@lifeos/backend/api";
 import type { SidebarView } from "@lifeos/backend/types";
 import { areaVar } from "@/components/lifeos/area";
 import { AreaGlyph } from "@/components/lifeos/area-icon";
 import { LifeosMark } from "@/components/lifeos/mark";
 import { ProgressPie } from "@/components/lifeos/progress-ring";
-import { MorphText } from "@/components/ui/morph-text";
 import { Popover } from "@/components/ui/popover-panel";
 import { RollingNumber } from "@/components/ui/rolling-number";
 import { haptic } from "@/lib/haptics";
@@ -31,10 +28,9 @@ import {
   type SidebarArea,
 } from "./container-actions";
 import { CalendarsButton } from "./calendars-setting";
-import { timeAgo } from "./dates";
-import { useNow, useQuietView } from "./hooks";
 import { RouteLink } from "./list-page";
 import { sameRoute, type ListKind, type Route, type Via } from "./route";
+import { useNeedsAttention } from "./settings/attention";
 import { useShell, type Renaming } from "./shell-context";
 
 export const LIST_META = {
@@ -49,8 +45,7 @@ export const LIST_META = {
 
 export const PLANNER_META = { label: "Planner", icon: Kanban } as const;
 
-const STALE_AFTER_MS = 10 * 60_000;
-const syncedAtFormat = new Intl.DateTimeFormat("en-AU", { dateStyle: "medium", timeStyle: "short" });
+export const SETTINGS_META = { label: "Settings", icon: GearSix } as const;
 
 const rowClass = (indent: boolean) =>
   cn(
@@ -113,6 +108,7 @@ const NavItem = ({
   icon: IconComponent,
   leading,
   count,
+  trailing,
   indent = false,
   quiet = false,
   via,
@@ -124,6 +120,7 @@ const NavItem = ({
   icon?: Icon;
   leading?: ReactNode;
   count?: number;
+  trailing?: ReactNode;
   indent?: boolean;
   quiet?: boolean;
   via: Via;
@@ -185,6 +182,7 @@ const NavItem = ({
           <RollingNumber value={count} className="relative font-mono text-micro text-faint-foreground" />
         </>
       )}
+      {trailing}
     </RouteLink>
   );
 };
@@ -358,34 +356,23 @@ const NewList = () => {
   );
 };
 
-const SyncIndicator = () => {
-  const status = useQuietView(api.planner.things.status, {});
-  const now = useNow();
-  if (status === undefined || now === null || status?.retiredAt !== undefined) return <p className="h-8 flex-1" />;
-  const fresh = status !== null && now - status.syncedAt < STALE_AFTER_MS;
+const SettingsItem = ({ via }: { via: Via }) => {
+  const { today } = useShell();
+  const attention = useNeedsAttention(today);
   return (
-    <p
-      className="flex h-8 min-w-0 flex-1 items-center gap-2 pl-2.5 text-micro text-faint-foreground"
-      title={status ? syncedAtFormat.format(status.syncedAt) : undefined}
-    >
-      <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", fresh ? "bg-positive" : "bg-foreground/25")} />
-      <MorphText>{status ? `Synced from Things ${timeAgo(status.syncedAt, Math.max(now, status.syncedAt))}` : "Not synced from Things yet"}</MorphText>
-    </p>
-  );
-};
-
-const SignOutButton = () => {
-  const { signOut } = useAuthActions();
-  return (
-    <button
-      type="button"
-      aria-label="Sign out"
-      title="Sign out"
-      onClick={() => void signOut()}
-      className="grid size-8 shrink-0 place-items-center rounded-lg text-faint-foreground transition-[background-color,color,scale] duration-(--dur-press) ease-out hover:bg-foreground/[0.06] hover:text-foreground active:scale-[0.94]"
-    >
-      <SignOut className="size-4" aria-hidden="true" />
-    </button>
+    <NavItem
+      to={{ kind: "settings" }}
+      {...SETTINGS_META}
+      via={via}
+      trailing={
+        attention && (
+          <span className="relative flex items-center" title="Something in Settings needs a look">
+            <span aria-hidden="true" className="size-1.5 rounded-full bg-negative" />
+            <span className="sr-only">, needs attention</span>
+          </span>
+        )
+      }
+    />
   );
 };
 
@@ -533,10 +520,7 @@ export const Sidebar = ({ view, via, notice }: { view: SidebarView | undefined; 
           <NewList />
           <CalendarsButton />
         </div>
-        <div className="flex items-center">
-          <SyncIndicator />
-          <SignOutButton />
-        </div>
+        <SettingsItem via={via} />
       </div>
     </nav>
   );

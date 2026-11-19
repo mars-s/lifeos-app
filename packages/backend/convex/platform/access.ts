@@ -104,6 +104,14 @@ export const workerAction = <Args extends PropertyValidators, Output>(spec: {
       spec.handler(ctx, args as ObjectType<Args>, await ctx.runQuery(workerForTokenQuery, { token })),
   });
 
+export const account = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await ctx.db.get("users", await requireOwner(ctx));
+    return { login: user?.login ?? null };
+  },
+});
+
 export const isOwner = internalQuery({
   args: {},
   returns: v.boolean(),

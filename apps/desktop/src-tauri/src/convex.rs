@@ -62,22 +62,10 @@ enum Reply<T> {
 }
 
 pub(crate) fn read_token() -> Result<Token, String> {
-    if let Some(token) = env::var(TOKEN_VAR).ok().filter(|token| !token.is_empty()) {
+    if let Some(token) = token_from_env() {
         return Ok(Token::new(token));
     }
-    let account = env::var("USER").map_err(|_| "USER is not set".to_owned())?;
-    let output = Command::new("/usr/bin/security")
-        .args([
-            "find-generic-password",
-            "-s",
-            KEYCHAIN_SERVICE,
-            "-a",
-            &account,
-            "-w",
-        ])
-        .stderr(Stdio::null())
-        .output()
-        .map_err(|error| format!("could not run security: {error}"))?;
+    let output = find_token(&["-w"])?;
     let token = String::from_utf8(output.stdout)
         .map(|text| text.trim().to_owned())
         .unwrap_or_default();
@@ -88,6 +76,27 @@ pub(crate) fn read_token() -> Result<Token, String> {
             "no Worker token in the Keychain under {KEYCHAIN_SERVICE}"
         ))
     }
+}
+
+/// Whether this Mac holds a Worker token at all. It reads no secret, so macOS never prompts.
+pub(crate) fn token_stored() -> bool {
+    token_from_env().is_some() || find_token(&[]).is_ok_and(|output| output.status.success())
+}
+
+fn token_from_env() -> Option<String> {
+    env::var(TOKEN_VAR).ok().filter(|token| !token.is_empty())
+}
+
+fn find_token(extra: &[&str]) -> Result<Output, String> {
+    let account = env::var("USER").map_err(|_| "USER is not set".to_owned())?;
+    Command::new("/usr/bin/security")
+        .args(["find-generic-password", "-s", KEYCHAIN_SERVICE, "-a"])
+        .arg(&account)
+        .args(extra)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .map_err(|error| format!("could not run security: {error}"))
 }
 
 /// Sends one function call and returns its value, or why it failed, with the token redacted.

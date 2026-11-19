@@ -3,7 +3,11 @@ mod calendar;
 mod capture;
 mod convex;
 mod haptics;
+mod permissions;
+mod setup;
 mod things_import;
+
+use std::sync::Arc;
 
 use tauri::{App, AppHandle, Manager, RunEvent, Url, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -25,7 +29,13 @@ pub fn run() -> tauri::Result<()> {
         .invoke_handler(tauri::generate_handler![
             haptics::haptic,
             capture::hide_capture,
-            capture::show_capture
+            capture::show_capture,
+            permissions::permissions,
+            permissions::request_permission,
+            permissions::onboarded,
+            permissions::finish_onboarding,
+            permissions::sync_report,
+            permissions::import_things_now
         ])
         .setup(|app| Ok(set_up(app)?))
         .build(tauri::generate_context!())?
@@ -45,9 +55,12 @@ fn set_up(app: &App) -> tauri::Result<()> {
     capture::start(app)?;
     let handle = app.handle().clone();
     app.deep_link().on_open_url(move |_| bring_forward(&handle));
-    things_import::start();
+    let (setup, wakes) = setup::Setup::load(&app.path().app_config_dir()?);
+    let setup = Arc::new(setup);
+    app.manage(Arc::clone(&setup));
+    things_import::start(Arc::clone(&setup), wakes.things);
     #[cfg(target_os = "macos")]
-    calendar::start();
+    calendar::start(setup, wakes.calendar);
     Ok(())
 }
 

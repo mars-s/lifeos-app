@@ -1,9 +1,12 @@
 //! Imports Things 3 into `LifeOS` in the background while the Mac app is open.
+//!
+//! It never opens the Things data until onboarding or Settings has asked macOS for it.
 
 use std::{
     env, fs,
     path::{Path, PathBuf},
     process::Command,
+    sync::{Arc, mpsc::Receiver},
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -11,7 +14,11 @@ use std::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::convex::{self, CONVEX_URL, Function, Token};
+use crate::{
+    convex::{self, CONVEX_URL, Function, Token},
+    permissions,
+    setup::{Permission, Setup},
+};
 
 const IMPORT_PATH: &str = "planner/things:importRows";
 const THINGS_SQL: &str = include_str!("../../../things-sync/things.sql");
@@ -68,54 +75,52 @@ impl Drop for Scratch {
     }
 }
 
-/// Starts the import loop on its own thread: once shortly after launch, then every five minutes.
-pub(crate) fn start() {
+/// Starts the import loop on its own thread: once shortly after launch, then every five minutes or when woken.
+pub(crate) fn start(setup: Arc<Setup>, woken: Receiver<()>) {
     let spawned = thread::Builder::new()
         .name("things-import".into())
-        .spawn(run);
+        .spawn(move || run(&setup, &woken));
     if let Err(error) = spawned {
         eprintln!("things import: could not start: {error}");
     }
 }
 
-fn run() {
-    let Some(database) = env::var_os("HOME")
-        .map(|home| PathBuf::from(home).join("Library/Group Containers"))
-        .and_then(|containers| find_database(&containers))
-    else {
-        eprintln!("things import: no Things database on this Mac, so nothing to import");
+fn run(setup: &Setup, woken: &Receiver<()>) {
+    let Some(container) = permissions::things_container() else {
+        eprintln!("things import: Things is not on this Mac, so nothing to import");
         return;
     };
-    thread::sleep(FIRST_RUN_AFTER);
+    let mut wait = FIRST_RUN_AFTER;
     loop {
-        match import_once(&database) {
-            Outcome::Imported(report) => eprintln!("things import: imported {report}"),
+        woken.recv_timeout(wait).ok();
+        wait = RUN_EVERY;
+        if !setup.asked(Permission::ThingsData) {
+            continue;
+        }
+        match import_once(setup, &container) {
+            Outcome::Imported(report) => {
+                eprintln!("things import: imported {report}");
+                setup.things.record(Ok(()));
+            }
             Outcome::Retired { retired_at_ms } => {
                 eprintln!(
                     "things import: the Things import was retired at {retired_at_ms} ms, so it stops for good"
                 );
+                setup.things.record(Ok(()));
                 return;
             }
             Outcome::Failed(reason) => {
                 eprintln!("things import: failed, will retry in five minutes: {reason}");
+                setup.things.record(Err(reason));
             }
         }
-        thread::sleep(RUN_EVERY);
     }
 }
 
-fn find_database(group_containers: &Path) -> Option<PathBuf> {
-    fs::read_dir(group_containers)
+fn find_database(container: &Path) -> Option<PathBuf> {
+    fs::read_dir(container)
         .ok()?
         .flatten()
-        .filter(|entry| {
-            entry
-                .file_name()
-                .to_string_lossy()
-                .ends_with(".com.culturedcode.ThingsMac")
-        })
-        .filter_map(|container| fs::read_dir(container.path()).ok())
-        .flat_map(Iterator::flatten)
         .filter(|entry| {
             entry
                 .file_name()
@@ -126,13 +131,15 @@ fn find_database(group_containers: &Path) -> Option<PathBuf> {
         .find(|database| database.join(DATABASE_FILES[0]).is_file())
 }
 
-fn import_once(database: &Path) -> Outcome {
-    try_import(database).unwrap_or_else(Outcome::Failed)
+fn import_once(setup: &Setup, container: &Path) -> Outcome {
+    try_import(setup, container).unwrap_or_else(Outcome::Failed)
 }
 
-fn try_import(database: &Path) -> Result<Outcome, String> {
-    let token = convex::read_token()?;
-    let rows = read_rows(database)?;
+fn try_import(setup: &Setup, container: &Path) -> Result<Outcome, String> {
+    let database = find_database(container)
+        .ok_or("LifeOS cannot read the Things data. Allow it in Settings, Permissions.")?;
+    let token = setup.token()?;
+    let rows = read_rows(&database)?;
     let text = convex::post(CONVEX_URL, Function::Action, &request_body(&token, &rows))?;
     Ok(outcome(&text, &token))
 }
@@ -178,7 +185,7 @@ fn outcome(text: &str, token: &Token) -> Outcome {
 
 #[cfg(test)]
 mod tests {
-    use std::{env, fs, path::PathBuf};
+    use std::fs;
 
     use serde_json::{Value, json};
 
@@ -207,9 +214,8 @@ mod tests {
     #[test]
     #[ignore = "reads the Things database on this Mac"]
     fn reads_a_copy_of_the_real_things_database() {
-        let home = env::var_os("HOME").expect("HOME is set");
-        let containers = PathBuf::from(home).join("Library/Group Containers");
-        let database = find_database(&containers).expect("Things is installed");
+        let container = crate::permissions::things_container().expect("Things is installed");
+        let database = find_database(&container).expect("the Things database");
         let rows = read_rows(&database).expect("sqlite3 reads the copy");
         for table in ["areas", "tags", "items", "checklistItems"] {
             let count = rows[table].as_array().map(Vec::len);
@@ -219,15 +225,14 @@ mod tests {
     }
 
     #[test]
-    fn finds_the_things_database_among_other_containers() {
+    fn finds_the_things_database_inside_its_container() {
         let root = Scratch::new("lifeos-things-test").expect("a temp dir");
-        let database = root.0.join(
-            "JLMPQHK86H.com.culturedcode.ThingsMac/ThingsData-0CZBJ/Things Database.thingsdatabase",
-        );
+        let database = root
+            .0
+            .join("ThingsData-0CZBJ/Things Database.thingsdatabase");
         fs::create_dir_all(&database).expect("the fake database folder");
         fs::write(database.join("main.sqlite"), b"").expect("the fake database");
-        fs::create_dir_all(root.0.join("group.com.apple.notes/ThingsData-X"))
-            .expect("an unrelated container");
+        fs::create_dir_all(root.0.join("Backups")).expect("an unrelated folder");
         assert_eq!(
             find_database(&root.0),
             Some(database),
@@ -238,17 +243,10 @@ mod tests {
     #[test]
     fn a_folder_without_main_sqlite_is_not_a_database() {
         let root = Scratch::new("lifeos-things-test").expect("a temp dir");
-        fs::create_dir_all(
-            root.0
-                .join("X.com.culturedcode.ThingsMac/ThingsData-1/Things Database.thingsdatabase"),
-        )
-        .expect("an empty database folder");
+        fs::create_dir_all(root.0.join("ThingsData-1/Things Database.thingsdatabase"))
+            .expect("an empty database folder");
         assert_eq!(find_database(&root.0), None, "no main.sqlite");
-        assert_eq!(
-            find_database(&root.0.join("missing")),
-            None,
-            "no Group Containers folder"
-        );
+        assert_eq!(find_database(&root.0.join("missing")), None, "no container");
     }
 
     #[test]

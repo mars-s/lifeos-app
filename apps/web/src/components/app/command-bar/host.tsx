@@ -19,7 +19,7 @@ const isTyping = (target: EventTarget | null) =>
 
 export const CommandBarHost = ({ sidebar }: { sidebar: SidebarView | undefined }) => {
   const state = useBar();
-  const { today, openCard } = useShell();
+  const { today, openCard, navigate } = useShell();
   const onMac = useIsMac();
   const act = useSelectionActions(today);
   const newTask = useNewTask(sidebar);
@@ -36,6 +36,12 @@ export const CommandBarHost = ({ sidebar }: { sidebar: SidebarView | undefined }
         if (bar.state().kind === "commands") return bar.close();
         const held = openKey ? selection.task(openKey) : undefined;
         return bar.commands(held ? [held] : selection.tasks());
+      }
+      if (command && !event.shiftKey && event.key === ",") {
+        if (document.querySelector("[role=alertdialog]")) return;
+        event.preventDefault();
+        bar.close();
+        return navigate({ kind: "settings" }, "keyboard");
       }
       if (bar.state().kind !== "closed" || isTyping(event.target) || document.querySelector(BLOCKING)) return;
       const chosen = selection.tasks();
@@ -64,7 +70,7 @@ export const CommandBarHost = ({ sidebar }: { sidebar: SidebarView | undefined }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [act, newTask, onMac, openKey, today]);
+  }, [act, navigate, newTask, onMac, openKey, today]);
 
   if (state.kind === "commands") return <CommandBar initialTargets={state.targets} sidebar={sidebar} />;
   if (state.kind === "capture") return <QuickCapture key={state.opened} initial={state.text} failed={state.failed} sidebar={sidebar} />;

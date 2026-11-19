@@ -20,6 +20,7 @@ import { PanelBoundary, PanelNotice } from "./panel-boundary";
 import { LISTS, parseRoute, routeHref, screenKey, type Route, type Via } from "./route";
 import { Screen, UPCOMING_DAYS } from "./screens";
 import { SelectionBar } from "./selection-bar";
+import { Onboarding } from "./settings/onboarding";
 import { useSelectionGestures } from "./selection-gestures";
 import { ShellContext, type ListDraft, type OpenCard, type Renaming, type ShellState } from "./shell-context";
 import { Sidebar } from "./sidebar";
@@ -231,6 +232,9 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
       </AppMenu>
       <PanelBoundary panel="bar" fallback={() => null}>
         <CommandBarHost sidebar={sidebar} />
+      </PanelBoundary>
+      <PanelBoundary panel="bar" fallback={() => null}>
+        <Onboarding />
       </PanelBoundary>
       </PanelBoundary>
       </FocusProvider>

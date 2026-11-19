@@ -59,7 +59,7 @@ It does three things:
 
 1. Runs one last import, so nothing you did in Things is left behind.
 2. Marks Things as retired in LifeOS, with the date.
-3. Turns the import off everywhere. The Mac app stops importing, the "Synced from Things" note in the sidebar goes away, and `pnpm sync:things` politely refuses from then on.
+3. Turns the import off everywhere. The Mac app stops importing, the Things Import row in Settings says it is retired, and `pnpm sync:things` politely refuses from then on.
 
 After that you can delete Things. Your Tasks keep their Things ids for reference. Nothing else changes.
 

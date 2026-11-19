@@ -7,6 +7,7 @@ import { AnytimeScreen, SomedayScreen } from "./grouped";
 import { AreaScreen, ProjectScreen } from "./containers";
 import { LogbookScreen } from "./logbook";
 import { PlannerScreen } from "./planner";
+import { SettingsScreen } from "../settings/settings-screen";
 import { InboxScreen, TodayScreen } from "./today";
 import { TrashScreen } from "./trash";
 
@@ -34,6 +35,8 @@ export const Screen = ({ route, sidebar, sidebarFailed }: { route: Route; sideba
       return <LogbookScreen />;
     case "trash":
       return <TrashScreen />;
+    case "settings":
+      return <SettingsScreen />;
     case "missing":
       return <Missing />;
     case "area":

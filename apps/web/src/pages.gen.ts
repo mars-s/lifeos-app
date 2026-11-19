@@ -18,6 +18,8 @@ import type { getConfig as File_AppPlanner_getConfig } from './pages/(app)/plann
 // prettier-ignore
 import type { getConfig as File_AppProject_getConfig } from './pages/(app)/project';
 // prettier-ignore
+import type { getConfig as File_AppSettings_getConfig } from './pages/(app)/settings';
+// prettier-ignore
 import type { getConfig as File_AppSomeday_getConfig } from './pages/(app)/someday';
 // prettier-ignore
 import type { getConfig as File_AppToday_getConfig } from './pages/(app)/today';
@@ -43,6 +45,7 @@ type Page =
 | ({ path: '/logbook' } & GetConfigResponse<typeof File_AppLogbook_getConfig>)
 | ({ path: '/planner' } & GetConfigResponse<typeof File_AppPlanner_getConfig>)
 | ({ path: '/project' } & GetConfigResponse<typeof File_AppProject_getConfig>)
+| ({ path: '/settings' } & GetConfigResponse<typeof File_AppSettings_getConfig>)
 | ({ path: '/someday' } & GetConfigResponse<typeof File_AppSomeday_getConfig>)
 | ({ path: '/today' } & GetConfigResponse<typeof File_AppToday_getConfig>)
 | ({ path: '/trash' } & GetConfigResponse<typeof File_AppTrash_getConfig>)

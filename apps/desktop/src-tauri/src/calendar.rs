@@ -7,4 +7,6 @@ mod snapshot;
 mod sync;
 
 #[cfg(target_os = "macos")]
+pub(crate) use eventkit::{Access, access, request_access};
+#[cfg(target_os = "macos")]
 pub(crate) use sync::start;

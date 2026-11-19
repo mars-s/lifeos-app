@@ -35,7 +35,7 @@ import { shortDay, weekdayLong, whenLabel } from "../dates";
 import type { ActiveFocus } from "../focus";
 import { LISTS, type Route } from "../route";
 import type { MoveTarget, SelectionActions } from "../selection-actions";
-import { LIST_META, PLANNER_META } from "../sidebar";
+import { LIST_META, PLANNER_META, SETTINGS_META } from "../sidebar";
 import { WhenGlyph } from "./capture-chips";
 import type { Recent } from "./recents";
 
@@ -225,7 +225,16 @@ export const targetItems = (
 
 export const goItems = (go: (route: Route) => void) => {
   const order = ["inbox", "today", "planner", "upcoming", "anytime", "someday", "logbook", "trash"] as const;
-  return order.map((kind) => {
+  const settings = {
+    id: "go:settings",
+    group: "Go to",
+    label: SETTINGS_META.label,
+    text: "settings preferences permissions account sign out sync connections go to",
+    leading: <SETTINGS_META.icon weight="fill" aria-hidden="true" className={`${ICON} text-muted-foreground`} />,
+    keys: "mod+,",
+    run: () => go({ kind: "settings" }),
+  } satisfies BarItem;
+  const lists = order.map((kind) => {
     const meta = kind === "planner" ? PLANNER_META : LIST_META[kind];
     const key = kind === "planner" ? "8" : String(LISTS.indexOf(kind) + 1);
     return {
@@ -239,6 +248,7 @@ export const goItems = (go: (route: Route) => void) => {
       recent: { kind: "list", id: kind },
     } satisfies BarItem;
   });
+  return [...lists, settings];
 };
 
 export const createItems = (deps: {

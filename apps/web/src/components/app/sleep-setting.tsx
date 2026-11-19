@@ -1,33 +1,17 @@
 "use client";
 
 import { Moon } from "@phosphor-icons/react";
-import { useMutation } from "convex/react";
-import { useState } from "react";
-import { api } from "@lifeos/backend/api";
 import type { IsoDate } from "@lifeos/backend/date";
 import type { SleepStatus } from "@lifeos/backend/types";
 import { Button } from "@/components/ui/action-button";
 import { Popover } from "@/components/ui/popover-panel";
 import { formatClock, formatRange } from "@/components/lifeos/format";
-import { timeAgo } from "./dates";
-import { useNow, useQuietView } from "./hooks";
-
-const SYNC_PATIENCE_MS = 30_000;
+import { useOura } from "./oura";
 
 type Plan = NonNullable<SleepStatus["plan"]>;
 
 const onClock = (minute: number) => ((minute % 1440) + 1440) % 1440;
 const clockOf = (minute: number) => formatClock(onClock(minute));
-
-const syncLine = (status: SleepStatus, now: number | null) => {
-  const sync = status.sync;
-  if (!sync || sync.kind === "never") return "Pulling your sleep from Oura…";
-  const ago = (at: number) => (now === null ? "" : ` ${timeAgo(at, Math.max(now, at))}`);
-  if (sync.kind === "ok") return `Read from Oura${ago(sync.at)}. LifeOS checks again every four hours.`;
-  if (sync.error.kind === "unauthorised" || sync.error.kind === "forbidden")
-    return "Oura stopped sharing your sleep. Connect again to pick it back up.";
-  return `Oura did not answer${ago(sync.at)}. LifeOS tries again every four hours.`;
-};
 
 const PlanRows = ({ plan }: { plan: Plan }) => (
   <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 px-2.5 pb-2 text-small whitespace-nowrap">
@@ -48,37 +32,7 @@ const waitingLine = (status: SleepStatus) =>
     : `LifeOS needs 3 nights of sleep to work out your usual wake. It has ${status.nightsCounted}.`;
 
 export const SleepButton = ({ today }: { today: IsoDate }) => {
-  const status = useQuietView(api.health.sleep.status, { today });
-  const connect = useMutation(api.health.oura.connect);
-  const syncNow = useMutation(api.health.oura.syncNow);
-  const now = useNow();
-  const [askedAt, setAskedAt] = useState<number | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
-  const lastSyncAt = status?.sync && status.sync.kind !== "never" ? status.sync.at : 0;
-  const syncing = askedAt !== null && lastSyncAt < askedAt && (now ?? askedAt) - askedAt < SYNC_PATIENCE_MS;
-
-  const startConnect = () => {
-    setProblem(null);
-    const tab = window.open("", "_blank");
-    void connect({}).then((result) => {
-      if (!result.ok) {
-        tab?.close();
-        setProblem(result.error.kind === "not_configured" ? "Oura is not set up on this LifeOS yet." : "Could not reach LifeOS to start. Try again in a moment.");
-        return;
-      }
-      if (tab) tab.location.href = result.value.url;
-      else window.location.assign(result.value.url);
-    });
-  };
-
-  const startSync = () => {
-    setAskedAt(Date.now());
-    void syncNow({});
-  };
-
-  const needsConnect =
-    status?.setup === "not_connected" ||
-    (status?.sync?.kind === "failed" && (status.sync.error.kind === "unauthorised" || status.sync.error.kind === "forbidden"));
+  const { status, syncing, problem, needsConnect, line, startConnect, startSync } = useOura(today);
 
   return (
     <Popover
@@ -108,7 +62,7 @@ export const SleepButton = ({ today }: { today: IsoDate }) => {
       ) : (
         <>
           <p className="px-2.5 pb-2 text-small text-pretty text-muted-foreground" aria-live="polite">
-            {syncing ? "Reading your sleep from Oura…" : syncLine(status, now)}
+            {line}
           </p>
           {status.plan ? <PlanRows plan={status.plan} /> : <p className="px-2.5 pb-2 text-small text-pretty text-muted-foreground">{waitingLine(status)}</p>}
         </>

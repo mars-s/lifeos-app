@@ -29,6 +29,7 @@ export const SHORTCUT_GROUPS: readonly { title: string; shortcuts: readonly Shor
       { label: "Inbox to Trash", keys: ["1–7"], only: "browser" },
       { label: "Planner or Upcoming", keys: ["8", "3"], joiner: "or" },
       { label: "Next or previous Task", keys: ["down", "up"], joiner: "or" },
+      { label: "Settings", keys: ["mod+,"] },
       { label: "Open a Task", keys: ["space", "enter"] },
       { label: "Close a Task", keys: ["esc", "mod+enter"] },
     ],
