@@ -1,5 +1,6 @@
 import { defineTable } from "convex/server";
 import { v, type Infer } from "convex/values";
+import { vPlacesSettings, vSmartEstimatesSettings } from "../../shared/features";
 
 export const vEntityRef = v.union(
   v.object({ table: v.literal("areas"), id: v.id("areas") }),
@@ -19,6 +20,7 @@ export const vRecordRef = v.union(
   v.object({ table: v.literal("workingHours"), id: v.id("workingHours") }),
   v.object({ table: v.literal("preferences"), id: v.id("preferences") }),
   v.object({ table: v.literal("dayPlans"), id: v.id("dayPlans") }),
+  v.object({ table: v.literal("features"), id: v.id("features") }),
 );
 
 export const vActor = v.union(
@@ -102,6 +104,12 @@ export const platformTables = {
     .index("by_kind_status_available", ["job.kind", "status.kind", "status.availableAt"])
     .index("by_kind_status_lease", ["job.kind", "status.kind", "status.leaseUntil"]),
   preferences: defineTable({ smartEstimates: v.boolean() }),
+  features: defineTable(
+    v.union(
+      v.object({ feature: v.literal("smartEstimates"), enabled: v.boolean(), settings: vSmartEstimatesSettings }),
+      v.object({ feature: v.literal("places"), enabled: v.boolean(), settings: vPlacesSettings }),
+    ),
+  ).index("by_feature", ["feature"]),
   secrets: defineTable({
     name: vSecretName,
     iv: v.string(),

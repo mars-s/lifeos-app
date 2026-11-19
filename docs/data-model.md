@@ -89,9 +89,25 @@ One unit of background work.
 
 Indexes: `by_name` (register, and `platform/workers:grant`, which adds one capability to a named Worker without touching its token), `by_token_hash` (authenticate every Worker call).
 
+### `features`
+
+One row per **Feature** Avi has changed, absent until then. The registry in `shared/features.ts` gives each Feature's defaults (`docs/architecture.md`, Features).
+
+| Field | Type |
+| --- | --- |
+| `feature` | `smartEstimates` or `places` |
+| `enabled` | Boolean |
+| `settings` | The Feature's own settings, checked by its validator: `{}` for Smart Estimates, `{ travelMode: "drive" | "walk" | "cycle" }` for Places |
+
+The table is a union with one member per Feature, so a Places row cannot hold Smart Estimates settings. Index: `by_feature`.
+
+- `platform/features:list` returns every Feature with its effective `enabled`, `settings` and Feature Status.
+- `setEnabled` and `configure` are `changeMutation`s. Undoing the first change deletes the row, which brings the defaults back.
+- `adoptPreferences` (internal) moves the old `preferences.smartEstimates` switch into a `features` row and deletes it. Until it runs, `list` reads the old row, so nothing changes for Avi.
+
 ### `preferences`
 
-One row, absent until Avi changes a setting: `smartEstimates` (boolean, on when the row is missing). `platform/preferences:get` reads it with the defaults filled in. Each setter is a `changeMutation`, so a switch is in Activity and can be undone.
+Legacy. One row holding the old `smartEstimates` boolean. It is read only until `platform/features:adoptPreferences` moves it into `features`, then the table goes.
 
 ### `secrets`
 
