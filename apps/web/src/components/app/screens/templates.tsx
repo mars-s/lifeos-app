@@ -464,7 +464,7 @@ export const TemplatesScreen = () => {
     <ListPage
       title="Templates"
       icon={Stamp}
-      subtitle="Task shapes to start from. Right-click or long-press an empty part of any list to use one."
+      subtitle="Task shapes to start from. Find one in the command bar, or right-click an empty part of any list."
     >
       {!templates ? (
         <ListSkeleton />

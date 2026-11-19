@@ -256,6 +256,33 @@ templates() {
   expect "!document.querySelector('#main').textContent.includes('Weekly review')" "undo removes the new Task"
 }
 
+command_bar() {
+  press "#main [data-task-key] [data-arrow-item]" "Pick up the parcel" 300
+  $AB press Meta+k >/dev/null
+  $AB wait 500 >/dev/null
+  $AB type "[cmdk-input]" "repeat" >/dev/null
+  $AB wait 300 >/dev/null
+  expect "[...document.querySelectorAll('[cmdk-item]')].some((item) => item.textContent.startsWith('Repeat'))" "the command bar offers Repeat for the selected Task"
+  $AB press Enter >/dev/null
+  $AB wait 300 >/dev/null
+  $AB type "[cmdk-input]" "weekday" >/dev/null
+  $AB wait 300 >/dev/null
+  shot bar-repeat
+  $AB press Enter >/dev/null
+  $AB wait 700 >/dev/null
+  expect "$(row 'Pick up the parcel').textContent.includes('repeats every weekday')" "the command bar sets Every weekday"
+  undo
+  expect "!$(row 'Pick up the parcel').textContent.includes('repeats')" "undo takes the command bar's repeat back off"
+  $AB press Meta+k >/dev/null
+  $AB wait 500 >/dev/null
+  $AB type "[cmdk-input]" "weekly review" >/dev/null
+  $AB wait 300 >/dev/null
+  expect "[...document.querySelectorAll('[cmdk-item]')].some((item) => item.textContent.startsWith('New Task from Weekly review'))" "the command bar offers New Task from a Template"
+  shot bar-template
+  $AB press Escape >/dev/null
+  $AB wait 300 >/dev/null
+}
+
 mkdir -p "$OUT"
 for size in "1440 900" "390 844"; do
   set -- $size
@@ -268,6 +295,7 @@ for size in "1440 900" "390 844"; do
     card_repeat
     row_glyph
     menu_repeat
+    command_bar
     upcoming_ghost
     templates
   done

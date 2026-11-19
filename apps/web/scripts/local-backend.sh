@@ -15,7 +15,7 @@ import { createFunctionHandle } from "convex/server";
 import { v } from "convex/values";
 import { components, internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
-import type { IsoDate } from "../shared/date";
+import { localIsoDate } from "../shared/date";
 import { activeSession } from "./planner/focus";
 import { seedPlanner } from "./planner/seed.test-utils";
 import { seedTimebox } from "./planner/planSeed.test-utils";
@@ -185,4 +185,4 @@ npx convex run scratch:seed "$SEED_ARGS" >/dev/null
 npx convex run scratch:signIn > "$SCRATCH/session.json"
 echo "Local backend is seeded. Session: $SCRATCH/session.json"
 echo "Reseed with: (cd $SCRATCH && npx convex run scratch:seed '$SEED_ARGS')"
-echo "Keep it running with: (cd $SCRATCH && CONVEX_AGENT_MODE=anonymous npx convex dev)"
+echo "Keep it running with: (cd $SCRATCH && CONVEX_AGENT_MODE=anonymous npx convex dev --typecheck disable)"
