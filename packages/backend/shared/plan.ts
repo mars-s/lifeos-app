@@ -44,12 +44,26 @@ type LoadTask<Area> = { readonly _id: string; readonly estimateMinutes?: number 
 
 type LoadBlock<Area> = { readonly _id: string; readonly taskId: string; readonly minutes: number; readonly area?: Area | undefined };
 
-export type LoadSlice<Area> = { readonly id: string; readonly area: Area | undefined; readonly minutes: number; readonly source: LoadSource };
+export type LoadSlice<Area> = {
+  readonly id: string;
+  readonly area: Area | undefined;
+  readonly minutes: number;
+  readonly source: LoadSource;
+  readonly left: number;
+};
+
+export const SESSION_MINUTES = MAX_DROPPED_BLOCK_MINUTES;
+
+export const dayShareCap = (goalMinutes: number) => (goalMinutes > 0 ? goalMinutes : SESSION_MINUTES);
+
+export const dayShareOf = (wholeMinutes: number | undefined, cap: number) =>
+  wholeMinutes === undefined ? undefined : Math.min(wholeMinutes, cap);
 
 export const dayLoad = <Area>(
   tasks: readonly LoadTask<Area>[],
   blocks: readonly LoadBlock<Area>[],
   guessOf: (taskId: string) => number | undefined,
+  cap: number,
 ) => {
   const boxed = new Map<string, number>();
   for (const block of blocks) boxed.set(block.taskId, (boxed.get(block.taskId) ?? 0) + block.minutes);
@@ -58,14 +72,18 @@ export const dayLoad = <Area>(
   let unestimated = 0;
   for (const task of tasks) {
     const timed = boxed.get(task._id);
-    const guess = guessOf(task._id);
-    if (timed !== undefined) slices.push({ id: task._id, area: task.area, minutes: timed, source: "blocks" });
-    else if (task.estimateMinutes !== undefined) slices.push({ id: task._id, area: task.area, minutes: task.estimateMinutes, source: "estimate" });
-    else if (guess !== undefined) slices.push({ id: task._id, area: task.area, minutes: guess, source: "guess" });
-    else unestimated += 1;
+    const whole = task.estimateMinutes ?? guessOf(task._id);
+    const source: LoadSource = timed !== undefined ? "blocks" : task.estimateMinutes !== undefined ? "estimate" : "guess";
+    const minutes = timed ?? dayShareOf(whole, cap);
+    if (minutes === undefined) {
+      unestimated += 1;
+      continue;
+    }
+    const left = whole !== undefined && whole > cap ? Math.max(0, whole - minutes) : 0;
+    slices.push({ id: task._id, area: task.area, minutes, source, left });
   }
   for (const block of blocks)
-    if (!listed.has(block.taskId)) slices.push({ id: block._id, area: block.area, minutes: block.minutes, source: "blocks" });
+    if (!listed.has(block.taskId)) slices.push({ id: block._id, area: block.area, minutes: block.minutes, source: "blocks", left: 0 });
   const total = (guessed: boolean) =>
     slices.reduce((sum, slice) => ((slice.source === "guess") === guessed ? sum + slice.minutes : sum), 0);
   return { slices, plannedMinutes: total(false), guessedMinutes: total(true), unestimated };

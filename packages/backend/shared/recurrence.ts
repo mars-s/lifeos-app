@@ -120,6 +120,22 @@ const endAllows = {
 export const withinEnd = (end: RepeatEnd, date: IsoDate, count: number) =>
   (endAllows[end.kind] as (end: RepeatEnd, date: IsoDate, count: number) => boolean)(end, date, count);
 
+type RuleClock = { readonly schedule: Schedule; readonly anchor: string; readonly end: RepeatEnd; readonly count: number; readonly next: RepeatNext };
+
+export const uncreatedDates = (rule: RuleClock, from: IsoDate, to: IsoDate) => {
+  if (rule.next.kind !== "due") return [];
+  const dates: IsoDate[] = [];
+  let date: IsoDate | null = rule.next.date as IsoDate;
+  let count = rule.count;
+  while (date && date <= to && withinEnd(rule.end, date, count)) {
+    if (date >= from) dates.push(date);
+    if (rule.schedule.kind === "afterCompletion") break;
+    count += 1;
+    date = firstAfter(rule.schedule, rule.anchor as IsoDate, date);
+  }
+  return dates;
+};
+
 const dateFormatters = new Map<string, Intl.DateTimeFormat>();
 
 const dateFormatterFor = (timeZone: string) => {

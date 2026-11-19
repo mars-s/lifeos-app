@@ -25,6 +25,7 @@ export type CommitmentRow = Ok<FunctionReturnType<typeof api.calendar.commitment
 export type CalendarsView = FunctionReturnType<typeof api.calendar.calendars.list>;
 export type CapacityView = Ok<FunctionReturnType<typeof api.calendar.capacity.days>>;
 export type PlanWeekView = Ok<FunctionReturnType<typeof api.planner.plan.week>>;
+export type PlanGhost = PlanWeekView["days"][number]["ghosts"][number];
 export type WorkBlockRow = Ok<FunctionReturnType<typeof api.planner.workBlocks.range>>[number];
 export type SleepNight = Ok<FunctionReturnType<typeof api.health.sleep.nights>>[number];
 export type SleepStatus = FunctionReturnType<typeof api.health.sleep.status>;

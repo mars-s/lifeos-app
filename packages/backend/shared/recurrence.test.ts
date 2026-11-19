@@ -11,6 +11,7 @@ import {
   parseTimeZone,
   withinEnd,
   type Schedule,
+  uncreatedDates,
 } from "./recurrence";
 
 const day = (date: string) => date as IsoDate;
@@ -185,4 +186,21 @@ test("a Recurrence Rule reads as plain Australian English", () => {
     "Every day, once",
     "Every weekday, until 30 Jun",
   ]);
+});
+
+const dueRule = (schedule: Schedule, end: Parameters<typeof uncreatedDates>[0]["end"] = { kind: "never" }, count = 1) => ({
+  schedule,
+  anchor: "2026-11-19",
+  end,
+  count,
+  next: { kind: "due", date: "2026-11-20" } as const,
+});
+
+test("the dates a rule has not created yet stop at the window, the end and the count, and after completion shows only the next", () => {
+  const daily = { kind: "days", every: 1 } as const;
+  expect(uncreatedDates(dueRule(daily), day("2026-11-21"), day("2026-11-23"))).toEqual(["2026-11-21", "2026-11-22", "2026-11-23"]);
+  expect(uncreatedDates(dueRule(daily, { kind: "on", date: "2026-11-21" }), day("2026-11-19"), day("2026-11-30"))).toEqual(["2026-11-20", "2026-11-21"]);
+  expect(uncreatedDates(dueRule(daily, { kind: "after", count: 3 }), day("2026-11-19"), day("2026-11-30"))).toEqual(["2026-11-20", "2026-11-21"]);
+  expect(uncreatedDates(dueRule({ kind: "afterCompletion", every: 1, unit: "day" }), day("2026-11-19"), day("2026-11-30"))).toEqual(["2026-11-20"]);
+  expect(uncreatedDates({ ...dueRule(daily), next: { kind: "waiting" } }, day("2026-11-19"), day("2026-11-30"))).toEqual([]);
 });

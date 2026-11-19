@@ -11,6 +11,7 @@ import { Result } from "neverthrow";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { PlannerTask, TaskRepeat } from "@lifeos/backend/types";
 import { AreaDot, areaVar } from "@/components/lifeos/area";
+import { formatMinutes } from "@/components/lifeos/format";
 import { ActualMeter } from "@/components/lifeos/focus-timer";
 import { lowerFirst, repeatLabel } from "@/components/lifeos/repeat";
 import { ActualChip, DeadlineMarker, EstimateChip, TaskCheckbox } from "@/components/lifeos/task-row";
@@ -153,8 +154,8 @@ const RowFocus = ({ task }: { task: PlannerTask }) => {
   return active ? <FocusBadge active={active} /> : null;
 };
 
-const TileMeta = ({ task, today, planned }: { task: PlannerTask; today: string; planned: number | undefined }) =>
-  (task.context || task.notes || task.checklist.length > 0 || planned !== undefined || task.deadline) && (
+const TileMeta = ({ task, today, planned, left }: { task: PlannerTask; today: string; planned: number | undefined; left: number | undefined }) =>
+  (task.context || task.notes || task.checklist.length > 0 || planned !== undefined || task.deadline || left !== undefined) && (
     <span className="flex w-full flex-wrap items-center gap-x-2.5 gap-y-0.5 pl-[1.875rem] text-small text-muted-foreground">
       {task.context && (
         <span className="flex max-w-full min-w-0 items-center gap-1.5">
@@ -166,6 +167,11 @@ const TileMeta = ({ task, today, planned }: { task: PlannerTask; today: string; 
         <span title="Planned start" className="shrink-0 font-mono text-faint-foreground">
           <span className="sr-only">Planned for </span>
           {clockTime(planned)}
+        </span>
+      )}
+      {left !== undefined && (
+        <span title="Counted on this day up to one day's share. The rest is left for other days." className="shrink-0 font-mono text-faint-foreground">
+          {formatMinutes(left)} left
         </span>
       )}
       {task.notes && (
@@ -271,7 +277,14 @@ const keepFocusInside = (event: React.KeyboardEvent, container: HTMLElement) => 
 
 const OUTSIDE_THE_CARD = "[data-radix-popper-content-wrapper], [data-toaster], [role=menu], [data-focus-pill]";
 
-export type TaskItemShow = { context?: boolean; star?: boolean; when?: boolean; closedAt?: boolean; tileOn?: string };
+export type TaskItemShow = {
+  context?: boolean;
+  star?: boolean;
+  when?: boolean;
+  closedAt?: boolean;
+  tileOn?: string;
+  tileLeft?: ReadonlyMap<string, number>;
+};
 
 const ROW_HIDDEN = { height: 0, opacity: 0, overflow: "hidden" };
 const ROW_SHOWN = { height: "auto", opacity: 1, transitionEnd: { overflow: "visible" } };
@@ -484,7 +497,7 @@ export const TaskItem = ({
               )}
             </span>
           )}
-          {tile && !open && !closed && <TileMeta task={task} today={today} planned={plannedToday?.start} />}
+          {tile && !open && !closed && <TileMeta task={task} today={today} planned={plannedToday?.start} left={show.tileLeft?.get(task._id)} />}
         </div>
         <AnimatePresence initial={false}>
           {open && (

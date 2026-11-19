@@ -1,4 +1,4 @@
-import { blockMinutesFor } from "./plan";
+import { blockMinutesFor, dayShareOf } from "./plan";
 
 export const SPREAD_BUFFER_MINUTES = 10;
 export const SPREAD_STEP_MINUTES = 5;
@@ -29,12 +29,14 @@ export const spreadDay = <T extends SpreadTask>({
   guessOf,
   busy,
   window,
+  cap,
 }: {
   tasks: readonly T[];
   boxed: ReadonlySet<string>;
   guessOf: (taskId: string) => number | undefined;
   busy: readonly Span[];
   window: Span;
+  cap: number;
 }) => {
   const taken = busy.map(padded).toSorted((a, b) => a.start - b.start);
   const placed: SpreadBlock<T["_id"]>[] = [];
@@ -42,7 +44,7 @@ export const spreadDay = <T extends SpreadTask>({
   let cursor = window.start;
   for (const task of tasks) {
     if (boxed.has(task._id)) continue;
-    const minutes = blockMinutesFor(task.estimateMinutes ?? guessOf(task._id));
+    const minutes = blockMinutesFor(dayShareOf(task.estimateMinutes ?? guessOf(task._id), cap));
     const start = firstFit(taken, cursor, minutes, window.end);
     if (start === null) {
       unfit.push(task);

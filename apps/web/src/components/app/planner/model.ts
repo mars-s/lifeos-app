@@ -3,8 +3,8 @@
 import { useMemo } from "react";
 import { api } from "@lifeos/backend/api";
 import { addDays, type IsoDate } from "@lifeos/backend/date";
-import { BLOCK_STEP_MINUTES, byDayPlan, dayLoad } from "@lifeos/backend/plan";
-import type { CommitmentRow, PlannerTask, WorkBlockRow } from "@lifeos/backend/types";
+import { BLOCK_STEP_MINUTES, byDayPlan, dayLoad, dayShareCap } from "@lifeos/backend/plan";
+import type { CommitmentRow, PlanGhost, PlannerTask, WorkBlockRow } from "@lifeos/backend/types";
 import type { MeterSlice } from "@/components/lifeos/capacity";
 import type { LoadArea } from "@/components/lifeos/day-goal";
 import type { TimeboxAllDay, TimeboxBlock, TimeboxCommitment } from "@/components/lifeos/timebox";
@@ -33,6 +33,8 @@ const blocksTime = (row: CommitmentRow) =>
 export type PlanDay = {
   date: IsoDate;
   tasks: PlannerTask[];
+  ghosts: readonly PlanGhost[];
+  left: ReadonlyMap<string, number>;
   free: number;
   goal: number;
   goalSet: boolean;
@@ -100,9 +102,10 @@ export const usePlanner = (today: IsoDate) => {
       const tasks = all.filter((task) => dayOf(task) === day.date && day.date <= last).toSorted(byDayPlan(day.date, byRank));
       const dayBlocks = open.filter((block) => localDate(block.start) === day.date);
       const load = dayLoad(
-        tasks,
+        [...tasks, ...day.ghosts.map((ghost) => ({ _id: ghost.key, estimateMinutes: ghost.estimateMinutes, area: ghost.area }))],
         dayBlocks.map((block) => ({ ...block, area: block.task.area })),
         (taskId) => guesses.get(taskId),
+        dayShareCap(day.goalMinutes),
       );
       const slices = load.slices.map((slice) => ({
         id: slice.id,
@@ -120,6 +123,8 @@ export const usePlanner = (today: IsoDate) => {
       return {
         date: day.date,
         tasks,
+        ghosts: day.ghosts,
+        left: new Map(load.slices.flatMap((slice) => (slice.left > 0 ? [[slice.id, slice.left] as const] : []))),
         free: day.freeMinutes,
         goal: day.goalMinutes,
         goalSet: day.goalSet,

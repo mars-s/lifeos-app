@@ -12,7 +12,7 @@ const spread = (
   list: { _id: string; estimateMinutes?: number | undefined }[],
   { busy = [] as Span[], window = workingDay, boxed = new Set<string>(), guesses = new Map<string, number>() } = {},
 ) => {
-  const { placed, unfit } = spreadDay({ tasks: list, boxed, guessOf: (id) => guesses.get(id), busy, window });
+  const { placed, unfit } = spreadDay({ tasks: list, boxed, guessOf: (id) => guesses.get(id), busy, window, cap: 480 });
   return { placed: placed.map((block) => `${block.taskId} ${clock(block.start)}+${block.minutes}`), unfit: unfit.map((task) => task._id) };
 };
 

@@ -298,7 +298,7 @@ A schedule that creates a fresh Task each time it comes due. `shared/recurrence.
 
 | Index | Serves |
 | --- | --- |
-| `by_next` (`next.kind`, `next.date`) | The generator (due on or before a date). Upcoming (due inside a window) |
+| `by_next` (`next.kind`, `next.date`) | The generator (due on or before a date). Upcoming (due inside a window). The Planner week (due on or before its last day) |
 
 A month day past the end of a month falls on its last day, so the 31st gives 30 April and 28 or 29 February. A yearly 29 February falls on 28 February in common years. Bounds: `every` is 1 to 99 days, 52 weeks, 24 months, 10 years or 99 after completion. `weeks.days` is not empty and is stored sorted without repeats. `after.count` is 1 to 999.
 
@@ -335,7 +335,7 @@ Each screen reads one query that returns exactly what it draws. All go through `
 | `planner/lists:area` (`areaId`) | An Area page: its open Tasks and its Projects with progress | `tasks.by_area_order`, `projects.by_area_order` |
 | `planner/lists:project` (`projectId`) | A Project page: open Tasks under their Headings, and progress over every Task | `headings.by_project_order`, `tasks.by_project_order` |
 | `planner/labels:list` | The Label picker on a Task card | `labels.by_order` |
-| `planner/plan:week` (`from`, `days` up to 31, `timeZone`) | The Planner's day columns: each day's open Tasks in Day Plan order, its **Day Load** (`plannedMinutes`, `guessedMinutes`, `unestimated`), its **Goal** (`goalMinutes`, `goalSet`) and its **Capacity**. `guesses` lists the Smart Estimates it counted, so the client can recount after an optimistic change. Tasks scheduled before `from` roll into the first day | `tasks.by_trashed_status_when`, `workBlocks.by_removed_start`, `dayPlans.by_date`, `estimateSuggestions.by_task`, and the Capacity reads |
+| `planner/plan:week` (`from`, `days` up to 31, `timeZone`) | The Planner's day columns: each day's open Tasks in Day Plan order, its **Day Load** (`plannedMinutes`, `guessedMinutes`, `unestimated`), its **Goal** (`goalMinutes`, `goalSet`) and its **Capacity**. `guesses` lists the Smart Estimates it counted, so the client can recount after an optimistic change. Tasks scheduled before `from` roll into the first day. Each day's `ghosts` are the Recurrence Rule occurrences in the window that are not made yet (every one, not only the next), and the Day Load counts their Estimates. A Task's Estimate counts at most the day's Goal | `tasks.by_trashed_status_when`, `workBlocks.by_removed_start`, `dayPlans.by_date`, `estimateSuggestions.by_task`, `recurrenceRules.by_next`, and the Capacity reads |
 | `planner/smartBlocks:range` (`from`, `days` up to 62, `timeZone`) | The Timebox zones: each Smart Block occurrence in the range with its window as moments and minutes, filters, repeat and how many Work Blocks (and minutes) fill it. `{ on: false }` while the Feature is off | `smartBlocks.by_removed_until`, `workBlocks.by_removed_start` |
 | `planner/smartBlocks:priority` | Area Priority in the Smart Blocks settings | `areas.by_order`, `features.by_feature` |
 | `planner/workBlocks:range` (`from`, `to`, moments, up to 100 days) | The Timebox calendar: live Work Blocks with their Task rows. Blocks of completed Tasks stay (they show as done), blocks of trashed Tasks are left out | `workBlocks.by_removed_start` |

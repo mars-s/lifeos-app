@@ -1,4 +1,5 @@
 import type { IsoDate } from "@lifeos/backend/date";
+import { dayShareCap } from "@lifeos/backend/plan";
 import { spreadDay, type Span } from "@lifeos/backend/spread";
 import type { PlannerTask } from "@lifeos/backend/types";
 import type { TimeboxSleep } from "@/components/lifeos/timebox";
@@ -31,6 +32,7 @@ export const previewSpread = ({
     guessOf: (taskId) => model.guesses.get(taskId),
     busy: [...day.busy, ...sleep],
     window,
+    cap: dayShareCap(day.goal),
   });
   const byId = new Map(tasks.map((task) => [task._id as string, task]));
   const picks = placed.flatMap(({ taskId, start, minutes }) => {
