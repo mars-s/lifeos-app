@@ -174,6 +174,9 @@ export const ControlSpecimens = () => {
             Complete a Task
           </Button>
           <Button onClick={() => showUndo("Moved to Tomorrow", () => toast("Back in Today"))}>Reschedule</Button>
+          <Button onClick={() => showUndo("Wire up the vault picker for th… moved to Trash", () => toast("Put back"))}>
+            Trash a long Project
+          </Button>
         </div>
         <div className="flex flex-wrap justify-center gap-2">
           <Button
