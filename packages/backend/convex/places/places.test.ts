@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi 
 import { api } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { DECISIONS_URL, newAiBackend as newBackend, newSignedOutBackend, strangerSession, unwrap, type Backend } from "../backend.test-utils";
-import { kindOf, NOMINATIM_URL, OVERPASS_URL, placePhrases, ROUTING_URL } from "./model";
+import { kindOf, nearestPlaces, NOMINATIM_URL, OVERPASS_URL, overpassQuery, placePhrases, ROUTING_URL } from "./model";
 
 const ADDRESS = "12 Harbour Street, Haymarket NSW 2000";
 const HOME = { lat: -33.876543, lon: 151.203217 };
@@ -115,6 +115,24 @@ describe("place phrases", () => {
     expect(kindOf("Chemist")?.value).toBe("a pharmacy");
     expect(kindOf("a post office")?.filters).toEqual([`"amenity"="post_office"`]);
     expect(kindOf("officeworks")).toBeUndefined();
+  });
+});
+
+describe("searching for a brand", () => {
+  test("asks for the brand and name exactly in common casings first, and only shops and amenities by pattern", () => {
+    const query = overpassQuery("officeworks", HOME);
+    expect(query).toContain(`["brand"="Officeworks"]`);
+    expect(query).toContain(`["name"="Officeworks"]`);
+    expect(query).toContain(`["brand"="officeworks"]`);
+    expect(query).toContain(`["shop"]["name"~"officeworks",i]`);
+    expect(query).not.toContain(`nwr["name"~`);
+    expect(query).not.toContain(`nwr["brand"~`);
+  });
+
+  test("a search Overpass gave up on is a failure to retry, not an empty street", () => {
+    const timedOut = { elements: [], remark: "runtime error: Query timed out in \"query\" at line 1 after 21 seconds." };
+    expect(nearestPlaces(timedOut, HOME)._unsafeUnwrapErr()).toEqual({ kind: "unavailable" });
+    expect(nearestPlaces({ elements: [] }, HOME)._unsafeUnwrap()).toEqual([]);
   });
 });
 

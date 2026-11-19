@@ -114,13 +114,26 @@ const overpassText = (text: string) => text.replace(/[\\"]/g, (char) => `\\${cha
 
 export const roundedPosition = ({ lat, lon }: Position) => ({ lat: Math.round(lat * 1000) / 1000, lon: Math.round(lon * 1000) / 1000 });
 
+const exactText = (text: string) => text.replace(/[\\"]/g, (char) => `\\${char}`);
+
+const titleCase = (text: string) => text.toLowerCase().replace(/(^|\s)(\S)/g, (_, space: string, letter: string) => `${space}${letter.toUpperCase()}`);
+
+const casings = (phrase: string) => [...new Set([phrase, titleCase(phrase), phrase.toLowerCase(), phrase.toUpperCase()])];
+
+const brandFilters = (phrase: string) => {
+  const exact = casings(phrase).flatMap((casing) => [`["brand"="${exactText(casing)}"]`, `["name"="${exactText(casing)}"]`]);
+  const pattern = overpassText(phrase);
+  return [...exact, `["shop"]["name"~"${pattern}",i]`, `["amenity"]["name"~"${pattern}",i]`];
+};
+
 export const overpassQuery = (phrase: string, from: Position) => {
   const around = `(around:${SEARCH_RADIUS_METRES},${from.lat},${from.lon})`;
   const kind = kindOf(phrase);
-  const name = overpassText(phrase.trim());
-  const filters = kind ? kind.filters.map((filter) => `[${filter}]`) : [`["brand"~"^${name}",i]`, `["name"~"${name}",i]`];
-  return `[out:json][timeout:20];(${filters.map((filter) => `nwr${filter}${around};`).join("")});out center tags ${SEARCH_RESULTS};`;
+  const filters = kind ? kind.filters.map((filter) => `[${filter}]`) : brandFilters(phrase.trim());
+  return `[out:json][timeout:25];(${filters.map((filter) => `nwr${filter}${around};`).join("")});out center tags ${SEARCH_RESULTS};`;
 };
+
+const gaveUp = (remark: unknown) => typeof remark === "string" && /runtime error|timed out|out of memory/i.test(remark);
 
 const radians = (degrees: number) => (degrees * Math.PI) / 180;
 
@@ -149,6 +162,7 @@ const placeOf = (element: unknown, home: Position) => {
 
 export const nearestPlaces = (body: unknown, home: Position) => {
   if (!isRecord(body) || !Array.isArray(body.elements)) return err<Place[], PlacesError>({ kind: "invalid_response" });
+  if (gaveUp(body.remark)) return err<Place[], PlacesError>({ kind: "unavailable" });
   const elements: unknown[] = body.elements;
   return ok<Place[], PlacesError>(
     elements
