@@ -13,6 +13,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -45,9 +46,28 @@ def undo(page):
     page.keyboard.press("ControlOrMeta+z")
 
 
-def check_templates(page, shot):
+def wait_for_saved(page, token, function, args, read, wanted):
+    until = time.monotonic() + 10
+    while True:
+        response = page.request.post(
+            f"{CONVEX_URL}/api/query",
+            headers={"Authorization": f"Bearer {token}"},
+            data={"path": function, "args": args},
+            timeout=2000,
+        )
+        result = response.json()
+        assert response.ok and result.get("status") == "success", f"Could not read {function}"
+        actual = read(result["value"])
+        if actual == wanted:
+            return
+        assert time.monotonic() < until, f"{function}: wanted saved {wanted!r}, got {actual!r}"
+        time.sleep(0.05)
+
+
+def check_templates(page, shot, token):
     page.goto(f"{BASE}/settings/features/templates", wait_until="domcontentloaded")
     rows = page.locator("[data-template-id] [data-arrow-item] > span:first-child")
+    saved = (page, token, "planner/templates:list", {}, lambda records: [record["title"] for record in records])
     expect(rows).to_have_text(TEMPLATES)
     invoice = page.get_by_role("button", name="Actions for Invoice a client")
     invoice.press("Enter")
@@ -57,14 +77,17 @@ def check_templates(page, shot):
     shot("template-menu")
     page.keyboard.press("Enter")
     expect(rows).to_have_text(TEMPLATES[::-1])
+    wait_for_saved(*saved, TEMPLATES[::-1])
     expect(invoice).to_be_focused()
     invoice.press("Enter")
     down = page.get_by_role("menuitem", name="Move Down")
     expect(down).to_be_focused()
     page.keyboard.press("Enter")
     expect(rows).to_have_text(TEMPLATES)
+    wait_for_saved(*saved, TEMPLATES)
     undo(page)
     expect(rows).to_have_text(TEMPLATES[::-1])
+    wait_for_saved(*saved, TEMPLATES[::-1])
 
     handle = page.get_by_role("button", name="Drag Weekly review")
     handle.scroll_into_view_if_needed()
@@ -76,8 +99,10 @@ def check_templates(page, shot):
     page.mouse.move(x, end["y"] + end["height"] / 2, steps=12)
     page.mouse.up()
     expect(rows).to_have_text(TEMPLATES)
+    wait_for_saved(*saved, TEMPLATES)
     undo(page)
     expect(rows).to_have_text(TEMPLATES[::-1])
+    wait_for_saved(*saved, TEMPLATES[::-1])
     page.reload()
     expect(rows).to_have_text(TEMPLATES[::-1])
 
@@ -122,9 +147,29 @@ def check_command_bar(page, shot):
     expect(task).to_contain_text(re.compile(r"repeats every 2 days", re.I))
 
 
-def check_upcoming(page, shot):
+def check_upcoming(page, shot, token, today):
     page.goto(f"{BASE}/upcoming", wait_until="domcontentloaded")
     task = page.locator("[data-task-key]").filter(has_text=GARY)
+    occurrence = page.get_by_role("button", name=re.compile(f"Repeats next: {GARY}"))
+    occurrence.click()
+    stop = page.get_by_role("menuitem", name="Stop Repeating")
+    expect(stop).to_be_enabled()
+    shot("stop-repeat")
+    stop.click()
+    expect(occurrence).to_have_count(0)
+
+    def gary_repeats(result):
+        assert result["ok"], "Could not read Upcoming occurrences"
+        return any(row["title"] == GARY for row in result["value"])
+
+    query = (page, token, "planner/recurrence:upcoming", {"date": today, "days": 28}, gary_repeats)
+    wait_for_saved(*query, False)
+    undo(page)
+    expect(occurrence).to_be_visible()
+    wait_for_saved(*query, True)
+    page.reload()
+    expect(occurrence).to_be_visible()
+
     task.get_by_text(GARY, exact=True).click(button="right")
     page.get_by_role("menuitem", name="Move to Trash").click()
     expect(task).to_have_count(0)
@@ -138,17 +183,9 @@ def check_upcoming(page, shot):
     expect(page.locator("[data-toaster] li").get_by_text(re.compile(r"Send Gary.*deleted"))).to_be_visible()
 
     page.goto(f"{BASE}/upcoming", wait_until="domcontentloaded")
-    occurrence = page.get_by_role("button", name=re.compile(f"Repeats next: {GARY}"))
-    occurrence.click()
-    stop = page.get_by_role("menuitem", name="Stop Repeating")
-    expect(stop).to_be_enabled()
-    shot("stop-repeat")
-    stop.click()
+    expect(page.get_by_role("heading", name="Upcoming", exact=True)).to_be_visible()
+    wait_for_saved(*query, False)
     expect(occurrence).to_have_count(0)
-    undo(page)
-    expect(occurrence).to_be_visible()
-    page.reload()
-    expect(occurrence).to_be_visible()
     expect(task).to_have_count(0)
 
 
@@ -191,9 +228,9 @@ def main():
                     page.screenshot(path=str(OUT / f"{name}-{width}-{theme}.png"))
 
                 try:
-                    check_templates(page, shot)
+                    check_templates(page, shot, session["accessToken"])
                     check_command_bar(page, shot)
-                    check_upcoming(page, shot)
+                    check_upcoming(page, shot, session["accessToken"], today)
                     assert not errors, errors
                 except Exception:
                     shot("failure")

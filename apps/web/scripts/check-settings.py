@@ -20,7 +20,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect as pw_expect, sync_playwright
 
 BASE = os.environ.get("BASE", "http://localhost:4041")
 CONVEX_URL = os.environ.get("CONVEX_URL", "http://127.0.0.1:3210")
@@ -62,9 +62,6 @@ def main():
         def shot(name):
             page.screenshot(path=str(OUT / f"{name}-{THEME}.png"))
 
-        def path():
-            return page.evaluate("location.pathname")
-
         def visit(where):
             page.goto(f"{BASE}/{where}")
             page.wait_for_selector("nav[aria-label=Lists] a")
@@ -73,8 +70,13 @@ def main():
         def lamp(scope, word):
             return scope.locator("[role=status]", has_text=re.compile(rf"^\s*{word}"))
 
-        def row(label):
-            return page.locator("#main div.px-3\\.5", has=page.get_by_text(label, exact=True)).first
+        def row(label, scope=page.locator("#main")):
+            return scope.locator("div.px-3\\.5", has=page.get_by_text(label, exact=True)).first
+
+        permissions = page.get_by_role("region", name="Permissions", exact=True)
+
+        def permission(label):
+            return row(label, permissions)
 
         visit("today")
         nav = page.locator("nav[aria-label=Lists]")
@@ -83,7 +85,7 @@ def main():
         expect("in a browser the Settings entry shows no warning", nav.get_by_text("needs attention").count(), 0)
         nav.get_by_role("link", name="Settings").click()
         page.wait_for_selector("h1:has-text('Settings')")
-        expect("the Settings entry opens Settings", path(), "/settings")
+        pw_expect(page).to_have_url(f"{BASE}/settings")
         expect(
             "every section is there",
             page.locator("#main h2").all_inner_texts(),
@@ -113,20 +115,20 @@ def main():
 
         visit("today")
         page.keyboard.press("ControlOrMeta+,")
-        page.wait_for_timeout(300)
-        expect("Cmd+, opens Settings", path(), "/settings")
+        pw_expect(page).to_have_url(f"{BASE}/settings")
         visit("inbox")
         page.keyboard.press("ControlOrMeta+k")
         page.wait_for_selector("[cmdk-root]")
         page.keyboard.type("settings")
         page.wait_for_timeout(150)
         page.keyboard.press("Enter")
-        page.wait_for_timeout(300)
-        expect("the command bar goes to Settings", path(), "/settings")
+        pw_expect(page).to_have_url(f"{BASE}/settings")
 
         visit("settings?__mac=ready")
-        expect("the Mac app shows three permissions", [row(name).count() for name in ["Apple Calendar", "Things data", "Keychain token"]], [1, 1, 1])
-        expect("a granted permission says Allowed and offers no button", [lamp(row("Things data"), "Allowed").count(), row("Things data").get_by_role("button").count()], [1, 0])
+        pw_expect(permission("Things data"), "The Mac preview requires a Waku dev server").to_be_visible()
+        names = ["Apple Calendar", "Things data", "Keychain token", "Notifications"]
+        expect("the Mac app shows four permissions", [permission(name).count() for name in names], [1, 1, 1, 1])
+        expect("a granted permission says Allowed and offers no button", [lamp(permission("Things data"), "Allowed").count(), permission("Things data").get_by_role("button").count()], [1, 0])
         expect("onboarding stays away once it is finished", page.get_by_role("dialog").count(), 0)
         expect("nothing is wrong, so the Settings entry shows no warning", nav.get_by_text("needs attention").count(), 0)
         page.get_by_role("button", name="Import now").click()
@@ -139,7 +141,8 @@ def main():
         page.set_viewport_size({"width": 1440, "height": 900})
 
         visit("settings?__mac=trouble")
-        expect("a refused calendar says so and offers System Settings", [lamp(row("Things data").locator("xpath=preceding-sibling::div"), "Not allowed").count(), page.get_by_role("button", name="Open System Settings").count()], [1, 1])
+        calendar = permission("Apple Calendar")
+        expect("a refused calendar says so and offers System Settings", [lamp(calendar, "Not allowed").count(), calendar.get_by_role("button", name="Open System Settings").count()], [1, 1])
         expect("a missing token is named", lamp(page, "No token").count(), 1)
         expect("a failed send is reported", page.get_by_text("did not finish").count(), 1)
         expect("the Settings entry warns when something is wrong", nav.get_by_text("needs attention").count(), 1)
@@ -152,10 +155,10 @@ def main():
         setup.get_by_role("button", name="Get started").click()
         setup.get_by_role("heading", name="Apple Calendar").wait_for()
         expect("first run opens the welcome, and Get started opens onboarding", setup.get_by_role("heading").inner_text(), "Apple Calendar")
-        expect("it starts at step one, not asked", [setup.get_by_text("1 of 4").count(), lamp(setup, "Not asked").count()], [1, 1])
+        expect("it starts at step one, not asked", [setup.get_by_text("1 of 5").count(), lamp(setup, "Not asked").count()], [1, 1])
         page.wait_for_timeout(300)
         shot("onboarding")
-        for index, title in enumerate(["Apple Calendar", "Things data", "Keychain token"]):
+        for index, title in enumerate(names):
             expect(f"step {index + 1} is {title}", setup.get_by_role("heading").inner_text(), title)
             if index == 1:
                 setup.get_by_role("button", name="Skip").click()
@@ -166,7 +169,7 @@ def main():
             if index == 0:
                 shot("onboarding-allowed")
             setup.get_by_role("button", name="Continue").click()
-        expect("Oura is the last, optional step", [setup.get_by_role("heading").inner_text(), setup.get_by_text("4 of 4").count()], ["Oura", 1])
+        expect("Oura is the last, optional step", [setup.get_by_role("heading").inner_text(), setup.get_by_text("5 of 5").count()], ["Oura", 1])
         setup.get_by_role("button").filter(has_text=re.compile("Not now|Continue")).click()
         setup.get_by_role("heading", name="This Mac is ready").wait_for()
         expect("the last screen sums it up", setup.get_by_role("heading").inner_text(), "This Mac is ready")
@@ -179,8 +182,8 @@ def main():
         expect("the skipped permission is flagged on the Settings entry", nav.get_by_text("needs attention").count(), 1)
         nav.get_by_role("link", name="Settings").click()
         page.wait_for_timeout(300)
-        row("Things data").get_by_role("button", name="Allow").click()
-        lamp(row("Things data"), "Allowed").wait_for(state="attached")
+        permission("Things data").get_by_role("button", name="Allow").click()
+        lamp(permission("Things data"), "Allowed").wait_for(state="attached")
         expect("the skipped permission is one click from Settings", nav.get_by_text("needs attention").count(), 0)
         browser.close()
     if failed:

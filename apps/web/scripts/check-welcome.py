@@ -5,7 +5,7 @@ Needs the throwaway backend from local-backend.sh and the web app running in dev
 
     SCRATCH=/tmp/lifeos-local-backend python scripts/check-welcome.py <output folder>
 
-BASE, CONVEX_URL, THEME (light or dark) and MOTION (reduce) change the run.
+BASE, CONVEX_URL, WIDTH, THEME (light or dark) and MOTION (reduce) change the run.
 The welcome is replayed with ?welcome (dev builds only), which never stores that setup finished.
 It prints ok or FAIL per step, saves welcome-<theme>.png, closing-<theme>.png,
 welcome-frames-<theme>.png and welcome-<theme>.mp4, and exits non-zero on a failure.
@@ -19,7 +19,7 @@ import sys
 import time
 from pathlib import Path
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect as pw_expect, sync_playwright
 
 BASE = os.environ.get("BASE", "http://localhost:4041")
 CONVEX_URL = os.environ.get("CONVEX_URL", "http://127.0.0.1:3210")
@@ -28,9 +28,11 @@ THEME = os.environ.get("THEME", "light")
 MOTION = os.environ.get("MOTION", "no-preference")
 OUT = Path(sys.argv[1] if len(sys.argv) > 1 else sys.exit(__doc__))
 NAMESPACE = re.sub(r"[^a-zA-Z0-9]", "", CONVEX_URL)
-SIZE = {"width": 1280, "height": 800}
+WIDTH = int(os.environ.get("WIDTH", "1440"))
+SIZE = {"width": WIDTH, "height": 900 if WIDTH >= 768 else 844}
 FRAME_AT_MS = [120, 420, 700, 1000, 1500, 2100]
-CROP = {"x": 340, "y": 160, "width": 600, "height": 460}
+CROP_WIDTH = min(600, WIDTH)
+CROP = {"x": (WIDTH - CROP_WIDTH) // 2, "y": (SIZE["height"] - 460) // 2, "width": CROP_WIDTH, "height": 460}
 failed = []
 
 
@@ -65,24 +67,23 @@ def title(page):
 
 def visit(page, where):
     page.goto(f"{BASE}/{where}")
-    page.wait_for_selector("nav[aria-label=Lists] a")
+    page.wait_for_selector("nav[aria-label=Lists] a", state="attached")
 
 
 def replay_from_command_bar(page):
     page.keyboard.press("ControlOrMeta+k")
     page.wait_for_selector("[cmdk-root]")
     page.keyboard.type("replay welcome")
-    page.wait_for_timeout(150)
-    page.keyboard.press("Enter")
+    page.get_by_role("option", name="Replay Welcome", exact=True).click()
     page.get_by_role("dialog").get_by_role("heading").wait_for()
 
 
 def walk_the_steps(page):
     setup = page.get_by_role("dialog")
-    for _ in range(4):
-        setup.get_by_role("button").filter(has_text=re.compile("Skip|Not now|Continue")).first.click()
-        page.wait_for_timeout(350)
-    return setup
+    for title in ("Apple Calendar", "Things data", "Keychain token", "Notifications", "Oura"):
+        setup.get_by_role("heading", name=title, exact=True).wait_for()
+        setup.get_by_role("button", name=re.compile(r"^(Skip|Not now|Continue)$")).click()
+    setup.get_by_role("heading", name="This Mac is ready").wait_for()
 
 
 def main():
@@ -94,22 +95,23 @@ def main():
         setup = page.get_by_role("dialog")
 
         visit(page, "today?__mac=fresh")
-        setup.get_by_role("heading").wait_for()
+        pw_expect(setup.get_by_role("heading"), "The Mac preview requires a Waku dev server").to_be_visible()
+        start = setup.get_by_role("button", name="Get started")
         if MOTION == "reduce":
-            expect("reduced motion shows the greeting and the button at once", setup.get_by_role("button", name="Get started").is_visible(), True)
+            pw_expect(start, "Reduced motion shows Get started immediately").to_be_visible(timeout=1000)
         else:
             expect("the welcome opens on the wordmark", title(page), "LifeOS")
             expect("the button waits for the mark to arrive", setup.locator("[inert] button").count(), 1)
+            pw_expect(setup).to_be_focused()
             page.keyboard.press("Enter")
-            page.wait_for_timeout(120)
-            expect("any key skips to the end of the arrival, and does not start setup", [setup.locator("[inert] button").count(), setup.get_by_role("button", name="Get started").count()], [0, 1])
-        page.wait_for_timeout(700)
-        expect("the greeting names Avi", bool(re.fullmatch(r"Good (morning|afternoon|evening), Avi", title(page))), True)
-        expect("Get started holds the focus", page.evaluate("document.activeElement?.textContent"), "Get started")
+            pw_expect(start, "Enter skips the arrival and leaves Get started on screen").to_be_visible()
+        pw_expect(setup.get_by_role("heading", name=re.compile(r"Good (morning|afternoon|evening), Avi"))).to_be_visible()
+        pw_expect(start).to_be_focused()
+        pw_expect(start.locator("xpath=..")).to_have_css("opacity", "1")
         page.screenshot(path=str(OUT / f"welcome-{THEME}.png"))
         setup.get_by_role("button", name="Get started").click()
         setup.get_by_role("heading", name="Apple Calendar").wait_for()
-        expect("Get started lands on step one", setup.get_by_text("1 of 4").count(), 1)
+        expect("Get started lands on step one", setup.get_by_text("1 of 5").count(), 1)
         page.wait_for_timeout(600)
         walk_the_steps(page)
         expect("the last screen sums it up", setup.get_by_role("heading").inner_text(), "This Mac is ready")
@@ -129,6 +131,7 @@ def main():
         setup.get_by_role("heading", name="Apple Calendar").wait_for()
         walk_the_steps(page)
         setup.get_by_role("button", name="Open LifeOS").click()
+        setup.get_by_role("heading", name="You’re set").wait_for()
         page.keyboard.press("Escape")
         setup.wait_for(state="detached", timeout=2000)
         expect("any key skips the closing beat", page.get_by_role("dialog").count(), 0)
