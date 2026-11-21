@@ -6,8 +6,8 @@ import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 import Animated, { interpolate, useAnimatedReaction, useAnimatedStyle, useSharedValue, withSpring, withTiming } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { deadlineMark, relativeDay, shortDay } from "@lifeos/backend/client/dates";
-import { formatMinutes } from "@lifeos/backend/estimate";
 import type { PlannerTask } from "@lifeos/backend/types";
+import { FocusTime, openFocusMenu, useTimeShown } from "@/components/focus-time";
 import { Checkbox } from "@/components/ui/checkbox";
 import { haptic } from "@/lib/haptics";
 import { useKit } from "@/lib/kit";
@@ -44,7 +44,8 @@ const Meta = ({ task, today, hint }: { task: PlannerTask; today: string; hint: R
   const done = task.checklist.filter((item) => item.done).length;
   const deadline = task.deadline && task.status.kind === "open" ? deadlineMark(task.deadline, today) : undefined;
   const context = hint === "context" ? task.context : undefined;
-  const quiet = !when && !context && task.checklist.length === 0 && task.estimateMinutes === undefined && !deadline && !task.repeat?.active && task.labels.length === 0 && task.notes === "";
+  const timeShown = useTimeShown(task);
+  const quiet = !when && !context && task.checklist.length === 0 && !timeShown && !deadline && !task.repeat?.active && task.labels.length === 0 && task.notes === "";
   if (quiet) return null;
   return (
     <View style={styles.meta}>
@@ -64,9 +65,7 @@ const Meta = ({ task, today, hint }: { task: PlannerTask; today: string; hint: R
           </Text>
         </View>
       ) : null}
-      {task.estimateMinutes === undefined ? null : (
-        <Text style={[styles.figure, { color: colors.mutedForeground, backgroundColor: tones.surface }]}>{formatMinutes(task.estimateMinutes)}</Text>
-      )}
+      <FocusTime task={task} />
       {task.checklist.length > 0 ? (
         <View style={styles.pair}>
           <ListChecks size={12} color={tones.faintForeground} />
@@ -187,6 +186,7 @@ export const TaskRow = memo(({ task, today, hint = "context" }: { task: PlannerT
             }}
             onPressOut={() => pressed.set(0)}
             onPress={open}
+            onLongPress={() => openFocusMenu(task, () => router.push("/focus"))}
             disabled={isUnsaved(task._id)}
             style={styles.body}
           >
@@ -225,6 +225,5 @@ const styles = StyleSheet.create({
   dot: { width: 7, height: 7, borderRadius: 4 },
   small: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 18 },
   context: { flexShrink: 1 },
-  figure: { fontFamily: fonts.mono, fontSize: 12, lineHeight: 18, paddingHorizontal: 6, borderRadius: 6, overflow: "hidden" },
   count: { fontFamily: fonts.mono, fontSize: 12, lineHeight: 18 },
 });

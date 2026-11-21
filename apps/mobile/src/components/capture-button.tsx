@@ -13,9 +13,10 @@ import { drag, dropAt, nearestGap } from "@/lib/magic-plus";
 import { EASE_OUT, PRESS_MS, SPRING_SETTLE } from "@/lib/motion";
 
 const SIZE = 58;
+export const CAPTURE_SIZE = SIZE;
 export const TAB_BAR_CLEARANCE = 64;
 
-const useGlass = () => {
+export const useGlass = () => {
   const [solid, setSolid] = useState(false);
   useEffect(() => {
     void AccessibilityInfo.isReduceTransparencyEnabled().then(setSolid);

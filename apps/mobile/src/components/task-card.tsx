@@ -10,6 +10,7 @@ import { trashingTasks } from "@lifeos/backend/client/updaters";
 import type { Id } from "@lifeos/backend/dataModel";
 import { formatMinutes } from "@lifeos/backend/estimate";
 import type { PlannerTask } from "@lifeos/backend/types";
+import { FocusCardSection } from "@/components/focus-time";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Toaster } from "@/components/ui/toast";
 import { Checklist } from "@/components/checklist";
@@ -165,6 +166,7 @@ const Card = ({ task, today }: { task: PlannerTask; today: string }) => {
         />
         <ToolRow tool="move" taskId={task._id} icon={FolderInput} label="Move to" value={task.context ?? (task.when.kind === "inbox" ? "Inbox" : "No Area")} />
       </View>
+      <FocusCardSection task={task} onOptions={() => router.push("/focus")} />
       <View style={[styles.tools, { backgroundColor: tones.surfaceInset }]}>
         {saved ? <ActionRow icon={Copy} label="Duplicate" onPress={() => duplicateTask(task, today)} /> : null}
         {saved && !closed ? <ActionRow icon={ChartPie} label="Convert to Project" onPress={() => turnIntoProject(task, today)} /> : null}
