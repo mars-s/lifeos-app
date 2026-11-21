@@ -1,25 +1,31 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Archive, Check, Layers, Moon, Star, type LucideIcon } from "lucide-react-native";
+import { Archive, Check, Inbox, Layers, Moon, Search, SkipForward, Sparkles, Star, type LucideIcon } from "lucide-react-native";
 import { useMemo, useState, type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { api } from "@lifeos/backend/api";
 import { AREA_COLOURS } from "@lifeos/backend/client/colours";
 import { repeatActions } from "@lifeos/backend/client/repeat-actions";
-import { NEVER, baseDate, repeatPresets, sameSchedule, scheduleParts } from "@lifeos/backend/client/repeat";
+import { NEVER, baseDate, isPreset, repeatDay, repeatLabel, repeatPresets, sameSchedule, scheduleParts, type RepeatMode } from "@lifeos/backend/client/repeat";
+import { isOptimistic, type MoveTarget } from "@lifeos/backend/client/task-actions";
+import { describeSchedule } from "@lifeos/backend/recurrence";
 import type { Id } from "@lifeos/backend/dataModel";
 import { localIsoDate, type IsoDate } from "@lifeos/backend/date";
 import { formatMinutes, parseEstimateText } from "@lifeos/backend/estimate";
-import type { PlannerTask } from "@lifeos/backend/types";
+import type { PlannerTask, SidebarView, TaskRepeat } from "@lifeos/backend/types";
 import { Calendar } from "@/components/ui/calendar";
 import { Toaster } from "@/components/ui/toast";
 import { EmptyNote } from "@/components/task-list";
+import { ProgressRing } from "@/components/progress-ring";
+import { RepeatCustom, dateOf } from "@/components/repeat-custom";
+import { QuietButton } from "@/components/suggested-steps";
+import { useSmartEstimate, useSteps } from "@/lib/ai";
 import { change } from "@/lib/change";
 import { haptic } from "@/lib/haptics";
 import { useKit } from "@/lib/kit";
 import { fonts, usePlanner } from "@/lib/kit-theme";
 import type { Tool } from "@/lib/route";
-import { actionsFor, useTask } from "@/lib/tasks";
-import { useLocalDate, useView } from "@/lib/views";
+import { actionsFor, turnIntoProject, useTask } from "@/lib/tasks";
+import { useLocalDate, useView, valueOf } from "@/lib/views";
 
 const ESTIMATE_CHIPS = [10, 15, 30, 60, 120] as const;
 
@@ -29,14 +35,10 @@ const TITLES = {
   estimate: "Estimate",
   labels: "Labels",
   repeat: "Repeat",
+  move: "Move",
 } as const satisfies Record<Tool, string>;
 
 type ToolProps = { task: PlannerTask; today: IsoDate; close: () => void };
-
-const dateOf = (iso: string) => {
-  const [year = 0, month = 1, day = 1] = iso.split("-").map(Number);
-  return new Date(year, month - 1, day);
-};
 
 const Choice = ({ icon: Icon, lead, title, detail, selected, tint, onPress }: { icon?: LucideIcon; lead?: ReactNode; title: string; detail?: string; selected?: boolean; tint?: string; onPress: () => void }) => {
   const { colors } = useKit();
@@ -84,6 +86,7 @@ const WhenTool = ({ task, today, close }: ToolProps) => {
       />
       <Choice icon={Layers} title="Anytime" selected={when.kind === "anytime"} onPress={() => set({ kind: "anytime" })} />
       <Choice icon={Archive} title="Someday" selected={when.kind === "someday"} onPress={() => set({ kind: "someday" })} />
+      <Choice icon={Inbox} title="Inbox" selected={when.kind === "inbox"} onPress={() => set({ kind: "inbox" })} />
     </>
   );
 };
@@ -112,12 +115,23 @@ const DeadlineTool = ({ task, today, close }: ToolProps) => {
   );
 };
 
+const percent = new Intl.NumberFormat("en-AU", { style: "percent", maximumFractionDigits: 0 });
+
+const workingDays = (minutes: number, dayMinutes: number) => (minutes >= dayMinutes && minutes % dayMinutes === 0 ? minutes / dayMinutes : undefined);
+
+const daysLabel = (days: number) => (days % 5 === 0 ? (days === 5 ? "1 week" : `${days / 5} weeks`) : days === 1 ? "1 day" : `${days} days`);
+
 const EstimateTool = ({ task, today, close }: ToolProps) => {
   const { colors } = useKit();
   const tones = usePlanner();
   const actions = actionsFor(task, today);
+  const smart = useSmartEstimate(task);
+  const steps = useSteps(task);
   const [typed, setTyped] = useState("");
   const [unreadable, setUnreadable] = useState(false);
+  const guessed = smart.kind === "guesses" ? smart : undefined;
+  const chips: readonly { minutes: number; probability?: number }[] = guessed ? guessed.guesses : smart.kind === "thinking" ? [] : ESTIMATE_CHIPS.map((minutes) => ({ minutes }));
+  const big = guessed !== undefined && guessed.likely >= guessed.dayMinutes;
   const set = (minutes: number | null) => {
     haptic("toggle");
     void actions.setEstimate(minutes);
@@ -131,25 +145,65 @@ const EstimateTool = ({ task, today, close }: ToolProps) => {
   return (
     <>
       <View style={styles.chips}>
-        {ESTIMATE_CHIPS.map((minutes) => {
+        {smart.kind === "thinking"
+          ? [0, 1, 2].map((ghost) => <View key={ghost} accessibilityLabel={ghost === 0 ? "Guessing an Estimate" : undefined} style={[styles.chip, { backgroundColor: tones.surface, opacity: 0.6 }]} />)
+          : null}
+        {chips.map(({ minutes, probability }) => {
           const selected = task.estimateMinutes === minutes;
+          const likely = guessed?.likely === minutes;
+          const days = guessed ? workingDays(minutes, guessed.dayMinutes) : undefined;
+          const label = days === undefined ? formatMinutes(minutes) : daysLabel(days);
+          const odds = probability === undefined ? "" : `, ${percent.format(probability)} likely${likely ? ", the best guess" : ""}`;
           return (
             <Pressable
               key={minutes}
               accessibilityRole="button"
               accessibilityState={{ selected }}
-              accessibilityLabel={`${minutes} minutes`}
-              onPress={() => set(minutes)}
+              accessibilityLabel={`${label}${odds}`}
+              onPress={() => set(selected ? null : minutes)}
               style={({ pressed }) => [
                 styles.chip,
                 { backgroundColor: selected ? colors.primary : tones.surface, transform: [{ scale: pressed ? 0.97 : 1 }] },
+                likely && !selected ? [styles.likely, { borderColor: colors.accent }] : null,
               ]}
             >
-              <Text style={[styles.chipFigure, { color: selected ? colors.primaryForeground : colors.foreground }]}>{formatMinutes(minutes)}</Text>
+              <Text style={[days === undefined ? styles.chipFigure : styles.chipWords, { color: selected ? colors.primaryForeground : colors.foreground }]}>{label}</Text>
+              {probability === undefined ? null : (
+                <View style={[styles.odds, { backgroundColor: selected ? colors.primaryForeground : tones.surfaceRaised }]}>
+                  <View style={[styles.oddsFill, { width: `${Math.max(6, Math.round(probability * 100))}%`, backgroundColor: colors.accent }]} />
+                </View>
+              )}
+              {likely ? <Sparkles size={10} color={colors.accent} strokeWidth={2.5} style={styles.spark} /> : null}
             </Pressable>
           );
         })}
       </View>
+      {guessed ? (
+        <View style={styles.reason}>
+          <Sparkles size={13} color={colors.accent} strokeWidth={2} style={styles.reasonMark} />
+          <Text style={[styles.reasonText, { color: colors.mutedForeground }]}>
+            {percent.format(guessed.guesses.find((guess) => guess.minutes === guessed.likely)?.probability ?? 0)} likely {formatMinutes(guessed.likely)}. {guessed.reason}
+          </Text>
+        </View>
+      ) : null}
+      {smart.kind === "note" ? <Text style={[styles.hint, { color: tones.faintForeground }]}>{smart.note}</Text> : null}
+      {big ? (
+        <View style={styles.big}>
+          <Text style={[styles.hint, { color: colors.mutedForeground }]}>Big one. Split it up?</Text>
+          <View style={styles.bigActions}>
+            {steps.available ? (
+              <QuietButton
+                label="Break into steps"
+                onPress={() => {
+                  steps.ask();
+                  close();
+                }}
+              />
+            ) : null}
+            {task.status.kind === "open" ? <QuietButton label="Convert to Project" onPress={() => turnIntoProject(task, today)} /> : null}
+          </View>
+        </View>
+      ) : null}
       <TextInput
         value={typed}
         onChangeText={(text) => {
@@ -217,31 +271,164 @@ const LabelsTool = ({ task, today }: ToolProps) => {
   );
 };
 
+const nextLine = (repeat: TaskRepeat) => {
+  if (repeat.next.kind === "due") return `Next: ${repeatDay(repeat.next.date)}`;
+  if (repeat.next.kind === "waiting" && repeat.schedule.kind === "afterCompletion") return `Next: ${describeSchedule(repeat.schedule, NEVER).replace("after completion", "after you finish this")}`;
+  return undefined;
+};
+
 const RepeatTool = ({ task, today, close }: ToolProps) => {
+  const { colors } = useKit();
+  const tones = usePlanner();
   const actions = useMemo(() => repeatActions(change, task, today), [task, today]);
-  const current = task.repeat?.active ? task.repeat.schedule : undefined;
-  const presets = repeatPresets(baseDate(task.when, today));
-  const odd = current && !presets.some((preset) => sameSchedule(preset, current)) ? current : undefined;
+  const [custom, setCustom] = useState<RepeatMode | null>(null);
+  const repeat = task.repeat?.active ? task.repeat : undefined;
+  const current = repeat?.schedule;
+  const end = repeat?.end ?? NEVER;
+  const base = baseDate(task.when, today);
+  const presets = repeatPresets(base);
+  const odd = current && current.kind !== "afterCompletion" && !isPreset(current, base) ? current : undefined;
+  const next = repeat && nextLine(repeat);
   const pick = (run: () => void) => {
     haptic("toggle");
     run();
     close();
   };
+  const open = (mode: RepeatMode) => {
+    haptic("toggle");
+    setCustom(mode);
+  };
+  if (custom) {
+    return <RepeatCustom schedule={current} end={end} base={base} today={today} mode={custom} onCancel={() => setCustom(null)} onCommit={(schedule, chosen) => pick(() => actions.set(schedule, chosen))} />;
+  }
   return (
     <>
-      <Choice title="Does not repeat" selected={!current} onPress={() => pick(actions.stop)} />
-      {[...presets, ...(odd ? [odd] : [])].map((schedule) => {
+      <Choice title="Does not repeat" selected={!repeat} onPress={() => pick(actions.stop)} />
+      {presets.map((schedule) => {
         const { lead, qualifier } = scheduleParts(schedule);
-        return (
-          <Choice
-            key={JSON.stringify(schedule)}
-            title={lead}
-            {...(qualifier ? { detail: qualifier } : {})}
-            selected={sameSchedule(schedule, current)}
-            onPress={() => pick(() => actions.set(schedule, task.repeat?.active ? task.repeat.end : NEVER))}
-          />
-        );
+        const on = sameSchedule(schedule, current);
+        return <Choice key={JSON.stringify(schedule)} title={lead} {...(qualifier ? { detail: qualifier } : {})} selected={on} onPress={() => (on ? close() : pick(() => actions.set(schedule, end)))} />;
       })}
+      <View style={[styles.rule, { backgroundColor: colors.border }]} />
+      {odd ? <Choice title={repeatLabel(odd, NEVER)} selected onPress={() => open("calendar")} /> : null}
+      <Choice
+        title={current?.kind === "afterCompletion" ? repeatLabel(current, NEVER) : "After I finish it…"}
+        selected={current?.kind === "afterCompletion"}
+        onPress={() => open("afterCompletion")}
+      />
+      <Choice title="Custom…" onPress={() => open("calendar")} />
+      {next ? (
+        <View style={[styles.next, { borderTopColor: colors.border }]}>
+          <Text numberOfLines={1} style={[styles.nextText, { color: colors.mutedForeground }]}>
+            {next}
+          </Text>
+          {repeat?.next.kind === "due" ? (
+            <Pressable
+              accessibilityRole="button"
+              disabled={isOptimistic(repeat.ruleId)}
+              onPress={() => pick(actions.skip)}
+              style={({ pressed }) => [styles.skip, { backgroundColor: tones.surface, opacity: isOptimistic(repeat.ruleId) ? 0.4 : 1, transform: [{ scale: pressed ? 0.96 : 1 }] }]}
+            >
+              <SkipForward size={14} color={colors.mutedForeground} fill={colors.mutedForeground} />
+              <Text style={[styles.skipLabel, { color: colors.foreground }]}>Skip Next</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+    </>
+  );
+};
+
+type Area = SidebarView["areas"][number];
+type Project = SidebarView["projects"][number];
+
+const areaOf = (area: Area) => ({ _id: area._id, title: area.title, colour: area.colour, icon: area.icon });
+
+const MoveTool = ({ task, today, close }: ToolProps) => {
+  const { colors } = useKit();
+  const tones = usePlanner();
+  const actions = actionsFor(task, today);
+  const sidebar = valueOf(useView(api.planner.sidebar.get, { date: today }));
+  const [query, setQuery] = useState("");
+  const wanted = query.trim().toLowerCase();
+  const hit = (title: string) => wanted === "" || title.toLowerCase().includes(wanted);
+  const { parent } = task;
+  const go = (target: MoveTarget) => {
+    haptic("toggle");
+    actions.moveTo(target);
+    close();
+  };
+  const projectChoice = (project: Project, area: Area | undefined, indent: boolean) => (
+    <Choice
+      key={project._id}
+      lead={
+        <View style={[styles.lead, indent ? styles.indent : null]}>
+          <ProgressRing value={project.progress.total === 0 ? 0 : project.progress.done / project.progress.total} colour={area ? tones.area[area.colour] : colors.mutedForeground} />
+        </View>
+      }
+      title={project.title}
+      selected={parent.kind === "project" && parent.projectId === project._id}
+      onPress={() =>
+        isOptimistic(project._id)
+          ? undefined
+          : go({ parent: { kind: "project", projectId: project._id }, title: project.title, project: { _id: project._id, title: project.title }, ...(area ? { area: areaOf(area) } : {}) })
+      }
+    />
+  );
+  const loose = sidebar?.projects.filter((project) => hit(project.title)) ?? [];
+  const areas = (sidebar?.areas ?? []).flatMap((area) => {
+    const projects = hit(area.title) ? area.projects : area.projects.filter((project) => hit(project.title));
+    return hit(area.title) || projects.length > 0 ? [{ area, projects }] : [];
+  });
+  const none = wanted !== "" && loose.length === 0 && areas.length === 0;
+  return (
+    <>
+      <View style={[styles.search, { backgroundColor: tones.surfaceInset }]}>
+        <Search size={17} color={tones.faintForeground} strokeWidth={2} />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search Areas and Projects"
+          placeholderTextColor={tones.faintForeground}
+          accessibilityLabel="Search Areas and Projects"
+          returnKeyType="search"
+          autoCorrect={false}
+          clearButtonMode="while-editing"
+          style={[styles.searchField, { color: colors.foreground }]}
+        />
+      </View>
+      {wanted === "" ? (
+        <>
+          <Choice
+            icon={Inbox}
+            title="Inbox"
+            selected={task.when.kind === "inbox"}
+            onPress={() => {
+              haptic("toggle");
+              actions.setWhen({ kind: "inbox" });
+              close();
+            }}
+          />
+          <Choice icon={Layers} title="No Area or Project" selected={parent.kind === "loose"} onPress={() => go({ parent: { kind: "loose" }, title: "no Area" })} />
+        </>
+      ) : null}
+      {loose.map((project) => projectChoice(project, undefined, false))}
+      {areas.map(({ area, projects }) => (
+        <View key={area._id}>
+          <Choice
+            lead={
+              <View style={styles.lead}>
+                <View style={[styles.dot, { backgroundColor: tones.area[area.colour] }]} />
+              </View>
+            }
+            title={area.title}
+            selected={parent.kind === "area" && parent.areaId === area._id}
+            onPress={() => (isOptimistic(area._id) ? undefined : go({ parent: { kind: "area", areaId: area._id }, title: area.title, area: areaOf(area) }))}
+          />
+          {projects.map((project) => projectChoice(project, area, true))}
+        </View>
+      ))}
+      {none ? <Text style={[styles.hint, { color: tones.faintForeground }]}>Nothing called “{query.trim()}”.</Text> : null}
     </>
   );
 };
@@ -252,6 +439,7 @@ const TOOLS = {
   estimate: EstimateTool,
   labels: LabelsTool,
   repeat: RepeatTool,
+  move: MoveTool,
 } as const satisfies Record<Tool, (props: ToolProps) => ReactNode>;
 
 export const TaskToolScreen = () => {
@@ -293,6 +481,25 @@ const styles = StyleSheet.create({
   chips: { flexDirection: "row", gap: 8, paddingHorizontal: 8, paddingVertical: 6 },
   chip: { flex: 1, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
   chipFigure: { fontFamily: fonts.monoMedium, fontSize: 15 },
+  chipWords: { fontFamily: fonts.medium, fontSize: 14 },
+  likely: { borderWidth: 1.5, borderStyle: "dashed" },
+  odds: { position: "absolute", left: 14, right: 14, bottom: 7, height: 2, borderRadius: 1, overflow: "hidden" },
+  oddsFill: { height: 2, borderRadius: 1 },
+  spark: { position: "absolute", top: 4, right: 8 },
+  reason: { flexDirection: "row", gap: 8, paddingHorizontal: 10, paddingTop: 6 },
+  reasonMark: { marginTop: 3 },
+  reasonText: { flex: 1, fontFamily: fonts.regular, fontSize: 14, lineHeight: 20 },
+  big: { paddingHorizontal: 0, paddingTop: 2 },
+  bigActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: 10 },
+  rule: { height: StyleSheet.hairlineWidth, marginHorizontal: 8, marginVertical: 6 },
+  next: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 48, paddingHorizontal: 8, marginTop: 6, borderTopWidth: StyleSheet.hairlineWidth },
+  nextText: { flex: 1, fontFamily: fonts.regular, fontSize: 15, lineHeight: 20 },
+  skip: { flexDirection: "row", alignItems: "center", gap: 6, height: 34, borderRadius: 17, paddingHorizontal: 12 },
+  skipLabel: { fontFamily: fonts.medium, fontSize: 14 },
+  search: { flexDirection: "row", alignItems: "center", gap: 8, height: 44, borderRadius: 12, paddingHorizontal: 12, marginHorizontal: 8, marginBottom: 6 },
+  searchField: { flex: 1, fontFamily: fonts.regular, fontSize: 17, height: 44 },
+  lead: { width: 22, alignItems: "center" },
+  indent: { marginLeft: 22 },
   field: { fontFamily: fonts.regular, fontSize: 17, height: 48, borderRadius: 12, paddingHorizontal: 14, marginHorizontal: 8, marginTop: 10 },
   hint: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 18, paddingHorizontal: 10, paddingVertical: 8 },
   dot: { width: 10, height: 10, borderRadius: 5, marginHorizontal: 5 },

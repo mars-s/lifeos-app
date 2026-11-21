@@ -13,7 +13,7 @@ export const LIST_TITLES = {
   logbook: "Logbook",
 } as const;
 
-export const TOOLS = ["when", "deadline", "estimate", "labels", "repeat"] as const;
+export const TOOLS = ["when", "deadline", "estimate", "labels", "repeat", "move"] as const;
 export type Tool = (typeof TOOLS)[number];
 
 export const listHref = (kind: ListKind) => `/lists/${kind}` as Href;

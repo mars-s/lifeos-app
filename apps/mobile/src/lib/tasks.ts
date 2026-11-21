@@ -1,3 +1,4 @@
+import { router } from "expo-router";
 import { useSyncExternalStore } from "react";
 import { api } from "@lifeos/backend/api";
 import { taskActions, quoted } from "@lifeos/backend/client/task-actions";
@@ -9,6 +10,7 @@ import { change } from "@/lib/change";
 import { convex } from "@/lib/convex";
 import { haptic } from "@/lib/haptics";
 import { LINGER_MS } from "@/lib/motion";
+import { projectHref } from "@/lib/route";
 import { useView } from "@/lib/views";
 
 const PREWARM_MS = 8000;
@@ -81,3 +83,17 @@ const confirm = ({ title, body, action, onConfirm }: { title: string; body: stri
   ]);
 
 export const actionsFor = (task: PlannerTask, today: string) => taskActions(change, task, today, confirm);
+
+export const turnIntoProject = (task: PlannerTask, today: string) => {
+  if (isUnsaved(task._id)) return;
+  haptic("drop");
+  router.dismissAll();
+  void actionsFor(task, today).convertToProject((projectId) => router.push(projectHref(projectId)));
+};
+
+export const duplicateTask = (task: PlannerTask, today: string) => {
+  if (isUnsaved(task._id)) return;
+  haptic("drop");
+  router.back();
+  void actionsFor(task, today).duplicate();
+};
