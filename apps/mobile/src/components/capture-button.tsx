@@ -1,7 +1,7 @@
 import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable } from "expo-glass-effect";
-import { useRouter } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 import { Plus } from "lucide-react-native";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AccessibilityInfo, StyleSheet, View } from "react-native";
 import { GestureDetector, useExclusiveGestures, usePanGesture, useTapGesture } from "react-native-gesture-handler";
 import Animated, { ReduceMotion, useAnimatedReaction, useAnimatedStyle, useSharedValue, withSpring, withTiming } from "react-native-reanimated";
@@ -9,8 +9,9 @@ import { scheduleOnRN } from "react-native-worklets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { haptic } from "@/lib/haptics";
 import { useKit } from "@/lib/kit";
-import { drag, dropAt, nearestGap } from "@/lib/magic-plus";
+import { drag, dropAt, nearestGap, todaySlot } from "@/lib/magic-plus";
 import { EASE_OUT, PRESS_MS, SPRING_SETTLE } from "@/lib/motion";
+import { useLocalDate } from "@/lib/views";
 
 const SIZE = 58;
 export const CAPTURE_SIZE = SIZE;
@@ -30,6 +31,18 @@ const CANCEL_REACH = 44;
 
 const snap = () => haptic("snap");
 
+const TODAY_PATH = "/";
+
+const useTapSlot = () => {
+  const pathname = usePathname();
+  const today = useLocalDate();
+  const slot = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    slot.current = pathname === TODAY_PATH ? JSON.stringify(todaySlot(today)) : undefined;
+  }, [pathname, today]);
+  return slot;
+};
+
 export const CaptureButton = () => {
   const { colors, shadow } = useKit();
   const insets = useSafeAreaInsets();
@@ -39,10 +52,12 @@ export const CaptureButton = () => {
   const dx = useSharedValue(0);
   const dy = useSharedValue(0);
   const lifted = useSharedValue(0);
+  const tapSlot = useTapSlot();
 
   const capture = () => {
     haptic("toggle");
-    router.push("/capture");
+    const slot = tapSlot.current;
+    router.push(slot ? { pathname: "/capture", params: { slot } } : "/capture");
   };
 
   const place = (gap: number) => {

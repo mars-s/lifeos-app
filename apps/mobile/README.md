@@ -53,12 +53,13 @@ Tap **Sign in with GitHub**. iOS asks to open github.com, then GitHub asks for y
 
 | Screen | What it does |
 | --- | --- |
-| Tabs | Today, Upcoming, Inbox and Lists in the iOS 26 Liquid Glass tab bar, with Search as its own round tab. The bar shrinks as you scroll |
+| Tabs | Today, Upcoming and Lists in the iOS 26 Liquid Glass tab bar, with Search as its own round tab. The bar shrinks as you scroll |
+| Today and Inbox | One tab, two pages. The segmented switch at the top (it shows the Inbox count) or a sideways swipe moves between them, and the large title follows. The app reopens on the page you left |
 | Lists | Anytime, Someday, Logbook, then Areas with their Projects, like the Things home |
 | Search | Open Tasks by title, notes or Label, and Projects and Areas by name |
 | A list | Live Tasks with a large title that turns to glass on scroll. Swipe a Task right to complete it, left to pick its When. Tap it to open the card |
 | Task card | A sheet with the title, notes and Checklist Items (drag the handle to reorder, swipe left to delete), then When, Deadline, Estimate, Labels, Repeat (presets, Custom, After I finish it, Skip Next) and Move to (a searchable list of Areas and Projects, plus Inbox). Below them: Duplicate, Convert to Project and Move to Trash. With the AI Feature on, the Estimate sheet shows Smart Estimate guesses and the card offers Break into steps |
-| Quick capture | The glass + button above the tab bar (a plain blue button when Reduce Transparency is on). One line with the same shortcuts as the web: `tomorrow 30m #label !fri @list` |
+| Quick capture | The glass + button above the tab bar (a plain blue button when Reduce Transparency is on). One line with the same shortcuts as the web: `tomorrow 30m #label !fri @list`. A tap on the Today page makes the Task for today; anywhere else it lands in the Inbox |
 | Settings | The gear on Lists. Your GitHub account and Sign out, the Features with the same switches as the web, the version and build, and a link to the web app (set `EXPO_PUBLIC_WEB_URL` in `.env.local`) |
 | Offline | Every list you have seen is saved on the phone (`expo-sqlite` key-value store, never the sign-in tokens, which stay in the Keychain). The app opens on those lists at once, even with no network, and swaps in live data when Convex connects. Changes made offline show at once, can be undone, and send when the network is back, as long as the app stays open |
 | Drag the + | Drag the + button into a list and a gap opens where the new Task will go. Let go to name it, and it lands exactly there, in every list. Drag back to the button to cancel |

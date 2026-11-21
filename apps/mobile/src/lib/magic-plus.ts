@@ -19,6 +19,8 @@ export type DayPlace = { ids: string[]; at: number };
 
 export type Drop = Slot & { order?: string; day?: DayPlace };
 
+export const todaySlot = (date: string) => ({ when: { kind: "scheduled", date, evening: false }, parent: { kind: "loose" }, label: "Today" }) satisfies Slot;
+
 type Placeable = { kind: "task"; task: PlannerTask } | { kind: "header"; slot?: Slot } | { kind: "note" } | { kind: string };
 
 export const drag = {

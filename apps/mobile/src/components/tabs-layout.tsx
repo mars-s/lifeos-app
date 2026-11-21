@@ -4,7 +4,7 @@ import { convex } from "@/lib/convex";
 import { useKit } from "@/lib/kit";
 import { useLocalDate, useViewState, valueOf } from "@/lib/views";
 
-const useCounts = () => {
+export const useCounts = () => {
   const today = useLocalDate();
   return valueOf(useViewState(api.planner.sidebar.get, convex ? { date: today } : "skip").value)?.counts;
 };
@@ -22,11 +22,6 @@ export const TabsLayout = () => {
       <NativeTabs.Trigger name="upcoming">
         <NativeTabs.Trigger.Icon sf="calendar" md="calendar_month" />
         <NativeTabs.Trigger.Label>Upcoming</NativeTabs.Trigger.Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="inbox">
-        <NativeTabs.Trigger.Icon sf={{ default: "tray", selected: "tray.fill" }} md="inbox" />
-        <NativeTabs.Trigger.Label>Inbox</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Badge hidden={!counts?.inbox}>{String(counts?.inbox ?? "")}</NativeTabs.Trigger.Badge>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="lists">
         <NativeTabs.Trigger.Icon sf={{ default: "square.stack", selected: "square.stack.fill" }} md="layers" />
