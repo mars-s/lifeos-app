@@ -3,6 +3,9 @@ import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { SplashScreen, Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
+import { StyleSheet } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import { api } from "@lifeos/backend/api";
 import { OwnerGate } from "@/components/owner-gate";
 import { convex, secureStorage } from "@/lib/convex";
@@ -35,6 +38,8 @@ export default function RootLayout() {
     );
   }
   return (
+    <GestureHandlerRootView style={styles.root}>
+      <KeyboardProvider>
     <ConvexAuthProvider
       client={convex}
       storage={secureStorage}
@@ -50,5 +55,9 @@ export default function RootLayout() {
         </OwnerGate>
       </AppTheme>
     </ConvexAuthProvider>
+      </KeyboardProvider>
+    </GestureHandlerRootView>
   );
 }
+
+const styles = StyleSheet.create({ root: { flex: 1 } });
