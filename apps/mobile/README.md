@@ -27,6 +27,24 @@ The app uses native modules that Expo Go does not ship (Gesture Handler 3, Reani
 
 Rebuild with `npx expo run:ios` after adding a package with native code or changing `app.json`. To put it on a real iPhone, plug it in and run `npx expo run:ios --device`.
 
+## Put it on your iPhone with Sideloadly
+
+This makes a release `.ipa` with the JavaScript built in, so it runs without a dev server. It is unsigned: Sideloadly signs it with your Apple ID.
+
+1. Check `apps/mobile/.env.local` holds `EXPO_PUBLIC_CONVEX_URL` (step 1 above).
+2. Build it. It takes about ten minutes.
+
+   ```sh
+   sh apps/mobile/scripts/build-ipa.sh
+   ```
+
+   The file lands at `apps/mobile/build/LifeOS.ipa`.
+
+3. Open Sideloadly, plug in the iPhone, drag `LifeOS.ipa` in, type your Apple ID and press Start.
+4. On the iPhone, open Settings, General, VPN & Device Management, and trust your Apple ID. Developer Mode must be on (Settings, Privacy & Security, Developer Mode).
+
+With a free Apple ID the app stops opening after 7 days. Run Sideloadly again to refresh it; your Tasks live in Convex, so nothing is lost. A free Apple ID can only keep 3 sideloaded apps at once.
+
 ## Sign in
 
 Tap **Sign in with GitHub**. iOS asks to open github.com, then GitHub asks for your login. The sheet closes on its own and the app opens. The session is kept in the Keychain, so the app stays signed in after it is closed. Any GitHub account other than the owner sees "This is not your LifeOS". `docs/auth.md` explains the flow.
@@ -35,10 +53,12 @@ Tap **Sign in with GitHub**. iOS asks to open github.com, then GitHub asks for y
 
 | Screen | What it does |
 | --- | --- |
-| Home | Inbox, Today, Upcoming, Anytime, Someday, Logbook, then Areas with their Projects |
-| A list | Live Tasks with a large title. Swipe a Task right to complete it, left to pick its When. Tap it to open the card |
+| Tabs | Today, Upcoming, Inbox and Lists in the iOS 26 Liquid Glass tab bar, with Search as its own round tab. The bar shrinks as you scroll |
+| Lists | Anytime, Someday, Logbook, then Areas with their Projects, like the Things home |
+| Search | Open Tasks by title, notes or Label, and Projects and Areas by name |
+| A list | Live Tasks with a large title that turns to glass on scroll. Swipe a Task right to complete it, left to pick its When. Tap it to open the card |
 | Task card | A sheet with the title, notes, Checklist Items, When, Deadline, Estimate, Labels and Repeat |
-| Quick capture | The blue button. One line with the same shortcuts as the web: `tomorrow 30m #label !fri @list` |
+| Quick capture | The glass + button above the tab bar (a plain blue button when Reduce Transparency is on). One line with the same shortcuts as the web: `tomorrow 30m #label !fri @list` |
 
 Every change shows in the same frame and raises an Undo toast. Shaking the phone undoes the newest change.
 
