@@ -22,6 +22,7 @@ const FLICK = 900;
 const SLACK = 0.28;
 const BOX = 22;
 const LIFT_MS = 350;
+const HOLD_SLOP = 8;
 
 export type RowHint = "context" | "when" | "none";
 
@@ -100,7 +101,7 @@ const Meta = ({ task, today, hint }: { task: PlannerTask; today: string; hint: R
 
 type Place = { host: string; index: number };
 
-const useLift = (task: PlannerTask, place: Place | undefined) => {
+const useLift = (task: PlannerTask, place: Place | undefined, onHold: () => void) => {
   const host = place?.host ?? "";
   const index = place?.index ?? -1;
   const mine = () => {
@@ -133,7 +134,10 @@ const useLift = (task: PlannerTask, place: Place | undefined) => {
     },
     onDeactivate: (event) => {
       "worklet";
-      if (mine()) scheduleOnRN(dropRow, host, index, drag.target.get(), event.canceled);
+      if (!mine()) return;
+      const still = Math.abs(event.translationX) < HOLD_SLOP && Math.abs(event.translationY) < HOLD_SLOP;
+      scheduleOnRN(dropRow, host, index, still ? index : drag.target.get(), event.canceled);
+      if (still && !event.canceled) scheduleOnRN(onHold);
     },
   });
 };
@@ -175,7 +179,8 @@ export const TaskRow = memo(({ task, today, hint = "context", host, index }: { t
   });
 
   const place = host !== undefined && index !== undefined ? { host, index } : undefined;
-  const lift = useLift(task, place);
+  const menu = () => openFocusMenu(task, () => router.push("/focus"));
+  const lift = useLift(task, place, menu);
   const gesture = useCompetingGestures(lift, pan);
 
   useAnimatedReaction(
@@ -238,7 +243,7 @@ export const TaskRow = memo(({ task, today, hint = "context", host, index }: { t
             }}
             onPressOut={() => pressed.set(0)}
             onPress={open}
-            onLongPress={() => openFocusMenu(task, () => router.push("/focus"))}
+            {...(place ? {} : { onLongPress: menu })}
             disabled={isUnsaved(task._id)}
             style={styles.body}
           >
