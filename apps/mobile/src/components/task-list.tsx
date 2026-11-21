@@ -149,7 +149,7 @@ export const EmptyNote = ({ title, body }: { title: string; body: string }) => {
   );
 };
 
-const Shifted = memo(({ host, index, children }: { host: string; index: number; children: ReactNode }) => {
+const Shifted = memo(({ host, index, backdrop, children }: { host: string; index: number; backdrop: string; children: ReactNode }) => {
   const style = useAnimatedStyle(() => {
     const mine = drag.host.get() === host;
     const source = mine ? drag.source.get() : -1;
@@ -170,7 +170,7 @@ const Shifted = memo(({ host, index, children }: { host: string; index: number; 
       shadowOpacity: quiet ? 0 : withTiming(0, ease),
     };
   });
-  return <Animated.View style={[styles.shifted, style]}>{children}</Animated.View>;
+  return <Animated.View style={[styles.shifted, { backgroundColor: backdrop }, style]}>{children}</Animated.View>;
 });
 
 const Ghost = ({ host, scroll }: { host: string; scroll: SharedValue<number> }) => {
@@ -352,46 +352,56 @@ const useDropHost = (items: readonly ListItem[], slot: Slot | undefined, orderin
       focused.current = true;
       publish();
       setDropResolver(host, (gap) => dropFor(latest.current.items, gap, latest.current.slot, latest.current.ordering ?? "key"));
-      setMover(host, {
-        lift: (index) => {
-          const { items: shown, slot: base, ordering: kind } = latest.current;
-          const item = shown[index];
-          if (!kind || item?.kind !== "task") return settleBack();
-          haptic("lift");
-          const others = shown.filter((_item, at) => at !== index);
-          drag.allowed.set(others.map((_item, at) => at === index || fits(item.task, dropFor(others, at, base, kind), kind)).concat(index === others.length || fits(item.task, dropFor(others, others.length, base, kind), kind)));
-          setLifted(item.key);
-        },
-        drop: (index, target, canceled) => {
-          if (canceled || target === index || target < 0) return settleBack();
-          drag.dy.set(
-            withTiming(landingOffset(index, target) - (drag.scrollY.get() - drag.startScroll.get()), { duration: FAST_MS, easing: EASE_OUT }, (finished) => {
-              "worklet";
-              if (finished) scheduleOnRN(commit, index, target);
-            }),
-          );
-        },
-        nudge: (index, step) => {
-          const { items: shown, slot: base, ordering: kind, today: day } = latest.current;
-          let target = index + step;
-          while (target >= 0 && target < shown.length && !moveChange(shown, index, target, base, kind ?? "key", day)) target += step;
-          const move = kind ? moveChange(shown, index, target, base, kind, day) : undefined;
-          if (!move) return haptic("error");
-          void change(move as Parameters<typeof change>[0]);
-        },
-      });
       return () => {
         focused.current = false;
         setDropResolver(host, null);
-        setMover(host, null);
         if (drag.host.get() === host && !drag.held.get()) {
           drag.host.set("");
           drag.gap.set(-1);
           drag.source.set(-1);
         }
       };
-    }, [host, publish, commit, settleBack]),
+    }, [host, publish]),
   );
+
+  useEffect(() => {
+    setMover(host, {
+      lift: (index) => {
+        const { items: shown, slot: base, ordering: kind } = latest.current;
+        const item = shown[index];
+        if (!kind || item?.kind !== "task") return settleBack();
+        drag.host.set(host);
+        drag.frameTop.set(frameTop.current);
+        drag.scrollY.set(scroll.get());
+        drag.startScroll.set(scroll.get());
+        drag.gapTops.set(tops.current);
+        drag.rowTops.set(rowTops.current);
+        drag.size.set((rowTops.current[index + 1] ?? 0) - (rowTops.current[index] ?? 0));
+        haptic("lift");
+        const others = shown.filter((_item, at) => at !== index);
+        drag.allowed.set(others.map((_item, at) => at === index || fits(item.task, dropFor(others, at, base, kind), kind)).concat(index === others.length || fits(item.task, dropFor(others, others.length, base, kind), kind)));
+        setLifted(item.key);
+      },
+      drop: (index, target, canceled) => {
+        if (canceled || target === index || target < 0) return settleBack();
+        drag.dy.set(
+          withTiming(landingOffset(index, target) - (drag.scrollY.get() - drag.startScroll.get()), { duration: FAST_MS, easing: EASE_OUT }, (finished) => {
+            "worklet";
+            if (finished) scheduleOnRN(commit, index, target);
+          }),
+        );
+      },
+      nudge: (index, step) => {
+        const { items: shown, slot: base, ordering: kind, today: day } = latest.current;
+        let target = index + step;
+        while (target >= 0 && target < shown.length && !moveChange(shown, index, target, base, kind ?? "key", day)) target += step;
+        const move = kind ? moveChange(shown, index, target, base, kind, day) : undefined;
+        if (!move) return haptic("error");
+        void change(move as Parameters<typeof change>[0]);
+      },
+    });
+    return () => setMover(host, null);
+  }, [host, scroll, commit, settleBack]);
 
   const onScroll = useAnimatedScrollHandler({
     onScroll: (event) => {
@@ -452,7 +462,7 @@ export const TaskList = ({
         data={shown}
         keyExtractor={(item) => item.key}
         renderItem={({ item, index }) => (
-          <Shifted host={host} index={index}>
+          <Shifted host={host} index={index} backdrop={colors.background}>
             <View onLayout={(event) => onRow(item.key, event.nativeEvent.layout.height)}>
               {item.kind === "task" ? (
                 <TaskRow task={item.task} today={today} {...(item.hint ? { hint: item.hint } : {})} {...(ordering ? { host, index } : {})} />

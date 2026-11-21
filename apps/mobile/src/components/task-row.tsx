@@ -112,10 +112,10 @@ const useLift = (task: PlannerTask, place: Place | undefined) => {
     activateAfterLongPress: LIFT_MS,
     onActivate: () => {
       "worklet";
-      if (host === "" || drag.host.get() !== host || drag.source.get() >= 0) return;
-      const tops = drag.rowTops.get();
-      drag.size.set((tops[index + 1] ?? 0) - (tops[index] ?? 0));
+      if (host === "") return;
+      drag.host.set(host);
       drag.allowed.set([]);
+      drag.size.set(0);
       drag.dy.set(0);
       drag.startScroll.set(drag.scrollY.get());
       drag.target.set(index);
