@@ -1,4 +1,4 @@
-import { addDays, laterOf, type IsoDate } from "@lifeos/backend/date";
+import { addDays, laterOf, type IsoDate } from "../date";
 import {
   MAX_EVERY,
   MAX_REPEAT_COUNT,
@@ -11,7 +11,7 @@ import {
   type RepeatEnd,
   type Schedule,
   type Weekday,
-} from "@lifeos/backend/recurrence";
+} from "../recurrence";
 
 export type { RepeatEnd, Schedule };
 

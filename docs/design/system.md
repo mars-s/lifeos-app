@@ -19,6 +19,7 @@ Three principles decide every choice:
 | LifeOS components | `apps/web/src/components/lifeos` |
 | The board and its sample data | `apps/web/src/components/design-board` |
 | iPhone palette (same values as hex) | `apps/mobile/src/lib/kit-theme.tsx` |
+| Optimistic updates, undo, Task and Repeat changes, capture matching and date words, shared by web and iPhone | `packages/backend/shared/client` (`@lifeos/backend/client/*`) |
 
 ## Colour
 

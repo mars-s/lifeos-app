@@ -12,7 +12,7 @@ import { StepsPreview, useBreakIntoSteps } from "./break-into-steps";
 import { ChecklistEditor } from "@/components/lifeos/checklist-editor";
 import { DeadlinePicker, WhenPicker } from "@/components/lifeos/date-pickers";
 import { LabelPicker } from "@/components/lifeos/label-picker";
-import { baseDate } from "@/components/lifeos/repeat";
+import { baseDate } from "@lifeos/backend/client/repeat";
 import { RepeatPicker } from "@/components/lifeos/repeat-picker";
 import { ToolButton } from "@/components/lifeos/tool-button";
 import { WorkBlockList } from "@/components/lifeos/work-blocks";

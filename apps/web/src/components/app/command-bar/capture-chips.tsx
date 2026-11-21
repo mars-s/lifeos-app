@@ -9,7 +9,7 @@ import { formatMinutes } from "@/components/lifeos/format";
 import { ProgressPie } from "@/components/lifeos/progress-ring";
 import type { CaptureChipView } from "@/components/lifeos/quick-capture";
 import { shortDay, whenLabel } from "../dates";
-import type { CaptureChip } from "./capture-model";
+import type { CaptureChip } from "@lifeos/backend/client/capture-model";
 
 export const WhenGlyph = ({ when, today, className = "size-3.5" }: { when: PlannerTask["when"]; today: string; className?: string }) => {
   if (when.kind === "inbox") return <Tray weight="fill" aria-hidden="true" className={`${className} text-muted-foreground`} />;

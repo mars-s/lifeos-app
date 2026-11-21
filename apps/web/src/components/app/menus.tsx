@@ -46,7 +46,7 @@ import { AREA_ICONS, AreaGlyph, type AreaIconName } from "@/components/lifeos/ar
 import { MonthGrid } from "@/components/lifeos/date-pickers";
 import { formatMinutes } from "@/components/lifeos/format";
 import { ProgressPie } from "@/components/lifeos/progress-ring";
-import { NEVER, baseDate, isPreset, repeatDay, repeatLabel, repeatPresets, sameSchedule, scheduleParts, type RepeatEnd, type RepeatMode, type Schedule } from "@/components/lifeos/repeat";
+import { NEVER, baseDate, isPreset, repeatDay, repeatLabel, repeatPresets, sameSchedule, scheduleParts, type RepeatEnd, type RepeatMode, type Schedule } from "@lifeos/backend/client/repeat";
 import { RepeatCustom } from "@/components/lifeos/repeat-picker";
 import { ContextMenu, type MenuGroup, type MenuItem } from "@/components/ui/action-menu";
 import { haptic } from "@/lib/haptics";

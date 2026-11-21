@@ -1,8 +1,8 @@
-import { parseCapture, slugOf, type CaptureField } from "@lifeos/backend/capture";
-import type { Id } from "@lifeos/backend/dataModel";
-import type { IsoDate } from "@lifeos/backend/date";
-import type { PlannerTask, SidebarView } from "@lifeos/backend/types";
-import { AREA_COLOURS } from "@/components/lifeos/area";
+import { parseCapture, slugOf, type CaptureField } from "../capture";
+import type { Id } from "../../convex/_generated/dataModel";
+import type { IsoDate } from "../date";
+import type { PlannerTask, SidebarView } from "../types";
+import { AREA_COLOURS } from "./colours";
 
 type Label = PlannerTask["labels"][number];
 type AreaSummary = NonNullable<PlannerTask["area"]>;

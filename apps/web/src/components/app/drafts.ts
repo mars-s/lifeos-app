@@ -6,7 +6,8 @@ import { api } from "@lifeos/backend/api";
 import type { Id } from "@lifeos/backend/dataModel";
 import type { IsoDate } from "@lifeos/backend/date";
 import type { PlannerTask } from "@lifeos/backend/types";
-import { rewriteView, type Updater } from "./local-views";
+import { rewriteView, type Updater } from "@lifeos/backend/client/local-views";
+import { taskAliases } from "@lifeos/backend/client/task-aliases";
 
 const OPTIMISTIC = "optimistic:task:";
 const CLOCK_SKEW_MS = 60_000;
@@ -35,7 +36,6 @@ const EMPTY: Snapshot = { drafts: [], adopted: new Map() };
 let snapshot = EMPTY;
 let count = 0;
 const aliases = new Map<string, string>();
-const realIds = new Map<string, Id<"tasks">>();
 const waiting = new Map<string, ((taskId: Id<"tasks"> | null) => void)[]>();
 const listeners = new Set<() => void>();
 
@@ -98,7 +98,7 @@ export const drafts = {
 
   saved: (key: string, taskId: Id<"tasks">) => {
     aliases.set(taskId, key);
-    realIds.set(key, taskId);
+    taskAliases.set(key, taskId);
     publish({ ...snapshot, drafts: snapshot.drafts.map((draft) => (draft.key === key ? { ...draft, taskId } : draft)) });
     settle(key, taskId);
   },
@@ -129,11 +129,11 @@ export const drafts = {
     publish({ ...snapshot, adopted: new Map(snapshot.adopted).set(key, task) });
   },
 
-  realId: (id: string) => realIds.get(id) ?? (id as Id<"tasks">),
+  realId: taskAliases.realId,
 
   whenSaved: (key: string) =>
     new Promise<Id<"tasks"> | null>((resolve) => {
-      const known = realIds.get(key);
+      const known = taskAliases.get(key);
       if (known) return resolve(known);
       if (!snapshot.drafts.some((draft) => draft.key === key)) return resolve(null);
       waiting.set(key, [...(waiting.get(key) ?? []), resolve]);

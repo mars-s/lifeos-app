@@ -13,7 +13,7 @@ import type { PlannerTask, TaskRepeat } from "@lifeos/backend/types";
 import { AreaDot, areaVar } from "@/components/lifeos/area";
 import { formatMinutes } from "@/components/lifeos/format";
 import { ActualMeter } from "@/components/lifeos/focus-timer";
-import { lowerFirst, repeatLabel } from "@/components/lifeos/repeat";
+import { lowerFirst, repeatLabel } from "@lifeos/backend/client/repeat";
 import { ActualChip, DeadlineMarker, EstimateChip, TaskCheckbox } from "@/components/lifeos/task-row";
 import { AnchoredPopover, type AnchoredPopoverProps } from "@/components/ui/popover-panel";
 import { haptic } from "@/lib/haptics";

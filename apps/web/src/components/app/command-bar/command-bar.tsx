@@ -6,7 +6,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { api } from "@lifeos/backend/api";
 import type { PlannerTask, SidebarView } from "@lifeos/backend/types";
-import { NEVER, baseDate, type RepeatMode } from "@/components/lifeos/repeat";
+import { NEVER, baseDate, type RepeatMode } from "@lifeos/backend/client/repeat";
 import { RepeatCustom } from "@/components/lifeos/repeat-picker";
 import { canUndo, undoLast } from "@/components/lifeos/undo";
 import { Kbd, KeyCombo } from "@/components/ui/key-hint";

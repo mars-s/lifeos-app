@@ -20,7 +20,8 @@
     "./recurrence": "./shared/recurrence.ts",
     "./types": {
       "types": "./shared/types.ts"
-    }
+    },
+    "./client/*": "./shared/client/*.ts"
   },
   "scripts": {
     "dev": "convex dev",

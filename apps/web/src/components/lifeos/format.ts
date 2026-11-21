@@ -1,7 +1,6 @@
 export const round = (value: number) => Math.round(value * 100) / 100;
 
-export const formatMinutes = (minutes: number) =>
-  `${Math.floor(minutes / 60)}:${String(Math.round(minutes) % 60).padStart(2, "0")}`;
+export { formatMinutes } from "@lifeos/backend/estimate";
 
 const clockParts = (minuteOfDay: number) => {
   const hour = Math.floor(minuteOfDay / 60);

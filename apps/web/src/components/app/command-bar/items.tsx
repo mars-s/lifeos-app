@@ -40,7 +40,7 @@ import { areaVar } from "@/components/lifeos/area";
 import { AreaGlyph } from "@/components/lifeos/area-icon";
 import { formatMinutes } from "@/components/lifeos/format";
 import { ProgressPie } from "@/components/lifeos/progress-ring";
-import { NEVER, baseDate, repeatDay, repeatLabel, repeatPresets, sameSchedule, type RepeatMode } from "@/components/lifeos/repeat";
+import { NEVER, baseDate, repeatDay, repeatLabel, repeatPresets, sameSchedule, type RepeatMode } from "@lifeos/backend/client/repeat";
 import { isDraftId } from "../container-actions";
 import { shortDay, weekdayLong, whenLabel } from "../dates";
 import type { ActiveFocus } from "../focus";

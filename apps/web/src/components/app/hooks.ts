@@ -10,7 +10,7 @@ import {
 } from "convex/server";
 import { useMemo, useSyncExternalStore } from "react";
 import { localIsoDate } from "@lifeos/backend/date";
-import { keepEqual } from "@/lib/keep-equal";
+import { lastSeenView, settleView } from "@lifeos/backend/client/view-cache";
 import { useReverted } from "./reverted-views";
 
 const TICK_MS = 20_000;
@@ -32,17 +32,6 @@ export const useLocalDate = () => useSyncExternalStore(subscribeTick, readLocalD
 
 export const useNow = () => useSyncExternalStore(subscribeTick, readTick, readNothing);
 
-const lastSeen = new Map<string, unknown>();
-const settled = new WeakMap<object, unknown>();
-
-const settle = (key: string, live: unknown) => {
-  const known = typeof live === "object" && live !== null ? settled.get(live) : undefined;
-  const kept = known ?? keepEqual(lastSeen.get(key), live);
-  if (typeof live === "object" && live !== null) settled.set(live, kept);
-  lastSeen.set(key, kept);
-  return kept;
-};
-
 const failing = () =>
   import.meta.env.DEV && typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("__fail") ?? "") : "";
 
@@ -61,10 +50,10 @@ export const useViewState = <Query extends FunctionReference<"query">>(query: Qu
   }, [name, argsKey]);
   const live: unknown = useQueries(queries).view;
   const key = argsKey === null ? null : `${name}:${argsKey}`;
-  const kept = key === null || live === undefined || live instanceof Error ? live : settle(key, live);
+  const kept = key === null || live === undefined || live instanceof Error ? live : settleView(key, live);
   const shown = useReverted(name, argsKey, kept);
   if (live instanceof Error) return { value: undefined, error: live };
-  return { value: (shown ?? (key ? lastSeen.get(key) : undefined)) as FunctionReturnType<Query> | undefined, error: null };
+  return { value: (shown ?? (key ? lastSeenView(key) : undefined)) as FunctionReturnType<Query> | undefined, error: null };
 };
 
 export const useView = <Query extends FunctionReference<"query">>(query: Query, args: FunctionArgs<Query> | "skip") => {

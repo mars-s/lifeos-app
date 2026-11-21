@@ -6,7 +6,7 @@ import { addDays, type IsoDate } from "@lifeos/backend/date";
 import type { PlannerTask, RecurringOccurrence, UpcomingView } from "@lifeos/backend/types";
 import { AreaDot } from "@/components/lifeos/area";
 import { CommitmentList, type CommitmentItem } from "@/components/lifeos/commitments";
-import { repeatLabel } from "@/components/lifeos/repeat";
+import { repeatLabel } from "@lifeos/backend/client/repeat";
 import { EmptyState } from "@/components/lifeos/states";
 import { EstimateChip } from "@/components/lifeos/task-row";
 import { cn } from "@/lib/utils";

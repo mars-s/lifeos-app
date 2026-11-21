@@ -6,7 +6,7 @@ import type { IsoDate } from "@lifeos/backend/date";
 import type { SidebarView } from "@lifeos/backend/types";
 import { useQuietView } from "../hooks";
 import { chipView, destinationOf } from "./capture-chips";
-import { captureLists, resolveCapture } from "./capture-model";
+import { captureLists, resolveCapture } from "@lifeos/backend/client/capture-model";
 
 const NO_LABELS: never[] = [];
 

@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "@lifeos/backend/api";
 import type { IsoDate } from "@lifeos/backend/date";
 import { QuickCapturePanel } from "@/components/lifeos/quick-capture";
-import { captureArgs } from "./command-bar/capture-model";
+import { captureArgs } from "@lifeos/backend/client/capture-model";
 import { useCapture } from "./command-bar/use-capture";
 import { useLocalDate, useQuietView, valueOf } from "./hooks";
 

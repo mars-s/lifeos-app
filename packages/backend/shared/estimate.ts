@@ -24,6 +24,9 @@ export const parseEstimateText = (input: string) => {
     : err<number, EstimateTextError>({ kind: "unreadable_estimate", input });
 };
 
+export const formatMinutes = (minutes: number) =>
+  `${Math.floor(minutes / 60)}:${String(Math.round(minutes) % 60).padStart(2, "0")}`;
+
 export const shortEstimate = (minutes: number) => {
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;

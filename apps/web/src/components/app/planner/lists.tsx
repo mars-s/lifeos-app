@@ -9,7 +9,7 @@ import type { IsoDate } from "@lifeos/backend/date";
 import type { PlanGhost, PlannerTask } from "@lifeos/backend/types";
 import { AreaDot } from "@/components/lifeos/area";
 import { formatMinutes } from "@/components/lifeos/format";
-import { repeatLabel } from "@/components/lifeos/repeat";
+import { repeatLabel } from "@lifeos/backend/client/repeat";
 import { EstimateChip } from "@/components/lifeos/task-row";
 import { RollingNumber } from "@/components/ui/rolling-number";
 import { cn } from "@/lib/utils";

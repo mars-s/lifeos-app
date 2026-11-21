@@ -10,7 +10,7 @@ import { knownTaskIds } from "../new-task";
 import { PLANNER_SLOT } from "../planner/lists";
 import { routeHref, type Route } from "../route";
 import { useShell } from "../shell-context";
-import { captureArgs, type ResolvedCapture } from "./capture-model";
+import { captureArgs, type ResolvedCapture } from "@lifeos/backend/client/capture-model";
 import { BarDialog } from "./dialog";
 import { bar } from "./store";
 import { useCapture } from "./use-capture";

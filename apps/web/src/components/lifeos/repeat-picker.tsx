@@ -33,7 +33,7 @@ import {
   type RepeatEnd,
   type RepeatMode,
   type Schedule,
-} from "./repeat";
+} from "@lifeos/backend/client/repeat";
 import { MenuRow, ToolButton } from "./tool-button";
 
 type RepeatState = { schedule: Schedule; end: RepeatEnd; next: RepeatNext; settled: boolean };

@@ -1,7 +1,7 @@
+import type { AreaColour } from "@lifeos/backend/client/colours";
 import { cn } from "@/lib/utils";
 
-export const AREA_COLOURS = ["violet", "green", "orange", "teal", "rose", "olive", "plum", "slate"] as const;
-export type AreaColour = (typeof AREA_COLOURS)[number];
+export { AREA_COLOURS, type AreaColour } from "@lifeos/backend/client/colours";
 
 export const areaVar = (colour: AreaColour) => `var(--area-${colour})`;
 
