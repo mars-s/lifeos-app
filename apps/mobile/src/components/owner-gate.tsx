@@ -7,6 +7,7 @@ import { Component, useState, type ReactNode } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { api } from "@lifeos/backend/api";
 import type { AccessError } from "@lifeos/backend/types";
+import { LifeosMark } from "@/components/lifeos-mark";
 import { iphoneReturnUrl } from "@/lib/convex";
 import { haptic } from "@/lib/haptics";
 import { useKit } from "@/lib/kit";
@@ -41,6 +42,7 @@ const SignInScreen = () => {
   const shown = problem ?? (flowError ? "GitHub sign-in did not finish. Try again." : null);
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      <LifeosMark size={44} ink={colors.foreground} quiet={colors.border} />
       <Text style={[text.xxl, styles.title, { color: colors.foreground }]}>LifeOS</Text>
       <Text style={[text.sm, styles.hint, { color: colors.mutedForeground }]}>
         A calm place to plan the day. Sign in to pick up where you left off.

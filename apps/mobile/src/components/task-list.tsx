@@ -17,6 +17,7 @@ export type ListItem =
   | { kind: "task"; key: string; task: PlannerTask; hint?: RowHint }
   | { kind: "header"; key: string; title: string; detail?: string; lead?: string; colour?: string }
   | { kind: "project"; key: string; title: string; href: Href; done: number; total: number; colour?: string }
+  | { kind: "area"; key: string; title: string; href: Href; colour: string }
   | { kind: "deadline"; key: string; task: PlannerTask }
   | { kind: "note"; key: string; text: string };
 
@@ -55,6 +56,23 @@ const ProjectLink = ({ item }: { item: Extract<ListItem, { kind: "project" }> })
         </Text>
         <ChevronRight size={16} color={tones.faintForeground} />
       </Pressable>
+  );
+};
+
+const AreaLink = ({ item }: { item: Extract<ListItem, { kind: "area" }> }) => {
+  const { colors } = useKit();
+  const tones = usePlanner();
+  const router = useRouter();
+  return (
+    <Pressable accessibilityRole="link" onPress={() => router.push(item.href)} style={({ pressed }) => [styles.project, pressed ? { backgroundColor: tones.surface } : null]}>
+      <View style={styles.areaMark}>
+        <View style={[styles.areaDot, { backgroundColor: item.colour }]} />
+      </View>
+      <Text numberOfLines={1} style={[styles.projectTitle, styles.areaTitle, { color: colors.foreground }]}>
+        {item.title}
+      </Text>
+      <ChevronRight size={16} color={tones.faintForeground} />
+    </Pressable>
   );
 };
 
@@ -103,6 +121,7 @@ export const TaskList = ({
   empty,
   top,
   onEndReached,
+  onSearch,
 }: {
   title: string;
   items: readonly ListItem[] | undefined;
@@ -110,12 +129,20 @@ export const TaskList = ({
   empty: ReactNode;
   top?: ReactNode;
   onEndReached?: () => void;
+  onSearch?: (query: string) => void;
 }) => {
   const { colors } = useKit();
   const tones = usePlanner();
   return (
     <>
-      <Stack.Screen options={{ title }} />
+      <Stack.Screen
+        options={{
+          title,
+          ...(onSearch
+            ? { headerSearchBarOptions: { placeholder: "Tasks, Projects and Areas", hideWhenScrolling: false, onChangeText: (event) => onSearch(event.nativeEvent.text) } }
+            : {}),
+        }}
+      />
       <Animated.FlatList
         data={items ?? []}
         keyExtractor={(item) => item.key}
@@ -126,6 +153,8 @@ export const TaskList = ({
             <Header item={item} />
           ) : item.kind === "project" ? (
             <ProjectLink item={item} />
+          ) : item.kind === "area" ? (
+            <AreaLink item={item} />
           ) : item.kind === "deadline" ? (
             <DeadlineRow task={item.task} />
           ) : (
@@ -138,6 +167,7 @@ export const TaskList = ({
         {...(top ? { ListHeaderComponent: <>{top}</> } : {})}
         ListEmptyComponent={items === undefined ? <Loading /> : <>{empty}</>}
         contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
         style={{ backgroundColor: colors.background }}
         {...(onEndReached ? { onEndReached, onEndReachedThreshold: 0.6 } : {})}
       />
@@ -146,7 +176,7 @@ export const TaskList = ({
 };
 
 const styles = StyleSheet.create({
-  content: { paddingBottom: 120, paddingTop: 4 },
+  content: { paddingBottom: 160, paddingTop: 4 },
   header: { flexDirection: "row", alignItems: "baseline", gap: 8, paddingHorizontal: 20, paddingTop: 22, paddingBottom: 6 },
   lead: { fontFamily: fonts.semibold, fontSize: 24, lineHeight: 28, letterSpacing: -0.5, fontVariant: ["tabular-nums"] },
   dot: { width: 9, height: 9, borderRadius: 5, alignSelf: "center" },
@@ -154,6 +184,9 @@ const styles = StyleSheet.create({
   detail: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 22 },
   project: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 20, minHeight: 48 },
   projectTitle: { flex: 1, fontFamily: fonts.medium, fontSize: 17, lineHeight: 24, letterSpacing: -0.2 },
+  areaMark: { width: 22, alignItems: "center" },
+  areaDot: { width: 12, height: 12, borderRadius: 6 },
+  areaTitle: { fontFamily: fonts.semibold },
   count: { fontFamily: fonts.mono, fontSize: 12 },
   due: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 44, paddingLeft: 24, paddingRight: 20 },
   dueTitle: { flex: 1, fontFamily: fonts.medium, fontSize: 15, lineHeight: 22 },
