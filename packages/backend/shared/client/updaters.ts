@@ -235,13 +235,47 @@ export const nothing = () => undefined;
 
 const isTodayWhen = (when: PlannerTask["when"], today: string) => when.kind === "scheduled" && when.date <= today;
 
+const placed = (tasks: readonly PlannerTask[], task: PlannerTask) => [...tasks, task].toSorted(byOrder);
+
+const showInContainer = (task: PlannerTask, store: OptimisticLocalStore) => {
+  const { parent } = task;
+  if (parent.kind === "project") {
+    const view = store.getQuery(api.planner.lists.project, { projectId: parent.projectId });
+    if (view)
+      store.setQuery(api.planner.lists.project, { projectId: parent.projectId }, {
+        ...view,
+        sections: view.sections.map((section) =>
+          (section.heading?._id ?? undefined) === parent.headingId ? { ...section, tasks: placed(section.tasks, task) } : section,
+        ),
+      });
+  }
+  if (parent.kind === "area") {
+    const view = store.getQuery(api.planner.lists.area, { areaId: parent.areaId });
+    if (view) store.setQuery(api.planner.lists.area, { areaId: parent.areaId }, { ...view, tasks: placed(view.tasks, task) });
+  }
+};
+
+const showOnDay = (task: PlannerTask, store: OptimisticLocalStore) => {
+  const { when } = task;
+  if (when.kind !== "scheduled") return;
+  for (const { args, value } of store.getAllQueries(api.planner.lists.upcoming)) {
+    if (!value?.ok || !value.value.days.some((day) => day.date === when.date)) continue;
+    store.setQuery(api.planner.lists.upcoming, args, {
+      ok: true,
+      value: { ...value.value, days: value.value.days.map((day) => (day.date === when.date ? { ...day, tasks: [...day.tasks, task] } : day)) },
+    });
+  }
+};
+
 export const showNewTask =
   (task: PlannerTask, today: string) =>
   (store: OptimisticLocalStore) => {
     if (task.when.kind === "inbox") {
       const inbox = store.getQuery(api.planner.lists.inbox, {});
-      if (inbox) store.setQuery(api.planner.lists.inbox, {}, { tasks: [...inbox.tasks, task] });
+      if (inbox) store.setQuery(api.planner.lists.inbox, {}, { tasks: placed(inbox.tasks, task) });
     }
+    showInContainer(task, store);
+    showOnDay(task, store);
     if (isTodayWhen(task.when, today)) {
       const view = store.getQuery(api.planner.today.get, { date: today });
       const evening = task.when.kind === "scheduled" && task.when.evening;

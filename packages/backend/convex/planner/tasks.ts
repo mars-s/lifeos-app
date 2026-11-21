@@ -55,6 +55,7 @@ export const create = changeMutation({
     parent: v.optional(vParent),
     labelIds: v.optional(v.array(v.id("labels"))),
     block: v.optional(vNewBlock),
+    order: v.optional(v.string()),
   },
   handler: async (ctx, args, record) => {
     const block = args.block ? parseNewBlock(args.block) : ok(undefined);
@@ -66,9 +67,10 @@ export const create = changeMutation({
       parseEstimate(args.estimateMinutes ?? null),
       await parseParent(ctx, args.parent ?? { kind: "loose" }),
       await parseLabels(ctx, args.labelIds ?? []),
+      args.order === undefined ? ok<string | undefined, PlannerError>(undefined) : parseOrder(args.order),
     ]);
     if (fields.isErr()) return err<{ taskId: Id<"tasks"> }, PlannerError>(fields.error);
-    const [title, when, deadline, estimateMinutes, parent, labelIds] = fields.value;
+    const [title, when, deadline, estimateMinutes, parent, labelIds, order] = fields.value;
     const taskId = await record.insert("tasks", {
       title,
       notes: args.notes ?? "",
@@ -78,7 +80,7 @@ export const create = changeMutation({
       parent,
       labelIds,
       status: { kind: "open" },
-      order: keyAfter(await lastTaskOrder(ctx, parent)),
+      order: order ?? keyAfter(await lastTaskOrder(ctx, parent)),
     });
     if (block.value) await record.insert("workBlocks", { taskId, ...block.value, done: false });
     await requestSuggestion(ctx, taskId);

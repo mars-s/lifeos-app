@@ -1,4 +1,5 @@
 import type { FunctionReturnType } from "convex/server";
+import { generateKeyBetween } from "fractional-indexing";
 import { describe, expect, test } from "vitest";
 import { api } from "../_generated/api";
 import { newBackend, unwrap } from "../backend.test-utils";
@@ -144,6 +145,24 @@ describe("Task mutations", () => {
     expect(a! < b!).toBe(true);
   });
 
+  test("a new Task can be placed between two others", async () => {
+    const t = await newBackend();
+    const first = unwrap(await t.mutation(api.planner.tasks.create, { title: "One" }));
+    const second = unwrap(await t.mutation(api.planner.tasks.create, { title: "Two" }));
+    const orderOf = async (taskId: typeof first.taskId) => (await t.query(api.planner.tasks.card, { taskId }))!.order;
+    const [a, b] = [await orderOf(first.taskId), await orderOf(second.taskId)];
+    const between = generateKeyBetween(a, b);
+    const placed = unwrap(await t.mutation(api.planner.tasks.create, { title: "Between", order: between }));
+    expect(await orderOf(placed.taskId)).toBe(between);
+    expect((await t.query(api.planner.lists.inbox, {})).tasks.map((task) => task.title)).toEqual(["One", "Between", "Two"]);
+  });
+
+  test("a new Task with a broken order is refused", async () => {
+    const t = await newBackend();
+    const result = await t.mutation(api.planner.tasks.create, { title: "Nowhere", order: "" });
+    expect(result).toMatchObject({ ok: false, error: { kind: "invalid_order" } });
+  });
+
   test.each(edits)("$name changes the Task, records Activity and undoes in one step", async (edit) => {
     const s = await setup();
     if (edit.prepare) await edit.prepare(s);
@@ -245,7 +264,6 @@ test("reorder moves a Task between its neighbours and refuses a malformed Order 
   for (const title of ["One", "Two", "Three"]) ids.push(unwrap(await t.mutation(api.planner.tasks.create, { title })).taskId);
   const inbox = async () => (await t.query(api.planner.lists.inbox, {})).tasks;
   const [first, second] = await inbox();
-  const { generateKeyBetween } = await import("fractional-indexing");
   unwrap(await t.mutation(api.planner.tasks.reorder, { taskId: ids[2]!, order: generateKeyBetween(first!.order, second!.order) }));
   expect((await inbox()).map((task) => task.title)).toEqual(["One", "Three", "Two"]);
   expect(await t.mutation(api.planner.tasks.reorder, { taskId: ids[2]!, order: "" })).toMatchObject({ ok: false, error: { kind: "invalid_order" } });
