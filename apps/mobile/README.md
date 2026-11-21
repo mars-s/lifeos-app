@@ -59,6 +59,7 @@ Tap **Sign in with GitHub**. iOS asks to open github.com, then GitHub asks for y
 | A list | Live Tasks with a large title that turns to glass on scroll. Swipe a Task right to complete it, left to pick its When. Tap it to open the card |
 | Task card | A sheet with the title, notes, Checklist Items, When, Deadline, Estimate, Labels and Repeat |
 | Quick capture | The glass + button above the tab bar (a plain blue button when Reduce Transparency is on). One line with the same shortcuts as the web: `tomorrow 30m #label !fri @list` |
+| Drag the + | Drag the + button into a list and a gap opens where the new Task will go. Let go to name it. In Inbox, Anytime, Someday, Areas and Projects it lands exactly there. Today and Upcoming have no hand-set order yet, so the gap opens at the end of a section (Today, This Evening, a day). Drag back to the button to cancel |
 
 Every change shows in the same frame and raises an Undo toast. Shaking the phone undoes the newest change.
 

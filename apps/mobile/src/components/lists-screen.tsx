@@ -85,6 +85,8 @@ const SignOut = () => {
   );
 };
 
+const signOutButton = () => <SignOut />;
+
 const Lists = () => {
   const today = useLocalDate();
   const sidebar = valueOf(useView(api.planner.sidebar.get, { date: today }));
@@ -105,7 +107,7 @@ export const ListsScreen = () => {
   const { colors } = useKit();
   return (
     <>
-      <Stack.Screen options={{ title: "Lists", ...(convex ? { headerRight: () => <SignOut /> } : {}) }} />
+      <Stack.Screen options={{ title: "Lists", ...(convex ? { headerRight: signOutButton } : {}) }} />
       <ScrollView contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: colors.background }} contentContainerStyle={styles.page}>
         {convex ? (
           <Lists />

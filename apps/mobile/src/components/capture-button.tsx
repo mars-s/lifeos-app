@@ -2,12 +2,15 @@ import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable } from "ex
 import { useRouter } from "expo-router";
 import { Plus } from "lucide-react-native";
 import { useEffect, useState } from "react";
-import { AccessibilityInfo, Pressable, StyleSheet, View } from "react-native";
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import { AccessibilityInfo, StyleSheet, View } from "react-native";
+import { GestureDetector, useExclusiveGestures, usePanGesture, useTapGesture } from "react-native-gesture-handler";
+import Animated, { ReduceMotion, useAnimatedReaction, useAnimatedStyle, useSharedValue, withSpring, withTiming } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { haptic } from "@/lib/haptics";
 import { useKit } from "@/lib/kit";
-import { EASE_OUT, PRESS_MS } from "@/lib/motion";
+import { drag, dropAt, nearestGap } from "@/lib/magic-plus";
+import { EASE_OUT, PRESS_MS, SPRING_SETTLE } from "@/lib/motion";
 
 const SIZE = 58;
 export const TAB_BAR_CLEARANCE = 64;
@@ -22,26 +25,103 @@ const useGlass = () => {
   return !solid && isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
 };
 
+const CANCEL_REACH = 44;
+
+const snap = () => haptic("snap");
+
 export const CaptureButton = () => {
   const { colors, shadow } = useKit();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const glass = useGlass();
   const pressed = useSharedValue(0);
-  const style = useAnimatedStyle(() => ({ transform: [{ scale: withTiming(pressed.get() ? 0.94 : 1, { duration: PRESS_MS, easing: EASE_OUT }) }] }));
+  const dx = useSharedValue(0);
+  const dy = useSharedValue(0);
+  const lifted = useSharedValue(0);
+
+  const capture = () => {
+    haptic("toggle");
+    router.push("/capture");
+  };
+
+  const place = (gap: number) => {
+    const drop = dropAt(gap);
+    if (!drop) {
+      drag.gap.set(-1);
+      return;
+    }
+    haptic("drop");
+    drag.held.set(true);
+    router.push({ pathname: "/capture", params: { slot: JSON.stringify(drop) } });
+  };
+
+  const tap = useTapGesture({
+    onBegin: () => {
+      "worklet";
+      pressed.set(1);
+    },
+    onActivate: () => {
+      "worklet";
+      scheduleOnRN(capture);
+    },
+    onFinalize: () => {
+      "worklet";
+      pressed.set(0);
+    },
+  });
+
+  const pan = usePanGesture({
+    minDistance: 8,
+    onActivate: () => {
+      "worklet";
+      lifted.set(1);
+      drag.gap.set(-1);
+      scheduleOnRN(snap);
+    },
+    onUpdate: (event) => {
+      "worklet";
+      dx.set(event.translationX);
+      dy.set(event.translationY);
+      const near = Math.hypot(event.translationX, event.translationY) < CANCEL_REACH;
+      drag.gap.set(near ? -1 : nearestGap(event.absoluteY));
+    },
+    onDeactivate: (event) => {
+      "worklet";
+      const gap = drag.gap.get();
+      if (gap >= 0 && !event.canceled) scheduleOnRN(place, gap);
+      else drag.gap.set(-1);
+      lifted.set(0);
+      dx.set(withSpring(0, { ...SPRING_SETTLE, velocity: event.velocityX, reduceMotion: ReduceMotion.System }));
+      dy.set(withSpring(0, { ...SPRING_SETTLE, velocity: event.velocityY, reduceMotion: ReduceMotion.System }));
+    },
+  });
+
+  const gesture = useExclusiveGestures(pan, tap);
+
+  useAnimatedReaction(
+    () => drag.gap.get(),
+    (gap, before) => {
+      if (lifted.get() && before !== null && gap !== before && gap >= 0) scheduleOnRN(snap);
+    },
+  );
+
+  const style = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: dx.get() },
+      { translateY: dy.get() },
+      { scale: withTiming(pressed.get() ? 0.94 : lifted.get() ? 1.06 : 1, { duration: PRESS_MS, easing: EASE_OUT }) },
+    ],
+  }));
   const plus = <Plus size={28} color={colors.accentForeground} strokeWidth={2.25} />;
   return (
-    <Animated.View style={[styles.place, { bottom: insets.bottom + TAB_BAR_CLEARANCE }, glass ? null : shadow("lg"), style]}>
-      <Pressable
+    <GestureDetector gesture={gesture}>
+      <Animated.View
+        accessible
         accessibilityRole="button"
         accessibilityLabel="New Task"
-        accessibilityHint="Opens quick capture"
-        onPressIn={() => pressed.set(1)}
-        onPressOut={() => pressed.set(0)}
-        onPress={() => {
-          haptic("toggle");
-          router.push("/capture");
-        }}
+        accessibilityHint="Opens quick capture. Drag it into a list to place the Task there."
+        onAccessibilityTap={capture}
+        style={[styles.place, { bottom: insets.bottom + TAB_BAR_CLEARANCE }, glass ? null : shadow("lg"), style]}
       >
         {glass ? (
           <GlassView isInteractive glassEffectStyle="regular" tintColor={colors.accent} style={styles.button}>
@@ -50,8 +130,8 @@ export const CaptureButton = () => {
         ) : (
           <View style={[styles.button, { backgroundColor: colors.accent }]}>{plus}</View>
         )}
-      </Pressable>
-    </Animated.View>
+      </Animated.View>
+    </GestureDetector>
   );
 };
 

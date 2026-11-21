@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ArrowUp, CalendarDays, Flag, Moon, Star } from "lucide-react-native";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming } from "react-native-reanimated";
 import { api } from "@lifeos/backend/api";
@@ -13,6 +13,7 @@ import type { IsoDate } from "@lifeos/backend/date";
 import { formatMinutes } from "@lifeos/backend/estimate";
 import type { PlannerTask } from "@lifeos/backend/types";
 import { change } from "@/lib/change";
+import { drag, type Drop } from "@/lib/magic-plus";
 import { haptic } from "@/lib/haptics";
 import { useKit } from "@/lib/kit";
 import { fonts, usePlanner } from "@/lib/kit-theme";
@@ -22,7 +23,19 @@ import { useLocalDate, useView, valueOf } from "@/lib/views";
 const NO_LABELS: never[] = [];
 let captured = 0;
 
-const draftOf = (capture: ResolvedCapture, key: string) =>
+type Placement = { parent?: PlannerTask["parent"]; order?: string; slot?: Drop };
+
+const placementOf = (capture: ResolvedCapture, slot: Drop | undefined) => {
+  if (!slot) return { capture, placement: {} satisfies Placement };
+  const ownWhen = capture.chips.some((chip) => chip.field === "when");
+  const ownList = capture.list !== undefined;
+  return {
+    capture: ownWhen ? capture : { ...capture, when: slot.when },
+    placement: (ownList ? {} : { parent: slot.parent, slot, ...(slot.order ? { order: slot.order } : {}) }) satisfies Placement,
+  };
+};
+
+const draftOf = (capture: ResolvedCapture, key: string, placement: Placement) =>
   ({
     _id: key as Id<"tasks">,
     _creationTime: Date.now(),
@@ -30,17 +43,18 @@ const draftOf = (capture: ResolvedCapture, key: string) =>
     notes: "",
     when: capture.when,
     parent:
-      capture.list?.kind === "area"
+      placement.parent ??
+      (capture.list?.kind === "area"
         ? { kind: "area", areaId: capture.list.id }
         : capture.list?.kind === "project"
           ? { kind: "project", projectId: capture.list.id }
-          : { kind: "loose" },
+          : { kind: "loose" }),
     labelIds: capture.labels.map((label) => label._id),
     status: { kind: "open" },
-    order: "~",
-    context: capture.list?.title,
-    area: capture.list?.area,
-    project: capture.list?.kind === "project" ? { _id: capture.list.id, title: capture.list.title } : undefined,
+    order: placement.order ?? "~",
+    context: placement.slot ? placement.slot.context : capture.list?.title,
+    area: placement.slot ? placement.slot.area : capture.list?.area,
+    project: placement.slot ? placement.slot.project : capture.list?.kind === "project" ? { _id: capture.list.id, title: capture.list.title } : undefined,
     labels: [...capture.labels],
     checklist: [],
     workBlocks: [],
@@ -58,14 +72,17 @@ const uncount = (task: PlannerTask, today: string) =>
     },
   }));
 
-const send = (capture: ResolvedCapture, today: IsoDate, text: string, reopen: (text: string) => void) => {
+const landing = (capture: ResolvedCapture, placement: Placement, today: string) =>
+  placement.slot && capture.when === placement.slot.when ? placement.slot.label : destinationOf(capture.when, capture.list ?? (placement.slot?.context ? { title: placement.slot.context } : undefined), today);
+
+const send = (capture: ResolvedCapture, placement: Placement, today: IsoDate, text: string, reopen: (text: string) => void) => {
   captured += 1;
   const key = `optimistic:task:${captured}`;
-  const task = draftOf(capture, key);
+  const task = draftOf(capture, key, placement);
   void change({
-    title: `Captured to ${destinationOf(capture.when, capture.list, today)}`,
+    title: `Captured to ${landing(capture, placement, today)}`,
     mutation: api.planner.tasks.create,
-    args: captureArgs(capture),
+    args: { ...captureArgs(capture), ...(placement.parent ? { parent: placement.parent } : {}), ...(placement.order ? { order: placement.order } : {}) },
     apply: showNewTask(task, today),
     revert: (store) => both(dropTasks([taskAliases.realId(key)]), uncount(task, today))(store),
     onSaved: ({ taskId }) => {
@@ -117,7 +134,8 @@ const Chip = ({ chip, today, onPress }: { chip: CaptureChip; today: string; onPr
 };
 
 export const CaptureScreen = () => {
-  const params = useLocalSearchParams<{ text?: string }>();
+  const params = useLocalSearchParams<{ text?: string; slot?: string }>();
+  const [slot] = useState(() => (params.slot ? (JSON.parse(params.slot) as Drop) : undefined));
   const { colors } = useKit();
   const tones = usePlanner();
   const router = useRouter();
@@ -127,7 +145,14 @@ export const CaptureScreen = () => {
   const [text, setText] = useState(params.text ?? "");
   const [ignored, setIgnored] = useState<ReadonlySet<string>>(() => new Set());
   const lists = useMemo(() => captureLists(sidebar), [sidebar]);
-  const capture = useMemo(() => resolveCapture(text, today, ignored, labels, lists), [text, today, ignored, labels, lists]);
+  const { capture, placement } = useMemo(() => placementOf(resolveCapture(text, today, ignored, labels, lists), slot), [text, today, ignored, labels, lists, slot]);
+  useEffect(
+    () => () => {
+      drag.held.set(false);
+      drag.gap.set(-1);
+    },
+    [],
+  );
   const nudge = useSharedValue(0);
   const shaken = useAnimatedStyle(() => ({ transform: [{ translateX: nudge.get() }] }));
   const ready = capture.title.trim() !== "";
@@ -139,7 +164,7 @@ export const CaptureScreen = () => {
       return;
     }
     haptic("drop");
-    send(capture, today, text, (kept) => router.push({ pathname: "/capture", params: { text: kept } }));
+    send(capture, placement, today, text, (kept) => router.push({ pathname: "/capture", params: { text: kept, ...(params.slot ? { slot: params.slot } : {}) } }));
     router.back();
   };
 
@@ -174,7 +199,7 @@ export const CaptureScreen = () => {
       ) : null}
       <View style={styles.foot}>
         <Text style={[styles.lands, { color: colors.mutedForeground }]}>
-          {ready ? `Saves to ${destinationOf(capture.when, capture.list, today)}` : "tomorrow 30m #label !fri"}
+          {ready ? `Saves to ${landing(capture, placement, today)}` : slot ? `New Task in ${slot.label}` : "tomorrow 30m #label !fri"}
         </Text>
         <Pressable
           accessibilityRole="button"
