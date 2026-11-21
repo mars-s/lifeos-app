@@ -75,10 +75,10 @@ export const UpcomingScreen = () => {
           title: relativeDay(day.date, today) ?? weekdayLong(day.date),
           detail: monthLong(day.date),
         } satisfies ListItem,
-        ...taskItems(day.tasks),
         ...day.deadlines
           .filter((task) => !day.tasks.some((planned) => planned._id === task._id))
-          .map((task) => ({ kind: "task", key: `due:${day.date}:${task._id}`, task }) satisfies ListItem),
+          .map((task) => ({ kind: "deadline", key: `due:${day.date}:${task._id}`, task }) satisfies ListItem),
+        ...taskItems(day.tasks),
       ]),
     [view, today],
   );

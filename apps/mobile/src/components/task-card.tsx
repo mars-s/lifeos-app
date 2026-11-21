@@ -237,7 +237,7 @@ export const TaskCardScreen = () => {
   return (
     <View collapsable={false} style={[styles.sheet, { backgroundColor: colors.popover }]}>
       {task ? <Card task={task} today={today} /> : <EmptyNote title="This Task is gone" body="It was removed somewhere else." />}
-      <Toaster variant="minimal" position="bottom" safeArea />
+      <Toaster variant="minimal" position="top" offset={18} />
     </View>
   );
 };

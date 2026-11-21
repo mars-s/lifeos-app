@@ -274,7 +274,7 @@ export const TaskToolScreen = () => {
         </View>
         {task ? <Body task={task} today={today as IsoDate} close={() => router.back()} /> : <EmptyNote title="This Task is gone" body="It was removed somewhere else." />}
       </ScrollView>
-      <Toaster variant="minimal" position="bottom" safeArea />
+      <Toaster variant="minimal" position="top" offset={18} />
     </View>
   );
 };
