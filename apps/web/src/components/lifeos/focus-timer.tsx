@@ -2,6 +2,7 @@
 
 import { Check, Coffee, Pause, Play, SkipForward, Stop, Trash, type Icon } from "@phosphor-icons/react";
 import { useEffect, useEffectEvent, useState, type ReactNode } from "react";
+import type { FocusView as FocusPillView } from "@lifeos/backend/client/focus";
 import { parseEstimateText } from "@lifeos/backend/estimate";
 import { MAX_FOCUS_MINUTES, type FocusPlanChoice } from "@lifeos/backend/focus";
 import { MorphText } from "@/components/ui/morph-text";
@@ -57,15 +58,7 @@ export const DotRing = ({
   );
 };
 
-export type FocusPillView = {
-  title: string;
-  phase: "focus" | "break";
-  status: "running" | "paused" | "done";
-  seconds: number;
-  ring: number;
-  timed: boolean;
-  longBreak?: boolean;
-};
+export type { FocusView as FocusPillView } from "@lifeos/backend/client/focus";
 
 type PillAction = "pause" | "resume" | "advance";
 

@@ -4,8 +4,9 @@ import { useEffect } from "react";
 import { useRouter } from "waku";
 import { showWebAlert } from "@/lib/alerts";
 import { useMac } from "@/lib/mac";
-import { useActiveFocus, useFocusNow, viewOf, type ActiveFocus } from "./focus";
-import { tabTitle, timeUpAlert } from "./focus-alert";
+import { timeUpAlert, viewOf } from "@lifeos/backend/client/focus";
+import { useActiveFocus, useFocusNow, type ActiveFocus } from "./focus";
+import { tabTitle } from "./focus-alert";
 
 const FocusTitle = ({ active }: { active: ActiveFocus }) => {
   const { path } = useRouter();
