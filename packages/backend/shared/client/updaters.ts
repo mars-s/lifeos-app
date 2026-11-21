@@ -21,6 +21,7 @@ const TASK_VIEWS = [
   api.planner.trash.list,
   api.planner.plan.week,
   api.planner.workBlocks.range,
+  api.planner.tasks.row,
 ] as readonly FunctionReference<"query">[];
 
 const isTaskNode = (node: Node) => "checklist" in node && "labelIds" in node;
@@ -231,6 +232,33 @@ export const patchProjectView =
   };
 
 export const nothing = () => undefined;
+
+const isTodayWhen = (when: PlannerTask["when"], today: string) => when.kind === "scheduled" && when.date <= today;
+
+export const showNewTask =
+  (task: PlannerTask, today: string) =>
+  (store: OptimisticLocalStore) => {
+    if (task.when.kind === "inbox") {
+      const inbox = store.getQuery(api.planner.lists.inbox, {});
+      if (inbox) store.setQuery(api.planner.lists.inbox, {}, { tasks: [...inbox.tasks, task] });
+    }
+    if (isTodayWhen(task.when, today)) {
+      const view = store.getQuery(api.planner.today.get, { date: today });
+      const evening = task.when.kind === "scheduled" && task.when.evening;
+      if (view?.ok)
+        store.setQuery(api.planner.today.get, { date: today }, {
+          ok: true,
+          value: evening ? { ...view.value, evening: [...view.value.evening, task] } : { ...view.value, tasks: [...view.value.tasks, task] },
+        });
+    }
+    patchSidebar((sidebar) => ({
+      ...sidebar,
+      counts: {
+        inbox: sidebar.counts.inbox + (task.when.kind === "inbox" ? 1 : 0),
+        today: sidebar.counts.today + (isTodayWhen(task.when, today) ? 1 : 0),
+      },
+    }))(store);
+  };
 
 export const patchLabelColour =
   (labelId: Id<"labels">, colour: AreaColour) =>

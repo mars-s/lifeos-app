@@ -23,6 +23,7 @@ import { endFocusOnClosedTask } from "./focus";
 import { requestTrip } from "../places/trips";
 import { requestSuggestion } from "./smartEstimates";
 import { followCompletion } from "./recurrence";
+import { enrich } from "./rows";
 import { vParent, vWhen } from "./tables";
 import { parseNewBlock, vNewBlock } from "./workBlocks";
 
@@ -189,6 +190,15 @@ export const restore = changeMutation({
   action: "task.restore",
   args: { taskId: v.id("tasks") },
   handler: (ctx, { taskId }, record) => edit(ctx, record, taskId, () => ok({ trashedAt: undefined })),
+});
+
+export const row = ownerQuery({
+  args: { taskId: v.id("tasks") },
+  handler: async (ctx, { taskId }) => {
+    const task = await ctx.db.get("tasks", taskId);
+    const [found] = task ? await enrich(ctx, [task]) : [];
+    return found ?? null;
+  },
 });
 
 export const card = ownerQuery({

@@ -11,6 +11,8 @@ import type { CaptureChipView } from "@/components/lifeos/quick-capture";
 import { shortDay, whenLabel } from "../dates";
 import type { CaptureChip } from "@lifeos/backend/client/capture-model";
 
+export { destinationOf } from "@lifeos/backend/client/capture-model";
+
 export const WhenGlyph = ({ when, today, className = "size-3.5" }: { when: PlannerTask["when"]; today: string; className?: string }) => {
   if (when.kind === "inbox") return <Tray weight="fill" aria-hidden="true" className={`${className} text-muted-foreground`} />;
   if (when.kind === "anytime") return <Stack weight="fill" aria-hidden="true" className={`${className} text-muted-foreground`} />;
@@ -60,5 +62,3 @@ export const chipView = (chip: CaptureChip, today: IsoDate) => {
   }
 };
 
-export const destinationOf = (when: PlannerTask["when"], list: { title: string } | undefined, today: string) =>
-  list && when.kind === "anytime" ? list.title : whenLabel(when, today);

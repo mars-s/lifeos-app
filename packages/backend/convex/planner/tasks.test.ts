@@ -218,6 +218,27 @@ describe("Task mutations", () => {
 const firstActivity = (s: Setup) =>
   s.t.run(async (ctx) => (await ctx.db.query("activity").first())!._id);
 
+test("row returns one Task as the lists show it, wherever it sits, and null once it is gone", async () => {
+  const s = await setup();
+  unwrap(await s.t.mutation(api.planner.tasks.move, { taskId: s.taskId, parent: { kind: "project", projectId: s.project } }));
+  unwrap(await s.t.mutation(api.planner.tasks.setLabels, { taskId: s.taskId, labelIds: [s.label] }));
+  unwrap(await s.t.mutation(api.planner.checklist.add, { taskId: s.taskId, title: "Outline" }));
+  unwrap(await s.t.mutation(api.planner.tasks.complete, { taskId: s.taskId }));
+
+  expect(await s.t.query(api.planner.tasks.row, { taskId: s.taskId })).toMatchObject({
+    title: "Draft intro",
+    status: { kind: "completed" },
+    context: "Thesis",
+    area: { title: "University", colour: "teal" },
+    project: { title: "Thesis" },
+    labels: [{ name: "Deep Work", colour: "violet" }],
+    checklist: [{ title: "Outline", done: false }],
+  });
+
+  await s.t.run((ctx) => ctx.db.delete("tasks", s.taskId));
+  expect(await s.t.query(api.planner.tasks.row, { taskId: s.taskId })).toBeNull();
+});
+
 test("reorder moves a Task between its neighbours and refuses a malformed Order Key", async () => {
   const t = await newBackend();
   const ids = [];

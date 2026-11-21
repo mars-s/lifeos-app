@@ -2,6 +2,7 @@ import { parseCapture, slugOf, type CaptureField } from "../capture";
 import type { Id } from "../../convex/_generated/dataModel";
 import type { IsoDate } from "../date";
 import type { PlannerTask, SidebarView } from "../types";
+import { whenLabel } from "./dates";
 import { AREA_COLOURS } from "./colours";
 
 type Label = PlannerTask["labels"][number];
@@ -94,3 +95,6 @@ export const captureArgs = (capture: ResolvedCapture) => ({
     ? { parent: capture.list.kind === "area" ? ({ kind: "area", areaId: capture.list.id } as const) : ({ kind: "project", projectId: capture.list.id } as const) }
     : {}),
 });
+
+export const destinationOf = (when: PlannerTask["when"], list: { title: string } | undefined, today: string) =>
+  list && when.kind === "anytime" ? list.title : whenLabel(when, today);
