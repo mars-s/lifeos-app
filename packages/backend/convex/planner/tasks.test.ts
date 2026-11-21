@@ -268,3 +268,46 @@ test("reorder moves a Task between its neighbours and refuses a malformed Order 
   expect((await inbox()).map((task) => task.title)).toEqual(["One", "Three", "Two"]);
   expect(await t.mutation(api.planner.tasks.reorder, { taskId: ids[2]!, order: "" })).toMatchObject({ ok: false, error: { kind: "invalid_order" } });
 });
+
+describe("duplicate", () => {
+  test("copies the Task and its Checklist right below the original, and Undo removes the copy", async () => {
+    const { t, label, project } = await setup();
+    const parent = { kind: "project", projectId: project } as const;
+    const make = async (title: string, extra: object = {}) => unwrap(await t.mutation(api.planner.tasks.create, { title, parent, ...extra })).taskId;
+    const original = await make("Draft intro", {
+      notes: "Start with the gap.",
+      when: { kind: "scheduled", date: "2026-11-20", evening: true },
+      deadline: "2026-12-01",
+      estimateMinutes: 45,
+      labelIds: [label],
+    });
+    await make("Write methods");
+    for (const title of ["Outline", "First pass"]) unwrap(await t.mutation(api.planner.checklist.add, { taskId: original, title }));
+    const [outline] = await t.run((ctx) => ctx.db.query("checklistItems").collect());
+    unwrap(await t.mutation(api.planner.checklist.tick, { itemId: outline!._id, done: true }));
+    const titles = () =>
+      t.run(async (ctx) =>
+        (await ctx.db.query("tasks").withIndex("by_project_order", (q) => q.eq("parent.projectId", project)).collect()).map((task) => task.title),
+      );
+
+    const { taskId: copy, activityId } = unwrap(await t.mutation(api.planner.tasks.duplicate, { taskId: original }));
+
+    expect(await titles()).toEqual(["Draft intro", "Draft intro", "Write methods"]);
+    expect(await t.query(api.planner.tasks.card, { taskId: copy })).toMatchObject({
+      title: "Draft intro",
+      notes: "Start with the gap.",
+      when: { kind: "scheduled", date: "2026-11-20", evening: true },
+      deadline: "2026-12-01",
+      estimateMinutes: 45,
+      labelIds: [label],
+      parent,
+      status: { kind: "open" },
+      checklist: [expect.objectContaining({ title: "Outline", done: true }), expect.objectContaining({ title: "First pass", done: false })],
+    });
+
+    unwrap(await t.mutation(api.platform.undo.undo, { activityId: activityId! }));
+
+    expect(await titles()).toEqual(["Draft intro", "Write methods"]);
+    expect(await t.query(api.planner.tasks.card, { taskId: copy })).toBeNull();
+  });
+});

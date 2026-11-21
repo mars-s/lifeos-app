@@ -103,6 +103,25 @@ export const parseLabels = async (ctx: QueryCtx, labelIds: Id<"labels">[]) => {
   return ok<Id<"labels">[], PlannerError>(unique);
 };
 
+export const nextTaskOrder = async (ctx: QueryCtx, parent: Parent, after: string) => {
+  const next =
+    parent.kind === "project"
+      ? await ctx.db
+          .query("tasks")
+          .withIndex("by_project_order", (q) => q.eq("parent.projectId", parent.projectId).gt("order", after))
+          .first()
+      : parent.kind === "area"
+        ? await ctx.db
+            .query("tasks")
+            .withIndex("by_area_order", (q) => q.eq("parent.areaId", parent.areaId).gt("order", after))
+            .first()
+        : await ctx.db
+            .query("tasks")
+            .withIndex("by_parent_kind_order", (q) => q.eq("parent.kind", "loose").gt("order", after))
+            .first();
+  return generateKeyBetween(after, next?.order ?? null);
+};
+
 export const lastTaskOrder = async (ctx: QueryCtx, parent: Parent) => {
   const last =
     parent.kind === "project"

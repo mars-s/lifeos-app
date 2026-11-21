@@ -6,7 +6,8 @@ import type { PlannerTask } from "../types";
 import type { ChangeFn } from "./change";
 import type { AreaColour } from "./colours";
 import { shortDay, whenLabel } from "./dates";
-import { both, dropLabel, nothing, patchLabelColour, patchLabelList, patchLabelName, patchTask } from "./updaters";
+import { taskAliases } from "./task-aliases";
+import { both, dropLabel, dropTasks, nothing, patchLabelColour, patchLabelList, patchLabelName, patchSidebar, patchTask, showNewTask } from "./updaters";
 
 type Item = PlannerTask["checklist"][number];
 type Label = PlannerTask["labels"][number];
@@ -33,6 +34,35 @@ const withDeadline = (deadline: string | undefined) => (task: PlannerTask) => {
 };
 
 const withLabels = (labels: Label[]) => (task: PlannerTask) => ({ ...task, labels, labelIds: labels.map((label) => label._id) });
+
+export type MoveTarget = { parent: PlannerTask["parent"]; title: string; area?: PlannerTask["area"]; project?: PlannerTask["project"] };
+
+let copies = 0;
+
+const isTodayWhen = (when: PlannerTask["when"], today: string) => when.kind === "scheduled" && when.date <= today;
+
+const copyOf = (task: PlannerTask, key: string) => {
+  const { repeat: _repeat, ...rest } = task;
+  return {
+    ...rest,
+    _id: key as Id<"tasks">,
+    _creationTime: Date.now(),
+    status: { kind: "open" },
+    order: `${task.order}V`,
+    checklist: task.checklist.map((entry) => ({ ...entry, _id: `${OPTIMISTIC}${key}:${entry.order}` as Id<"checklistItems"> })),
+    workBlocks: [],
+    focus: { ms: 0, sessions: [] },
+  } satisfies PlannerTask;
+};
+
+const uncount = (task: PlannerTask, today: string) =>
+  patchSidebar((sidebar) => ({
+    ...sidebar,
+    counts: {
+      inbox: Math.max(sidebar.counts.inbox - (task.when.kind === "inbox" ? 1 : 0), 0),
+      today: Math.max(sidebar.counts.today - (isTodayWhen(task.when, today) ? 1 : 0), 0),
+    },
+  }));
 
 export const quoted = (title: string) => (title.length > 28 ? `${title.slice(0, 27)}…` : title);
 
@@ -245,6 +275,47 @@ export const taskActions = (change: ChangeFn, task: PlannerTask, today: string, 
         apply: onTask((current) => ({ ...current, status: { kind: "open" } })),
         revert: onTask((current) => ({ ...current, status: task.status })),
         slot,
+      }),
+
+    moveTo: (target: MoveTarget) =>
+      void change({
+        title: `Moved to ${target.title}`,
+        mutation: api.planner.tasks.move,
+        args: { taskId, parent: target.parent },
+        apply: onTask((current) => ({
+          ...current,
+          parent: target.parent,
+          area: target.area,
+          project: target.project,
+          context: target.parent.kind === "loose" ? undefined : target.title,
+        })),
+        revert: onTask((current) => ({ ...current, parent: task.parent, area: task.area, project: task.project, context: task.context })),
+        slot,
+      }),
+
+    duplicate: () => {
+      copies += 1;
+      const key = `${OPTIMISTIC}copy:${copies}`;
+      const copy = copyOf(task, key);
+      return change({
+        title: `Duplicated ${quoted(task.title)}`,
+        mutation: api.planner.tasks.duplicate,
+        args: { taskId },
+        apply: showNewTask(copy, today),
+        revert: both(dropTasks([taskAliases.realId(key)]), uncount(copy, today)),
+        onSaved: ({ taskId: made }) => taskAliases.set(key, made),
+      });
+    },
+
+    convertToProject: (onSaved: (projectId: Id<"projects">) => void, onUndone?: () => void) =>
+      change({
+        title: "Turned into a Project",
+        mutation: api.planner.convert.toProject,
+        args: { taskId },
+        apply: dropTasks([taskId]),
+        revert: nothing,
+        onSaved: ({ projectId }) => onSaved(projectId),
+        ...(onUndone ? { onUndone } : {}),
       }),
 
     setDeadline: (deadline: string | null) =>

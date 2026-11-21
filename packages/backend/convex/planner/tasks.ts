@@ -10,6 +10,7 @@ import {
   keyAfter,
   lastTaskOrder,
   load,
+  nextTaskOrder,
   parseDeadline,
   parseEstimate,
   parseLabels,
@@ -100,6 +101,37 @@ export const create = changeMutation({
     await requestSuggestion(ctx, taskId);
     await requestTrip(ctx, taskId);
     return ok<{ taskId: Id<"tasks"> }, PlannerError>({ taskId });
+  },
+});
+
+const DUPLICATE_ITEMS = 500;
+
+export const duplicate = changeMutation({
+  action: "task.duplicate",
+  args: { taskId: v.id("tasks") },
+  handler: async (ctx, { taskId }, record) => {
+    const found = await load(ctx, "tasks", taskId);
+    if (found.isErr()) return err<{ taskId: Id<"tasks"> }, PlannerError>(found.error);
+    const task = found.value;
+    const copyId = await record.insert("tasks", {
+      title: task.title,
+      notes: task.notes,
+      when: task.when,
+      ...(task.deadline ? { deadline: task.deadline } : {}),
+      ...(task.estimateMinutes ? { estimateMinutes: task.estimateMinutes } : {}),
+      parent: task.parent,
+      labelIds: task.labelIds,
+      status: { kind: "open" },
+      order: await nextTaskOrder(ctx, task.parent, task.order),
+    });
+    const items = await ctx.db
+      .query("checklistItems")
+      .withIndex("by_task_order", (q) => q.eq("taskId", taskId))
+      .take(DUPLICATE_ITEMS);
+    for (const item of items) await record.insert("checklistItems", { taskId: copyId, title: item.title, done: item.done, order: item.order });
+    await requestSuggestion(ctx, copyId);
+    await requestTrip(ctx, copyId);
+    return ok<{ taskId: Id<"tasks"> }, PlannerError>({ taskId: copyId });
   },
 });
 
