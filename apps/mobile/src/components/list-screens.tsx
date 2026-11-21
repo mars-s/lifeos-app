@@ -62,6 +62,7 @@ export const InboxScreen = () => {
       items={items}
       today={today}
       slot={INBOX_SLOT}
+      ordering="key"
       empty={<EmptyNote title="Inbox is clear" body="Thoughts you capture land here until you give them a place." />}
     />
   );
@@ -95,7 +96,7 @@ export const TodayScreen = () => {
       items={items}
       today={today}
       slot={slot}
-      tailOnly
+      ordering="day"
       empty={<EmptyNote title="Nothing in Today" body="Enjoy the space, or pull something in from Anytime." />}
     />
   );
@@ -131,7 +132,7 @@ export const UpcomingScreen = () => {
       title={LIST_TITLES.upcoming}
       items={items}
       today={today}
-      tailOnly
+      ordering="day"
       empty={<EmptyNote title="Nothing coming up" body="Swipe a Task left to give it a day." />}
     />
   );
@@ -148,6 +149,7 @@ export const AnytimeScreen = () => {
       items={items}
       today={today}
       slot={ANYTIME_SLOT}
+      ordering="key"
       empty={<EmptyNote title="Nothing in Anytime" body="Tasks without a day wait here, grouped by Area." />}
     />
   );
@@ -183,6 +185,7 @@ export const SomedayScreen = () => {
       items={items}
       today={today}
       slot={SOMEDAY_SLOT}
+      ordering="key"
       empty={<EmptyNote title="Nothing in Someday" body="Park ideas here until their time comes." />}
     />
   );
@@ -247,6 +250,7 @@ export const AreaScreen = () => {
       items={view === null ? NONE : (items ?? undefined)}
       today={today}
       {...(slot ? { slot } : {})}
+      ordering="key"
       empty={
         view === null ? (
           <EmptyNote title="This Area is gone" body="It was removed somewhere else." />
@@ -300,6 +304,7 @@ export const ProjectScreen = () => {
       items={view === null ? NONE : shown}
       today={today as IsoDate}
       {...(slot ? { slot } : {})}
+      ordering="key"
       empty={
         view === null ? (
           <EmptyNote title="This Project is gone" body="It was removed somewhere else." />

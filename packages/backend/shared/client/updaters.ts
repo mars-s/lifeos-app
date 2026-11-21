@@ -66,7 +66,13 @@ export const patchTasks =
     );
   };
 
-const ORDERED_VIEWS = [api.planner.lists.inbox, api.planner.lists.area, api.planner.lists.project] as readonly FunctionReference<"query">[];
+const ORDERED_VIEWS = [
+  api.planner.lists.inbox,
+  api.planner.lists.area,
+  api.planner.lists.project,
+  api.planner.lists.anytime,
+  api.planner.lists.someday,
+] as readonly FunctionReference<"query">[];
 
 const byOrder = (a: Node, b: Node) => ((a.order as string) < (b.order as string) ? -1 : (a.order as string) > (b.order as string) ? 1 : 0);
 
@@ -314,6 +320,23 @@ export const arrangeDay =
     patchTasks([...plans.keys()].filter((id) => id !== task._id) as Id<"tasks">[], (other) => withPlan(other, plans.get(other._id)))(store);
     patchTask(task._id, () => task)(store);
     putOnDay(task, day, ordered, today)(store);
+  };
+
+export const moveInProject =
+  (task: PlannerTask) =>
+  (store: OptimisticLocalStore) => {
+    patchTask(task._id, () => task)(store);
+    const { parent } = task;
+    if (parent.kind !== "project") return;
+    const view = store.getQuery(api.planner.lists.project, { projectId: parent.projectId });
+    if (!view) return;
+    store.setQuery(api.planner.lists.project, { projectId: parent.projectId }, {
+      ...view,
+      sections: view.sections.map((section) => {
+        const kept = without(section.tasks, task._id);
+        return { ...section, tasks: (section.heading?._id ?? undefined) === parent.headingId ? placed(kept, task) : kept };
+      }),
+    });
   };
 
 export const showNewTask =

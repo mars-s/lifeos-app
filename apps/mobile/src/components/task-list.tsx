@@ -1,25 +1,34 @@
 import { Stack, useFocusEffect, useRouter, type Href } from "expo-router";
 import { ChevronRight, Flag } from "lucide-react-native";
-import { memo, useCallback, useEffect, useId, useRef, type ComponentRef, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ComponentRef, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
-  LinearTransition,
   ReduceMotion,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
   withTiming,
+  type ILayoutAnimationBuilder,
   type SharedValue,
 } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
+import { api } from "@lifeos/backend/api";
+import { dayPlacement } from "@lifeos/backend/client/day-order";
+import { isOptimistic } from "@lifeos/backend/client/task-actions";
+import { taskAliases } from "@lifeos/backend/client/task-aliases";
+import { moveInProject, reorderTask } from "@lifeos/backend/client/updaters";
+import type { Id } from "@lifeos/backend/dataModel";
 import type { PlannerTask } from "@lifeos/backend/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProgressRing } from "@/components/progress-ring";
 import { TaskRow, type RowHint } from "@/components/task-row";
 import { useKit } from "@/lib/kit";
 import { fonts, usePlanner } from "@/lib/kit-theme";
-import { GAP, drag, dropFor, setDropResolver, type Slot } from "@/lib/magic-plus";
-import { BASE_MS, EASE_OUT, FAST_MS, SPRING } from "@/lib/motion";
+import { change } from "@/lib/change";
+import { haptic } from "@/lib/haptics";
+import { GAP, drag, dropFor, landingOffset, setDropResolver, setMover, shiftFor, type Drop, type Ordering, type Slot } from "@/lib/magic-plus";
+import { BASE_MS, EASE_OUT, FAST_MS, SPRING, SPRING_SETTLE } from "@/lib/motion";
 import { taskHref } from "@/lib/route";
 import { rememberTask } from "@/lib/tasks";
 
@@ -31,7 +40,23 @@ export type ListItem =
   | { kind: "deadline"; key: string; task: PlannerTask }
   | { kind: "note"; key: string; text: string };
 
-const settle = LinearTransition.duration(BASE_MS).easing(EASE_OUT);
+const settle = {
+  build: () => (values) => {
+    "worklet";
+    const timing = { duration: drag.quiet.get() ? 0 : BASE_MS, easing: EASE_OUT, reduceMotion: ReduceMotion.System };
+    return {
+      initialValues: { originX: values.currentOriginX, originY: values.currentOriginY, width: values.currentWidth, height: values.currentHeight },
+      animations: {
+        originX: withTiming(values.targetOriginX, timing),
+        originY: withTiming(values.targetOriginY, timing),
+        width: withTiming(values.targetWidth, timing),
+        height: withTiming(values.targetHeight, timing),
+      },
+    };
+  },
+} satisfies ILayoutAnimationBuilder;
+
+const LIFT_SCALE = 1.03;
 
 export const taskItems = (tasks: readonly PlannerTask[], hint?: RowHint) =>
   tasks.map((task) => ({ kind: "task", key: task._id, task, ...(hint ? { hint } : {}) }) satisfies ListItem);
@@ -126,10 +151,26 @@ export const EmptyNote = ({ title, body }: { title: string; body: string }) => {
 
 const Shifted = memo(({ host, index, children }: { host: string; index: number; children: ReactNode }) => {
   const style = useAnimatedStyle(() => {
-    const gap = drag.host.get() === host ? drag.gap.get() : -1;
-    return { transform: [{ translateY: withSpring(gap >= 0 && index >= gap ? GAP : 0, { ...SPRING, reduceMotion: ReduceMotion.System }) }] };
+    const mine = drag.host.get() === host;
+    const source = mine ? drag.source.get() : -1;
+    const quiet = drag.quiet.get();
+    const ease = { duration: FAST_MS, easing: EASE_OUT, reduceMotion: ReduceMotion.System };
+    if (source === index)
+      return {
+        transform: [{ translateY: drag.dy.get() + drag.scrollY.get() - drag.startScroll.get() }, { scale: withTiming(LIFT_SCALE, ease) }],
+        shadowOpacity: withTiming(0.18, ease),
+      };
+    const gap = mine ? drag.gap.get() : -1;
+    const shift = (source >= 0 ? shiftFor(index) : 0) + (gap >= 0 && index >= gap ? GAP : 0);
+    return {
+      transform: [
+        { translateY: quiet ? shift : withSpring(shift, { ...SPRING, reduceMotion: ReduceMotion.System }) },
+        { scale: quiet ? 1 : withTiming(1, ease) },
+      ],
+      shadowOpacity: quiet ? 0 : withTiming(0, ease),
+    };
   });
-  return <Animated.View style={style}>{children}</Animated.View>;
+  return <Animated.View style={[styles.shifted, style]}>{children}</Animated.View>;
 });
 
 const Ghost = ({ host, scroll }: { host: string; scroll: SharedValue<number> }) => {
@@ -155,18 +196,68 @@ const Ghost = ({ host, scroll }: { host: string; scroll: SharedValue<number> }) 
 
 const PAD_TOP = 4;
 
-const gapTopsOf = (items: readonly ListItem[], heights: ReadonlyMap<string, number>, droppable: (gap: number) => boolean) => {
-  const tops: number[] = [];
-  let y = PAD_TOP;
-  for (let gap = 0; gap <= items.length; gap += 1) {
-    tops.push(droppable(gap) ? y : Number.NaN);
-    const height = gap < items.length ? heights.get(items[gap]?.key ?? "") : 0;
-    y = height === undefined ? Number.NaN : y + height;
+const rowTopsOf = (items: readonly ListItem[], heights: ReadonlyMap<string, number>) => {
+  const tops: number[] = [PAD_TOP];
+  for (const item of items) {
+    const height = heights.get(item.key);
+    tops.push(height === undefined ? Number.NaN : (tops.at(-1) ?? Number.NaN) + height);
   }
   return tops;
 };
 
-const useDropHost = (items: readonly ListItem[], slot: Slot | undefined, tailOnly: boolean) => {
+const gapTopsOf = (rowTops: readonly number[], droppable: (gap: number) => boolean) => rowTops.map((top, gap) => (droppable(gap) ? top : Number.NaN));
+
+const homeOf = (parent: PlannerTask["parent"]) => (parent.kind === "project" ? parent.projectId : parent.kind === "area" ? parent.areaId : "loose");
+
+const fits = (task: PlannerTask, drop: Drop | undefined, ordering: Ordering): drop is Drop => {
+  if (!drop) return false;
+  if (ordering === "day") return drop.when.kind === "scheduled" && drop.day !== undefined;
+  return drop.order !== undefined && homeOf(drop.parent) === homeOf(task.parent);
+};
+
+const savedIdOf = (id: Id<"tasks">) => {
+  const real = taskAliases.realId(id);
+  return isOptimistic(real) ? undefined : real;
+};
+
+const tasksIn = (items: readonly ListItem[], ids: readonly string[]) => {
+  const byId = new Map(items.flatMap((item) => (item.kind === "task" ? [[item.task._id as string, item.task] as const] : [])));
+  return ids.flatMap((id) => byId.get(id) ?? []);
+};
+
+const moveChange = (items: readonly ListItem[], source: number, target: number, slot: Slot | undefined, ordering: Ordering, today: string) => {
+  const item = items[source];
+  if (item?.kind !== "task") return undefined;
+  const { task } = item;
+  const others = items.filter((_item, index) => index !== source);
+  const drop = dropFor(others, target, slot, ordering);
+  if (!fits(task, drop, ordering)) return undefined;
+  if (ordering === "day" && drop.day && drop.when.kind === "scheduled") {
+    const from = dropFor(items, source, slot, "day")?.day?.ids ?? [];
+    return dayPlacement({
+      task,
+      from: tasksIn(items, from),
+      to: { day: { date: drop.when.date, evening: drop.when.evening }, tasks: tasksIn(items, drop.day.ids) },
+      at: drop.day.at,
+      today,
+      realIdOf: savedIdOf,
+    });
+  }
+  const order = drop.order ?? task.order;
+  const sameParent = JSON.stringify(drop.parent) === JSON.stringify(task.parent);
+  if (sameParent)
+    return { title: "Task moved", mutation: api.planner.tasks.reorder, args: { taskId: task._id, order }, apply: reorderTask(task._id, order), revert: reorderTask(task._id, task.order) };
+  const heading = drop.parent.kind === "project" && drop.parent.headingId ? drop.label : "the top";
+  return {
+    title: `Moved to ${heading}`,
+    mutation: api.planner.tasks.move,
+    args: { taskId: task._id, parent: drop.parent, order },
+    apply: moveInProject({ ...task, parent: drop.parent, order }),
+    revert: moveInProject(task),
+  };
+};
+
+const useDropHost = (items: readonly ListItem[], slot: Slot | undefined, ordering: Ordering | undefined, today: string) => {
   const host = useId();
   const focused = useRef(false);
   const heights = useRef(new Map<string, number>());
@@ -174,12 +265,15 @@ const useDropHost = (items: readonly ListItem[], slot: Slot | undefined, tailOnl
   const frameTop = useRef(0);
   const scroll = useSharedValue(0);
   const tops = useRef<number[]>([]);
+  const rowTops = useRef<number[]>([]);
   const queued = useRef(false);
-  const latest = useRef({ items, slot, tailOnly });
+  const latest = useRef({ items, slot, ordering, today });
+  const committing = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [lifted, setLifted] = useState<string | null>(null);
 
   useEffect(() => {
-    latest.current = { items, slot, tailOnly };
-  }, [items, slot, tailOnly]);
+    latest.current = { items, slot, ordering, today };
+  }, [items, slot, ordering, today]);
 
   const publish = useCallback(() => {
     if (!focused.current) return;
@@ -187,6 +281,7 @@ const useDropHost = (items: readonly ListItem[], slot: Slot | undefined, tailOnl
     drag.frameTop.set(frameTop.current);
     drag.scrollY.set(scroll.get());
     drag.gapTops.set(tops.current);
+    drag.rowTops.set(rowTops.current);
   }, [host, scroll]);
 
   const remeasure = useCallback(() => {
@@ -194,28 +289,108 @@ const useDropHost = (items: readonly ListItem[], slot: Slot | undefined, tailOnl
     queued.current = true;
     requestAnimationFrame(() => {
       queued.current = false;
-      const { items: shown, slot: base, tailOnly: tail } = latest.current;
-      tops.current = gapTopsOf(shown, heights.current, (gap) => dropFor(shown, gap, base, tail) !== undefined);
-      if (focused.current) drag.gapTops.set(tops.current);
+      const { items: shown, slot: base, ordering: kind } = latest.current;
+      rowTops.current = rowTopsOf(shown, heights.current);
+      tops.current = gapTopsOf(rowTops.current, (gap) => dropFor(shown, gap, base, kind ?? "key") !== undefined);
+      if (focused.current && drag.source.get() < 0) {
+        drag.gapTops.set(tops.current);
+        drag.rowTops.set(rowTops.current);
+      }
     });
   }, []);
 
-  useEffect(remeasure, [items, slot, tailOnly, remeasure]);
+  useEffect(remeasure, [items, slot, ordering, remeasure]);
+
+  const release = useCallback(() => {
+    if (committing.current) clearTimeout(committing.current);
+    committing.current = null;
+    drag.quiet.set(true);
+    drag.source.set(-1);
+    drag.target.set(-1);
+    drag.dy.set(0);
+    setLifted(null);
+    requestAnimationFrame(() => requestAnimationFrame(() => drag.quiet.set(false)));
+    remeasure();
+  }, [remeasure]);
+
+  const committed = useRef(items);
+  useLayoutEffect(() => {
+    if (committed.current === items) return;
+    committed.current = items;
+    if (committing.current) release();
+  }, [items, release]);
+
+  const settleBack = useCallback(() => {
+    drag.target.set(drag.source.get());
+    drag.dy.set(
+      withSpring(0, SPRING_SETTLE, (finished) => {
+        "worklet";
+        if (finished !== false) {
+          drag.source.set(-1);
+          drag.target.set(-1);
+        }
+      }),
+    );
+    setLifted(null);
+  }, []);
+
+  const commit = useCallback(
+    (source: number, target: number) => {
+      const { items: shown, slot: base, ordering: kind, today: day } = latest.current;
+      const move = kind ? moveChange(shown, source, target, base, kind, day) : undefined;
+      if (!move) return settleBack();
+      drag.quiet.set(true);
+      committing.current = setTimeout(release, 400);
+      haptic("toggle");
+      void change(move as Parameters<typeof change>[0]);
+    },
+    [release, settleBack],
+  );
 
   useFocusEffect(
     useCallback(() => {
       focused.current = true;
       publish();
-      setDropResolver(host, (gap) => dropFor(latest.current.items, gap, latest.current.slot, latest.current.tailOnly));
+      setDropResolver(host, (gap) => dropFor(latest.current.items, gap, latest.current.slot, latest.current.ordering ?? "key"));
+      setMover(host, {
+        lift: (index) => {
+          const { items: shown, slot: base, ordering: kind } = latest.current;
+          const item = shown[index];
+          if (!kind || item?.kind !== "task") return settleBack();
+          haptic("lift");
+          const others = shown.filter((_item, at) => at !== index);
+          drag.allowed.set(others.map((_item, at) => at === index || fits(item.task, dropFor(others, at, base, kind), kind)).concat(index === others.length || fits(item.task, dropFor(others, others.length, base, kind), kind)));
+          setLifted(item.key);
+        },
+        drop: (index, target, canceled) => {
+          if (canceled || target === index || target < 0) return settleBack();
+          drag.dy.set(
+            withTiming(landingOffset(index, target) - (drag.scrollY.get() - drag.startScroll.get()), { duration: FAST_MS, easing: EASE_OUT }, (finished) => {
+              "worklet";
+              if (finished) scheduleOnRN(commit, index, target);
+            }),
+          );
+        },
+        nudge: (index, step) => {
+          const { items: shown, slot: base, ordering: kind, today: day } = latest.current;
+          let target = index + step;
+          while (target >= 0 && target < shown.length && !moveChange(shown, index, target, base, kind ?? "key", day)) target += step;
+          const move = kind ? moveChange(shown, index, target, base, kind, day) : undefined;
+          if (!move) return haptic("error");
+          void change(move as Parameters<typeof change>[0]);
+        },
+      });
       return () => {
         focused.current = false;
         setDropResolver(host, null);
+        setMover(host, null);
         if (drag.host.get() === host && !drag.held.get()) {
           drag.host.set("");
           drag.gap.set(-1);
+          drag.source.set(-1);
         }
       };
-    }, [host, publish]),
+    }, [host, publish, commit, settleBack]),
   );
 
   const onScroll = useAnimatedScrollHandler({
@@ -237,7 +412,7 @@ const useDropHost = (items: readonly ListItem[], slot: Slot | undefined, tailOnl
     remeasure();
   };
 
-  return { host, frame, scroll, onScroll, onFrame, onRow };
+  return { host, frame, scroll, onScroll, onFrame, onRow, lifted };
 };
 
 export const TaskList = ({
@@ -248,7 +423,7 @@ export const TaskList = ({
   onEndReached,
   onSearch,
   slot,
-  tailOnly = false,
+  ordering,
 }: {
   title: string;
   items: readonly ListItem[] | undefined;
@@ -257,12 +432,12 @@ export const TaskList = ({
   onEndReached?: () => void;
   onSearch?: (query: string) => void;
   slot?: Slot;
-  tailOnly?: boolean;
+  ordering?: Ordering;
 }) => {
   const { colors } = useKit();
   const tones = usePlanner();
   const shown = items ?? NO_ITEMS;
-  const { host, frame, scroll, onScroll, onFrame, onRow } = useDropHost(shown, slot, tailOnly);
+  const { host, frame, scroll, onScroll, onFrame, onRow, lifted } = useDropHost(shown, slot, ordering, today);
   return (
     <View ref={frame} onLayout={onFrame} collapsable={false} style={[styles.frame, { backgroundColor: colors.background }]}>
       <Stack.Screen
@@ -280,7 +455,7 @@ export const TaskList = ({
           <Shifted host={host} index={index}>
             <View onLayout={(event) => onRow(item.key, event.nativeEvent.layout.height)}>
               {item.kind === "task" ? (
-                <TaskRow task={item.task} today={today} {...(item.hint ? { hint: item.hint } : {})} />
+                <TaskRow task={item.task} today={today} {...(item.hint ? { hint: item.hint } : {})} {...(ordering ? { host, index } : {})} />
               ) : item.kind === "header" ? (
                 <Header item={item} />
               ) : item.kind === "project" ? (
@@ -297,6 +472,9 @@ export const TaskList = ({
         )}
         onScroll={onScroll}
         scrollEventThrottle={16}
+        scrollEnabled={lifted === null}
+        extraData={lifted}
+        CellRendererComponentStyle={({ item }: { item: ListItem }) => (item.key === lifted ? styles.liftedCell : styles.cell)}
         itemLayoutAnimation={settle}
         contentInsetAdjustmentBehavior="automatic"
         keyboardDismissMode="on-drag"
@@ -314,6 +492,9 @@ const NO_ITEMS: readonly ListItem[] = [];
 
 const styles = StyleSheet.create({
   frame: { flex: 1 },
+  shifted: { shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowRadius: 18, shadowOpacity: 0 },
+  cell: { zIndex: 0 },
+  liftedCell: { zIndex: 10 },
   content: { paddingBottom: 160, paddingTop: PAD_TOP },
   ghost: { position: "absolute", top: 0, left: 0, right: 0, height: GAP, paddingHorizontal: 12, justifyContent: "center" },
   ghostRow: { flexDirection: "row", alignItems: "center", gap: 14, height: GAP - 8, paddingHorizontal: 8, borderRadius: 12 },

@@ -7,13 +7,14 @@ import { api } from "@lifeos/backend/api";
 import { captureArgs, captureLists, destinationOf, resolveCapture, type CaptureChip, type ResolvedCapture } from "@lifeos/backend/client/capture-model";
 import { shortDay, whenLabel } from "@lifeos/backend/client/dates";
 import { taskAliases } from "@lifeos/backend/client/task-aliases";
+import { isOptimistic } from "@lifeos/backend/client/task-actions";
 import { both, dropTasks, nothing, patchSidebar, showNewTask } from "@lifeos/backend/client/updaters";
 import type { Id } from "@lifeos/backend/dataModel";
 import type { IsoDate } from "@lifeos/backend/date";
 import { formatMinutes } from "@lifeos/backend/estimate";
 import type { PlannerTask } from "@lifeos/backend/types";
 import { change } from "@/lib/change";
-import { drag, type Drop } from "@/lib/magic-plus";
+import { drag, type DayPlace, type Drop } from "@/lib/magic-plus";
 import { haptic } from "@/lib/haptics";
 import { useKit } from "@/lib/kit";
 import { fonts, usePlanner } from "@/lib/kit-theme";
@@ -23,15 +24,16 @@ import { useLocalDate, useView, valueOf } from "@/lib/views";
 const NO_LABELS: never[] = [];
 let captured = 0;
 
-type Placement = { parent?: PlannerTask["parent"]; order?: string; slot?: Drop };
+type Placement = { parent?: PlannerTask["parent"]; order?: string; slot?: Drop; day?: DayPlace };
 
 const placementOf = (capture: ResolvedCapture, slot: Drop | undefined) => {
   if (!slot) return { capture, placement: {} satisfies Placement };
   const ownWhen = capture.chips.some((chip) => chip.field === "when");
   const ownList = capture.list !== undefined;
+  const day = !ownWhen && slot.day ? { day: slot.day } : {};
   return {
     capture: ownWhen ? capture : { ...capture, when: slot.when },
-    placement: (ownList ? {} : { parent: slot.parent, slot, ...(slot.order ? { order: slot.order } : {}) }) satisfies Placement,
+    placement: (ownList ? day : { parent: slot.parent, slot, ...(slot.order ? { order: slot.order } : {}), ...day }) satisfies Placement,
   };
 };
 
@@ -75,6 +77,14 @@ const uncount = (task: PlannerTask, today: string) =>
 const landing = (capture: ResolvedCapture, placement: Placement, today: string) =>
   placement.slot && capture.when === placement.slot.when ? placement.slot.label : destinationOf(capture.when, capture.list ?? (placement.slot?.context ? { title: placement.slot.context } : undefined), today);
 
+const dayPlaceOf = (when: PlannerTask["when"], day: DayPlace | undefined) => {
+  if (!day || when.kind !== "scheduled") return {};
+  const kept = day.ids.map(taskAliases.realId).flatMap((id, index) => (isOptimistic(id) ? [] : [{ id, index }]));
+  return { place: { date: when.date, order: kept.map((entry) => entry.id), at: kept.filter((entry) => entry.index < day.at).length } };
+};
+
+const orderedWith = (key: string, day: DayPlace | undefined) => day && [...day.ids.slice(0, day.at), key, ...day.ids.slice(day.at)];
+
 const send = (capture: ResolvedCapture, placement: Placement, today: IsoDate, text: string, reopen: (text: string) => void) => {
   captured += 1;
   const key = `optimistic:task:${captured}`;
@@ -82,8 +92,13 @@ const send = (capture: ResolvedCapture, placement: Placement, today: IsoDate, te
   void change({
     title: `Captured to ${landing(capture, placement, today)}`,
     mutation: api.planner.tasks.create,
-    args: { ...captureArgs(capture), ...(placement.parent ? { parent: placement.parent } : {}), ...(placement.order ? { order: placement.order } : {}) },
-    apply: showNewTask(task, today),
+    args: {
+      ...captureArgs(capture),
+      ...(placement.parent ? { parent: placement.parent } : {}),
+      ...(placement.order ? { order: placement.order } : {}),
+      ...dayPlaceOf(capture.when, placement.day),
+    },
+    apply: showNewTask(task, today, orderedWith(key, placement.day)),
     revert: (store) => both(dropTasks([taskAliases.realId(key)]), uncount(task, today))(store),
     onSaved: ({ taskId }) => {
       taskAliases.set(key, taskId);

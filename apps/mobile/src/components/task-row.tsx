@@ -2,7 +2,7 @@ import { useRouter } from "expo-router";
 import { CalendarDays, Check, Flag, ListChecks, Moon, Repeat, Star, StickyNote } from "lucide-react-native";
 import { memo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
+import { GestureDetector, useCompetingGestures, usePanGesture } from "react-native-gesture-handler";
 import Animated, { interpolate, useAnimatedReaction, useAnimatedStyle, useSharedValue, withSpring, withTiming } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { deadlineMark, relativeDay, shortDay } from "@lifeos/backend/client/dates";
@@ -11,6 +11,7 @@ import { FocusTime, openFocusMenu, useTimeShown } from "@/components/focus-time"
 import { Checkbox } from "@/components/ui/checkbox";
 import { haptic } from "@/lib/haptics";
 import { useKit } from "@/lib/kit";
+import { drag, dropRow, liftRow, nudgeRow, reorderTarget } from "@/lib/magic-plus";
 import { fonts, usePlanner } from "@/lib/kit-theme";
 import { EASE_OUT, FAST_MS, SPRING, SPRING_SETTLE } from "@/lib/motion";
 import { taskHref, toolHref } from "@/lib/route";
@@ -20,6 +21,7 @@ const ARM_AT = 76;
 const FLICK = 900;
 const SLACK = 0.28;
 const BOX = 22;
+const LIFT_MS = 350;
 
 export type RowHint = "context" | "when" | "none";
 
@@ -96,7 +98,47 @@ const Meta = ({ task, today, hint }: { task: PlannerTask; today: string; hint: R
   );
 };
 
-export const TaskRow = memo(({ task, today, hint = "context" }: { task: PlannerTask; today: string; hint?: RowHint }) => {
+type Place = { host: string; index: number };
+
+const useLift = (task: PlannerTask, place: Place | undefined) => {
+  const host = place?.host ?? "";
+  const index = place?.index ?? -1;
+  const mine = () => {
+    "worklet";
+    return host !== "" && drag.host.get() === host && drag.source.get() === index;
+  };
+  return usePanGesture({
+    enabled: place !== undefined && !isUnsaved(task._id),
+    activateAfterLongPress: LIFT_MS,
+    onActivate: () => {
+      "worklet";
+      if (host === "" || drag.host.get() !== host || drag.source.get() >= 0) return;
+      const tops = drag.rowTops.get();
+      drag.size.set((tops[index + 1] ?? 0) - (tops[index] ?? 0));
+      drag.allowed.set([]);
+      drag.dy.set(0);
+      drag.startScroll.set(drag.scrollY.get());
+      drag.target.set(index);
+      drag.source.set(index);
+      scheduleOnRN(liftRow, host, index);
+    },
+    onUpdate: (event) => {
+      "worklet";
+      if (!mine()) return;
+      drag.dy.set(event.translationY);
+      const target = reorderTarget();
+      if (target === drag.target.get()) return;
+      drag.target.set(target);
+      scheduleOnRN(tick);
+    },
+    onDeactivate: (event) => {
+      "worklet";
+      if (mine()) scheduleOnRN(dropRow, host, index, drag.target.get(), event.canceled);
+    },
+  });
+};
+
+export const TaskRow = memo(({ task, today, hint = "context", host, index }: { task: PlannerTask; today: string; hint?: RowHint; host?: string; index?: number }) => {
   const { colors } = useKit();
   const tones = usePlanner();
   const router = useRouter();
@@ -132,6 +174,10 @@ export const TaskRow = memo(({ task, today, hint = "context" }: { task: PlannerT
     },
   });
 
+  const place = host !== undefined && index !== undefined ? { host, index } : undefined;
+  const lift = useLift(task, place);
+  const gesture = useCompetingGestures(lift, pan);
+
   useAnimatedReaction(
     () => Math.abs(x.get()) >= ARM_AT,
     (armed, before) => {
@@ -161,7 +207,7 @@ export const TaskRow = memo(({ task, today, hint = "context" }: { task: PlannerT
           <CalendarDays size={22} color={colors.accentForeground} />
         </Animated.View>
       </Animated.View>
-      <GestureDetector gesture={pan}>
+      <GestureDetector gesture={gesture}>
         <Animated.View style={[styles.row, { backgroundColor: colors.background }, rowStyle]}>
           <Checkbox
             checked={ticked}
@@ -178,8 +224,14 @@ export const TaskRow = memo(({ task, today, hint = "context" }: { task: PlannerT
             accessibilityActions={[
               { name: "complete", label: closed ? "Reopen" : "Complete" },
               { name: "schedule", label: "Schedule" },
+              ...(place ? [{ name: "moveUp", label: "Move up" }, { name: "moveDown", label: "Move down" }] : []),
             ]}
-            onAccessibilityAction={(event) => (event.nativeEvent.actionName === "complete" ? toggle(true) : schedule())}
+            onAccessibilityAction={(event) => {
+              const action = event.nativeEvent.actionName;
+              if (action === "complete") return toggle(true);
+              if (action === "schedule") return schedule();
+              if (place) nudgeRow(place.host, place.index, action === "moveUp" ? -1 : 1);
+            }}
             onPressIn={() => {
               pressed.set(1);
               rememberTask(task);

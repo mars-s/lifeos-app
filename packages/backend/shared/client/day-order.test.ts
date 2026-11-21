@@ -3,7 +3,7 @@ import type { Id } from "../../convex/_generated/dataModel";
 import type { PlannerTask } from "../types";
 import { dayPlacement } from "./day-order";
 import { rewriteView } from "./local-views";
-import { showNewTask } from "./updaters";
+import { moveInProject, showNewTask } from "./updaters";
 
 const TODAY = "2026-11-21";
 const MONDAY = "2026-11-23";
@@ -67,4 +67,15 @@ test("a new Task dropped mid-Today shows at that spot", () => {
   const fresh = task("New");
   const shown = inToday(showNewTask(fresh, TODAY, ["Gym", "New", "Read"]), todayOf([task("Gym"), task("Read")]));
   expect(titles(shown.value.tasks)).toEqual(["Gym", "New", "Read"]);
+});
+
+test("a Task dragged under another heading moves to that section in its Order Key place", () => {
+  const project = { kind: "project", projectId: "p" } as unknown as PlannerTask["parent"];
+  const heading = { kind: "project", projectId: "p", headingId: "h" } as unknown as PlannerTask["parent"];
+  const one = { ...task("One"), parent: project, order: "a1" };
+  const two = { ...task("Two"), parent: heading, order: "a1" };
+  const three = { ...task("Three"), parent: heading, order: "a3" };
+  const view = { project: { _id: "p" }, sections: [{ heading: null, tasks: [one] }, { heading: { _id: "h", title: "Later" }, tasks: [two, three] }] };
+  const moved = rewriteView(moveInProject({ ...one, parent: heading, order: "a2" }), "planner/lists:project", { projectId: "p" }, view) as typeof view;
+  expect(moved.sections.map((section) => titles(section.tasks))).toEqual([[], ["Two", "One", "Three"]]);
 });
