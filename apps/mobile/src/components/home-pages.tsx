@@ -3,7 +3,7 @@ import { accessibilityLabel, pickerStyle, tag } from "@expo/ui/swift-ui/modifier
 import { Stack } from "expo-router";
 import { TopTabs, type MaterialTopTabBarProps } from "expo-router/js-top-tabs";
 import { useHeaderHeight } from "expo-router/react-navigation";
-import { getItem, setItemAsync } from "expo-secure-store";
+import { SQLiteStorage } from "expo-sqlite/kv-store";
 import { Result } from "neverthrow";
 import { createContext, use, useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
@@ -16,10 +16,12 @@ import { LIST_TITLES } from "@/lib/route";
 const KEPT_PAGE = "home-page";
 const BAR_GAP = 4;
 
-const keptPage = Result.fromThrowable(() => getItem(KEPT_PAGE))().unwrapOr(null);
+const prefs = new SQLiteStorage("lifeos-prefs");
+
+const keptPage = Result.fromThrowable(() => prefs.getItemSync(KEPT_PAGE))().unwrapOr(null);
 
 const keepPage = (name: string) => {
-  setItemAsync(KEPT_PAGE, name).catch(() => undefined);
+  prefs.setItemAsync(KEPT_PAGE, name).catch(() => undefined);
 };
 
 const Shown = createContext({ settle: () => undefined as void, show: (_page: string) => undefined as void });
