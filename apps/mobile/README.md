@@ -65,7 +65,7 @@ Tap **Sign in with GitHub**. iOS asks to open github.com, then GitHub asks for y
 | Hold and drag | Hold a Task still for a moment and it lifts. Drag it and the other rows move aside; let go to drop it there. In Today it can move into This Evening, and in Upcoming to another day. Moving sideways before the hold swipes instead, and moving up or down scrolls. VoiceOver has Move up and Move down |
 | Focus pill | A glass pill beside the + button while a Focus Session runs, on every tab. It shows the Task, the round and the time left on a dot ring. Its button pauses, resumes, starts the break or skips it. Tap the pill for the Focus sheet |
 | Focus sheet | A large dial, Stop, Pause or Resume, and +5 minutes. Switch between Stopwatch and Pomodoro and pick focus, Break and Long Break lengths, or type one (`40`, `1h 30m`). The plan is the same row the web and Mac use |
-| Start a Focus Session | Press and hold a Task for its menu, or use Focus in the Task card. Rows and the card show Actual Time against the Estimate as dots |
+| Start a Focus Session | Hold a Task and let go without moving it for its menu (in Search and the Logbook a plain press and hold), or use Focus in the Task card. Rows and the card show Actual Time against the Estimate as dots |
 | Time is up | Starting a Pomodoro schedules a local notification for when it ends, so it rings on the lock screen even with the app closed. iOS asks for permission at the first Pomodoro. In the app, a Success haptic plays instead |
 
 Every change shows in the same frame and raises an Undo toast. Shaking the phone undoes the newest change.
