@@ -3,7 +3,7 @@ import { useOauth, useSignInWithGithub } from "@convex-dev/auth/methods/github/r
 import { useConvexAuth } from "convex/react";
 import { ConvexError } from "convex/values";
 import * as WebBrowser from "expo-web-browser";
-import { useState, type ReactNode } from "react";
+import { Component, useState, type ReactNode } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { api } from "@lifeos/backend/api";
 import type { AccessError } from "@lifeos/backend/types";
@@ -65,21 +65,48 @@ const SignInScreen = () => {
   );
 };
 
-export const SignOutButton = () => {
+const NotOwnerScreen = ({ message, onLeave }: { message: string; onLeave: () => void }) => {
   const { colors, text } = useKit();
   const { signOut } = useAuthActions();
+  const leave = () => void signOut().finally(onLeave);
   return (
-    <Pressable accessibilityRole="button" onPress={() => void signOut()} hitSlop={12}>
-      <Text style={[text.sm, { color: colors.mutedForeground, fontFamily: fonts.medium }]}>Sign out</Text>
-    </Pressable>
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      <Text accessibilityRole="header" style={[text.xl, styles.title, { color: colors.foreground }]}>
+        This is not your LifeOS
+      </Text>
+      <Text style={[text.sm, styles.hint, { color: colors.mutedForeground }]}>{message}</Text>
+      <Pressable
+        accessibilityRole="button"
+        onPress={leave}
+        style={({ pressed }) => [styles.button, { backgroundColor: colors.primary, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
+      >
+        <Text style={[text.md, styles.buttonLabel, { color: colors.primaryForeground }]}>Sign out</Text>
+      </Pressable>
+    </View>
   );
 };
+
+type Refusal = { message: string } | null;
+
+class AccessBoundary extends Component<{ children: ReactNode }, { refusal: Refusal }> {
+  override state = { refusal: null as Refusal };
+
+  static getDerivedStateFromError(error: unknown) {
+    if (isAccessError(error)) return { refusal: { message: error.data.message } };
+    throw error;
+  }
+
+  override render() {
+    const { refusal } = this.state;
+    return refusal ? <NotOwnerScreen message={refusal.message} onLeave={() => this.setState({ refusal: null })} /> : this.props.children;
+  }
+}
 
 export const OwnerGate = ({ children }: { children: ReactNode }) => {
   const { colors } = useKit();
   const { isLoading, isAuthenticated } = useConvexAuth();
   if (isLoading) return <View style={[styles.screen, { backgroundColor: colors.background }]} />;
-  return isAuthenticated ? children : <SignInScreen />;
+  return isAuthenticated ? <AccessBoundary>{children}</AccessBoundary> : <SignInScreen />;
 };
 
 const styles = StyleSheet.create({

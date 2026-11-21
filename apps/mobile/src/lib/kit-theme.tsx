@@ -1,10 +1,12 @@
 import type { ReactNode } from "react";
-import { KitProvider, type ThemeOverrides } from "@/lib/kit";
+import { KitProvider, useKit, type ThemeOverrides } from "@/lib/kit";
 
 export const fonts = {
   regular: "Inter_400Regular",
   medium: "Inter_500Medium",
   semibold: "Inter_600SemiBold",
+  mono: "GeistMono_400Regular",
+  monoMedium: "GeistMono_500Medium",
 } as const;
 
 const calm = {
@@ -17,7 +19,7 @@ const calm = {
     muted: "#EEEBE5",
     mutedForeground: "#67635D",
     border: "#E6E3DD",
-    input: "#DFDCD6",
+    input: "#BDB9B2",
     primary: "#282521",
     primaryForeground: "#F7F4EF",
     secondary: "#EEEBE5",
@@ -39,7 +41,7 @@ const calm = {
     muted: "#1A1B1D",
     mutedForeground: "#999B9F",
     border: "#252628",
-    input: "#2E2F32",
+    input: "#55575B",
     primary: "#E6E8EB",
     primaryForeground: "#121314",
     secondary: "#292A2D",
@@ -90,6 +92,8 @@ export const planner = {
     },
   },
 } as const;
+
+export const usePlanner = () => planner[useKit().dark ? "dark" : "light"];
 
 export const AppTheme = ({ children }: { children: ReactNode }) => (
   <KitProvider scheme="system" radius={12} fontFamily={fonts.regular} colors={calm}>
