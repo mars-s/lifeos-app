@@ -4,6 +4,7 @@ import type { QueryCtx } from "../_generated/server";
 import { ownerQuery } from "../platform/access";
 import type { Doc, Id } from "../_generated/dataModel";
 import { addDays, parseIsoDate, type IsoDate } from "../../shared/date";
+import { byDayPlan } from "../../shared/plan";
 import { serialise } from "../../shared/result";
 import {
   areaSummary,
@@ -153,7 +154,7 @@ const loadUpcoming = async (ctx: QueryCtx, date: IsoDate, days: number) => {
     until,
     days: dates.map((day) => ({
       date: day,
-      tasks: rowsFor(scheduled.filter((task) => task.when.kind === "scheduled" && task.when.date === day).toSorted(byListOrder)),
+      tasks: rowsFor(scheduled.filter((task) => task.when.kind === "scheduled" && task.when.date === day).toSorted(byDayPlan(day, byListOrder))),
       deadlines: rowsFor(due.filter((task) => task.deadline === day).toSorted(byListOrder)),
     })),
   };

@@ -93,13 +93,13 @@ export const TodayScreen = () => {
       ) : (
         <>
           <PlannedStrip tasks={[...view.tasks, ...view.evening]} />
-          <TaskItems tasks={view.tasks} show={{ context: true }} hostsDrafts="inline" />
+          <TaskItems tasks={view.tasks} show={{ context: true }} hostsDrafts="inline" day={{ date: today, evening: false }} />
           {view.evening.length > 0 && (
             <section {...placeAttr({ slot: EVENING_SLOT, when: { kind: "scheduled", date: today, evening: true } })}>
               <SectionHeading leading={<Moon weight="fill" className="size-4 text-muted-foreground" aria-hidden="true" />}>
                 This Evening
               </SectionHeading>
-              <TaskItems tasks={view.evening} show={{ context: true }} hostsDrafts="inline" slot={EVENING_SLOT} />
+              <TaskItems tasks={view.evening} show={{ context: true }} hostsDrafts="inline" slot={EVENING_SLOT} day={{ date: today, evening: true }} />
             </section>
           )}
         </>

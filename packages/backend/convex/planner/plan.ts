@@ -1,8 +1,9 @@
 import { v } from "convex/values";
 import { Result, err, ok } from "neverthrow";
-import type { QueryCtx } from "../_generated/server";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { ownerQuery } from "../platform/access";
+import type { Recorder } from "../platform/activity";
 import { changeMutation } from "../platform/change";
 import { capacityDays } from "../calendar/capacity";
 import { parseTimeZone, zonedMoment } from "../calendar/model";
@@ -141,28 +142,37 @@ export const week = ownerQuery({
   },
 });
 
+export const parseNewPlace = (place: { date: string; order: Id<"tasks">[]; at: number }) =>
+  parsePlanDate(place.date).andThen((date) =>
+    Number.isInteger(place.at) && place.at >= 0 && place.at <= place.order.length && place.order.length < MAX_DAY_TASKS && new Set(place.order).size === place.order.length
+      ? ok<{ date: IsoDate; order: Id<"tasks">[]; at: number }, PlannerError>({ ...place, date })
+      : err<{ date: IsoDate; order: Id<"tasks">[]; at: number }, PlannerError>(invalid("order")),
+  );
+
+export const placeOnDay = async (ctx: MutationCtx, record: Recorder, task: Doc<"tasks">, date: IsoDate, order: Id<"tasks">[], evening: boolean) => {
+  if (!order.includes(task._id) || order.length > MAX_DAY_TASKS || new Set(order).size !== order.length)
+    return err<{ moved: number }, PlannerError>(invalid("order"));
+  const loaded = await Promise.all(order.map((id) => (id === task._id ? task : ctx.db.get("tasks", id))));
+  const present = loaded.flatMap((other) => (other ? [other] : []));
+  const others = present.filter((other) => other._id !== task._id);
+  const marks = placeInDay(others, task._id, present.findIndex((other) => other._id === task._id), date);
+  let moved = 0;
+  for (const mark of marks) {
+    const fields = mark.taskId === task._id ? { plan: mark.plan, when: { kind: "scheduled" as const, date, evening } } : { plan: mark.plan };
+    if (await record.patch("tasks", mark.taskId, fields)) moved += 1;
+  }
+  return ok<{ moved: number }, PlannerError>({ moved });
+};
+
 export const place = changeMutation({
   action: "plan.place",
-  args: { taskId: v.id("tasks"), date: v.string(), order: v.array(v.id("tasks")) },
-  handler: async (ctx, { taskId, date, order }, record) => {
-    const index = order.indexOf(taskId);
+  args: { taskId: v.id("tasks"), date: v.string(), order: v.array(v.id("tasks")), evening: v.optional(v.boolean()) },
+  handler: async (ctx, { taskId, date, order, evening }, record) => {
     const day = parsePlanDate(date);
     if (day.isErr()) return err<{ moved: number }, PlannerError>(day.error);
-    if (index === -1 || order.length > MAX_DAY_TASKS || new Set(order).size !== order.length)
-      return err<{ moved: number }, PlannerError>(invalid("order"));
     const task = await ctx.db.get("tasks", taskId);
     if (!task) return err<{ moved: number }, PlannerError>({ kind: "not_found", table: "tasks", id: taskId });
-    const loaded = await Promise.all(order.map((id) => (id === taskId ? task : ctx.db.get("tasks", id))));
-    const present = loaded.flatMap((other) => (other ? [other] : []));
-    const others = present.filter((other) => other._id !== taskId);
-    const marks = placeInDay(others, taskId, present.findIndex((other) => other._id === taskId), day.value);
-    const evening = task.when.kind === "scheduled" && task.when.evening;
-    let moved = 0;
-    for (const mark of marks) {
-      const fields = mark.taskId === taskId ? { plan: mark.plan, when: { kind: "scheduled" as const, date: day.value, evening } } : { plan: mark.plan };
-      if (await record.patch("tasks", mark.taskId, fields)) moved += 1;
-    }
-    return ok<{ moved: number }, PlannerError>({ moved });
+    return placeOnDay(ctx, record, task, day.value, order, evening ?? (task.when.kind === "scheduled" && task.when.evening));
   },
 });
 

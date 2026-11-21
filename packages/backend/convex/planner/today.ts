@@ -3,6 +3,7 @@ import type { QueryCtx } from "../_generated/server";
 import { ownerQuery } from "../platform/access";
 import type { Doc } from "../_generated/dataModel";
 import { parseIsoDate, type IsoDate } from "../../shared/date";
+import { byDayPlan } from "../../shared/plan";
 import { serialise } from "../../shared/result";
 import { compare, enrich } from "./rows";
 
@@ -37,7 +38,7 @@ export const openTodayTasks = async (ctx: QueryCtx, date: IsoDate) => {
   ]);
   return [...new Map([...scheduled, ...due].map((task) => [task._id, task])).values()]
     .filter((task) => task.when.kind !== "someday")
-    .toSorted(byTodayOrder);
+    .toSorted(byDayPlan(date, byTodayOrder));
 };
 
 const loadToday = async (ctx: QueryCtx, date: IsoDate) => {

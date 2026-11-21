@@ -23,8 +23,10 @@ import { endFocusOnClosedTask } from "./focus";
 import { requestTrip } from "../places/trips";
 import { requestSuggestion } from "./smartEstimates";
 import { followCompletion } from "./recurrence";
+import { parseNewPlace, placeOnDay } from "./plan";
 import { enrich } from "./rows";
 import { vParent, vWhen } from "./tables";
+import type { IsoDate } from "../../shared/date";
 import { parseNewBlock, vNewBlock } from "./workBlocks";
 
 const CARD_LIMIT = 500;
@@ -44,6 +46,14 @@ const edit = async (
   return ok<{ changed: boolean }, PlannerError>({ changed: await record.patch("tasks", taskId, fields.value) });
 };
 
+const placeNewTask = async (ctx: MutationCtx, record: Recorder, taskId: Id<"tasks">, place: { date: IsoDate; order: Id<"tasks">[]; at: number }) => {
+  const task = await ctx.db.get("tasks", taskId);
+  if (!task) return err<undefined, PlannerError>({ kind: "not_found", table: "tasks", id: taskId });
+  const order = [...place.order.slice(0, place.at), taskId, ...place.order.slice(place.at)];
+  const evening = task.when.kind === "scheduled" && task.when.evening;
+  return (await placeOnDay(ctx, record, task, place.date, order, evening)).map(() => undefined);
+};
+
 export const create = changeMutation({
   action: "task.create",
   args: {
@@ -56,6 +66,7 @@ export const create = changeMutation({
     labelIds: v.optional(v.array(v.id("labels"))),
     block: v.optional(vNewBlock),
     order: v.optional(v.string()),
+    place: v.optional(v.object({ date: v.string(), order: v.array(v.id("tasks")), at: v.number() })),
   },
   handler: async (ctx, args, record) => {
     const block = args.block ? parseNewBlock(args.block) : ok(undefined);
@@ -68,9 +79,10 @@ export const create = changeMutation({
       await parseParent(ctx, args.parent ?? { kind: "loose" }),
       await parseLabels(ctx, args.labelIds ?? []),
       args.order === undefined ? ok<string | undefined, PlannerError>(undefined) : parseOrder(args.order),
+      args.place === undefined ? ok(undefined) : parseNewPlace(args.place),
     ]);
     if (fields.isErr()) return err<{ taskId: Id<"tasks"> }, PlannerError>(fields.error);
-    const [title, when, deadline, estimateMinutes, parent, labelIds, order] = fields.value;
+    const [title, when, deadline, estimateMinutes, parent, labelIds, order, place] = fields.value;
     const taskId = await record.insert("tasks", {
       title,
       notes: args.notes ?? "",
@@ -83,6 +95,8 @@ export const create = changeMutation({
       order: order ?? keyAfter(await lastTaskOrder(ctx, parent)),
     });
     if (block.value) await record.insert("workBlocks", { taskId, ...block.value, done: false });
+    const placed = place ? await placeNewTask(ctx, record, taskId, place) : ok(undefined);
+    if (placed.isErr()) return err<{ taskId: Id<"tasks"> }, PlannerError>(placed.error);
     await requestSuggestion(ctx, taskId);
     await requestTrip(ctx, taskId);
     return ok<{ taskId: Id<"tasks"> }, PlannerError>({ taskId });

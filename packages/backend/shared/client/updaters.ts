@@ -267,16 +267,66 @@ const showOnDay = (task: PlannerTask, store: OptimisticLocalStore) => {
   }
 };
 
+type Day = { readonly date: string; readonly evening: boolean };
+
+const arranged = (list: readonly PlannerTask[], ordered: readonly string[], task: PlannerTask) => {
+  const others = new Map(list.filter((other) => other._id !== task._id).map((other) => [other._id as string, other] as const));
+  const front = ordered.flatMap((id) => (id === task._id ? [task] : (others.get(id) ?? [])));
+  const placedIds = new Set<string>(front.map((other) => other._id));
+  return [...front, ...[...others.values()].filter((other) => !placedIds.has(other._id))];
+};
+
+const without = (list: readonly PlannerTask[], taskId: string) => list.filter((other) => other._id !== taskId);
+
+const putOnDay = (task: PlannerTask, day: Day, ordered: readonly string[], today: string) => (store: OptimisticLocalStore) => {
+  const view = store.getQuery(api.planner.today.get, { date: today });
+  if (view?.ok) {
+    const tasks = without(view.value.tasks, task._id);
+    const evening = without(view.value.evening, task._id);
+    const shows = day.date === today;
+    store.setQuery(api.planner.today.get, { date: today }, {
+      ok: true,
+      value: {
+        ...view.value,
+        tasks: shows && !day.evening ? arranged(tasks, ordered, task) : tasks,
+        evening: shows && day.evening ? arranged(evening, ordered, task) : evening,
+      },
+    });
+  }
+  for (const { args, value } of store.getAllQueries(api.planner.lists.upcoming)) {
+    if (!value?.ok) continue;
+    const days = value.value.days.map((each) => {
+      const kept = without(each.tasks, task._id);
+      return { ...each, tasks: each.date === day.date ? arranged(kept, ordered, task) : kept };
+    });
+    store.setQuery(api.planner.lists.upcoming, args, { ok: true, value: { ...value.value, days } });
+  }
+};
+
+const withPlan = (task: PlannerTask, plan: PlannerTask["plan"]) => {
+  const { plan: _previous, ...rest } = task;
+  return plan ? { ...rest, plan } : rest;
+};
+
+export const arrangeDay =
+  (task: PlannerTask, day: Day, ordered: readonly string[], plans: ReadonlyMap<string, PlannerTask["plan"]>, today: string) =>
+  (store: OptimisticLocalStore) => {
+    patchTasks([...plans.keys()].filter((id) => id !== task._id) as Id<"tasks">[], (other) => withPlan(other, plans.get(other._id)))(store);
+    patchTask(task._id, () => task)(store);
+    putOnDay(task, day, ordered, today)(store);
+  };
+
 export const showNewTask =
-  (task: PlannerTask, today: string) =>
+  (task: PlannerTask, today: string, ordered?: readonly string[]) =>
   (store: OptimisticLocalStore) => {
     if (task.when.kind === "inbox") {
       const inbox = store.getQuery(api.planner.lists.inbox, {});
       if (inbox) store.setQuery(api.planner.lists.inbox, {}, { tasks: placed(inbox.tasks, task) });
     }
     showInContainer(task, store);
-    showOnDay(task, store);
-    if (isTodayWhen(task.when, today)) {
+    if (ordered && task.when.kind === "scheduled") putOnDay(task, { date: task.when.date, evening: task.when.evening }, ordered, today)(store);
+    else showOnDay(task, store);
+    if (isTodayWhen(task.when, today) && !ordered) {
       const view = store.getQuery(api.planner.today.get, { date: today });
       const evening = task.when.kind === "scheduled" && task.when.evening;
       if (view?.ok)

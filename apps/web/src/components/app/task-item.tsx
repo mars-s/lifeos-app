@@ -13,6 +13,7 @@ import type { PlannerTask, TaskRepeat } from "@lifeos/backend/types";
 import { AreaDot, areaVar } from "@/components/lifeos/area";
 import { formatMinutes } from "@/components/lifeos/format";
 import { ActualMeter } from "@/components/lifeos/focus-timer";
+import { dayPlacement, type Day } from "@lifeos/backend/client/day-order";
 import { lowerFirst, repeatLabel } from "@lifeos/backend/client/repeat";
 import { ActualChip, DeadlineMarker, EstimateChip, TaskCheckbox } from "@/components/lifeos/task-row";
 import { AnchoredPopover, type AnchoredPopoverProps } from "@/components/ui/popover-panel";
@@ -21,6 +22,7 @@ import { instant, springLayout } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
 import { clockTime, deadlineMark, isToday, localDate, shortDay, whenLabel } from "./dates";
 import { drafts, isDraftTask, useDraftCount, useRows } from "./drafts";
+import { useChange } from "./changes";
 import { FocusBadge, useActualMs, useFocusOn } from "./focus";
 import { PanelBoundary } from "./panel-boundary";
 import { routeHref } from "./route";
@@ -594,6 +596,8 @@ export const TaskItem = memo(TaskItemRow, sameRow);
 const DRAG_START_PX = 6;
 const DRAG_MODIFIERS = [restrictToVerticalAxis];
 
+const savedIdOf = (id: PlannerTask["_id"]) => (isDraftTask(id) ? undefined : drafts.realId(id));
+
 const keyBetween = Result.fromThrowable(generateKeyBetween, () => "unordered" as const);
 
 export const useHasDrafts = () => useDraftCount(routeHref(useShell().route)) > 0;
@@ -623,7 +627,8 @@ export const TaskItems = ({
   className,
   hostsDrafts,
   slot,
-  sortable = false,
+  sortable: keyed = false,
+  day,
 }: {
   tasks: readonly PlannerTask[];
   show?: TaskItemShow;
@@ -631,10 +636,13 @@ export const TaskItems = ({
   hostsDrafts?: "inline" | "above";
   slot?: string;
   sortable?: boolean;
+  day?: Day;
 }) => {
   const { route, openCard } = useShell();
   const { today, onCard, cardOf } = useCardHost();
   const actions = useSelectionActions(today);
+  const change = useChange();
+  const sortable = keyed || day !== undefined;
   const shown = useHostedRows(tasks, hostsDrafts ? (slot ?? routeHref(route)) : undefined, hostsDrafts === "inline");
   const sensors = useSensors(useSensor(MouseSensor, { activationConstraint: { distance: DRAG_START_PX } }), useSensor(KeyboardSensor));
   const list = useRef<HTMLUListElement>(null);
@@ -643,6 +651,11 @@ export const TaskItems = ({
     const moved = shown.find((row) => row.key === key);
     const others = shown.filter((row) => row.key !== key);
     if (!moved || to < 0 || to > others.length) return false;
+    if (day) {
+      const listed = shown.map((row) => row.task);
+      void change(dayPlacement({ task: moved.task, from: listed, to: { day, tasks: listed }, at: to, today, realIdOf: savedIdOf }));
+      return true;
+    }
     const order = keyBetween(others[to - 1]?.task.order ?? null, others[to]?.task.order ?? null);
     if (order.isErr()) return false;
     actions.reorder(moved.task, order.value);
