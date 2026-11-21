@@ -40,7 +40,8 @@
           "skipOnboarding": true,
           "showMenuAtLaunch": false
         }
-      ]
+      ],
+      "expo-sqlite"
     ]
   }
 }

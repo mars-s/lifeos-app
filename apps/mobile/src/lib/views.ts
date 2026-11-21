@@ -1,12 +1,74 @@
 import { useQueries } from "convex/react";
 import { getFunctionName, makeFunctionReference, type FunctionArgs, type FunctionReference, type FunctionReturnType } from "convex/server";
+import { convexToJson, jsonToConvex, type JSONValue, type Value } from "convex/values";
+import { SQLiteStorage } from "expo-sqlite/kv-store";
+import { Result } from "neverthrow";
 import { useMemo, useSyncExternalStore } from "react";
 import { AppState } from "react-native";
 import { noReverted, readReverted, subscribeReverted, withReverted } from "@lifeos/backend/client/reverted";
-import { lastSeenView, settleView } from "@lifeos/backend/client/view-cache";
+import { forgetViews, keepViewsOn, offlineView, readUnsaved, settleView, subscribeUnsaved } from "@lifeos/backend/client/view-cache";
 import { localIsoDate } from "@lifeos/backend/date";
 
 const TICK_MS = 20_000;
+const SAVE_AFTER_MS = 800;
+const KEEP_FOR_MS = 14 * 86_400_000;
+
+const savedViews = new SQLiteStorage("lifeos-views");
+const unsavedViews = new Map<string, unknown>();
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
+
+const parseSaved = Result.fromThrowable(
+  (raw: string) => jsonToConvex(JSON.parse(raw.slice(raw.indexOf("|") + 1)) as JSONValue),
+  () => "unreadable" as const,
+);
+const encodeView = Result.fromThrowable(
+  (value: unknown) => JSON.stringify(convexToJson(value as Value)),
+  () => "unencodable" as const,
+);
+
+const saveViews = () => {
+  clearTimeout(saveTimer);
+  saveTimer = undefined;
+  const at = Date.now();
+  const rows = [...unsavedViews].flatMap(([key, value]) => encodeView(value).match((json) => [[key, `${at}|${json}`] as [string, string]], () => []));
+  unsavedViews.clear();
+  if (rows.length > 0) void savedViews.multiSet(rows);
+};
+
+keepViewsOn({
+  read: (key) => {
+    const raw = savedViews.getItemSync(key);
+    return raw === null ? undefined : parseSaved(raw).unwrapOr(undefined);
+  },
+  write: (key, value) => {
+    unsavedViews.set(key, value);
+    saveTimer ??= setTimeout(saveViews, SAVE_AFTER_MS);
+  },
+});
+
+AppState.addEventListener("change", (state) => {
+  if (state !== "active") saveViews();
+});
+
+const PRUNE_AFTER_MS = 10_000;
+
+const pruneSavedViews = async () => {
+  const keys = await savedViews.getAllKeysAsync();
+  const rows = await savedViews.multiGet(keys);
+  const oldest = Date.now() - KEEP_FOR_MS;
+  const stale = rows.flatMap(([key, raw]) => (raw === null || Number(raw.slice(0, raw.indexOf("|"))) < oldest ? [key] : []));
+  if (stale.length > 0) await savedViews.multiRemove(stale);
+};
+
+setTimeout(() => void pruneSavedViews(), PRUNE_AFTER_MS);
+
+export const forgetSavedViews = async () => {
+  clearTimeout(saveTimer);
+  saveTimer = undefined;
+  unsavedViews.clear();
+  forgetViews();
+  await savedViews.clearAsync();
+};
 
 const subscribeTick = (onChange: () => void) => {
   const timer = setInterval(onChange, TICK_MS);
@@ -32,10 +94,14 @@ export const useViewState = <Query extends FunctionReference<"query">>(query: Qu
   const live: unknown = useQueries(queries).view;
   const pending = useSyncExternalStore(subscribeReverted, readReverted, noReverted);
   const key = argsKey === null ? null : `${name}:${argsKey}`;
-  const kept = key === null || live === undefined || live instanceof Error ? live : settleView(key, live);
-  const shown = useMemo(() => withReverted(pending, name, argsKey, kept), [pending, name, argsKey, kept]);
+  const waiting = live === undefined;
+  const unsaved = useSyncExternalStore(subscribeUnsaved, waiting ? readUnsaved : noReverted, noReverted);
+  const kept = key === null || waiting || live instanceof Error ? live : settleView(key, live);
+  const offline = useMemo(() => (waiting ? offlineView(unsaved, name, argsKey) : undefined), [waiting, unsaved, name, argsKey]);
+  const base = waiting ? offline : kept;
+  const shown = useMemo(() => withReverted(pending, name, argsKey, base), [pending, name, argsKey, base]);
   if (live instanceof Error) return { value: undefined, error: live };
-  return { value: (shown ?? (key ? lastSeenView(key) : undefined)) as FunctionReturnType<Query> | undefined, error: null };
+  return { value: shown as FunctionReturnType<Query> | undefined, error: null };
 };
 
 export const useView = <Query extends FunctionReference<"query">>(query: Query, args: FunctionArgs<Query> | "skip") => {

@@ -1,8 +1,7 @@
-import { useAuthActions } from "@convex-dev/auth/react";
 import { Stack, useRouter, type Href } from "expo-router";
-import { Archive, BookCheck, Layers, LogOut, type LucideIcon } from "lucide-react-native";
+import { Archive, BookCheck, Layers, Settings, type LucideIcon } from "lucide-react-native";
 import type { ReactNode } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { api } from "@lifeos/backend/api";
 import type { SidebarView } from "@lifeos/backend/types";
 import { ProgressRing } from "@/components/progress-ring";
@@ -70,22 +69,17 @@ const Containers = ({ sidebar }: { sidebar: SidebarView }) => {
   );
 };
 
-const SignOut = () => {
+const SettingsButton = () => {
   const { colors } = useKit();
-  const { signOut } = useAuthActions();
-  const ask = () =>
-    Alert.alert("Sign out of LifeOS?", "Your Tasks stay safe. Sign in again any time.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Sign out", style: "destructive", onPress: () => void signOut() },
-    ]);
+  const router = useRouter();
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel="Sign out" hitSlop={10} onPress={ask} style={styles.signOut}>
-      <LogOut size={20} color={colors.foreground} strokeWidth={1.75} />
+    <Pressable accessibilityRole="button" accessibilityLabel="Settings" hitSlop={10} onPress={() => router.push("/lists/settings")} style={styles.headerButton}>
+      <Settings size={21} color={colors.foreground} strokeWidth={1.75} />
     </Pressable>
   );
 };
 
-const signOutButton = () => <SignOut />;
+const settingsButton = () => <SettingsButton />;
 
 const Lists = () => {
   const today = useLocalDate();
@@ -107,7 +101,7 @@ export const ListsScreen = () => {
   const { colors } = useKit();
   return (
     <>
-      <Stack.Screen options={{ title: "Lists", ...(convex ? { headerRight: signOutButton } : {}) }} />
+      <Stack.Screen options={{ title: "Lists", ...(convex ? { headerRight: settingsButton } : {}) }} />
       <ScrollView contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: colors.background }} contentContainerStyle={styles.page}>
         {convex ? (
           <Lists />
@@ -129,6 +123,6 @@ const styles = StyleSheet.create({
   rowTitle: { flex: 1, fontFamily: fonts.regular, fontSize: 17, lineHeight: 24, letterSpacing: -0.2 },
   strong: { fontFamily: fonts.semibold },
   areaDot: { width: 12, height: 12, borderRadius: 6 },
-  signOut: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  headerButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   setup: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 20, paddingHorizontal: 12, paddingTop: 12 },
 });

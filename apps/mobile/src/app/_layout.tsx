@@ -21,7 +21,7 @@ import { listenForShake } from "@/lib/shake";
 addMissingArrayMethods();
 void SplashScreen.preventAutoHideAsync();
 
-const OVERLAID = /^\/(task|tool|capture|search)/;
+const OVERLAID = /^\/(task|tool|capture|search|lists\/settings)/;
 
 const Screens = () => {
   const { colors, dark } = useKit();

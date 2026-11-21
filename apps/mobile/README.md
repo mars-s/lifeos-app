@@ -59,6 +59,8 @@ Tap **Sign in with GitHub**. iOS asks to open github.com, then GitHub asks for y
 | A list | Live Tasks with a large title that turns to glass on scroll. Swipe a Task right to complete it, left to pick its When. Tap it to open the card |
 | Task card | A sheet with the title, notes, Checklist Items, When, Deadline, Estimate, Labels and Repeat |
 | Quick capture | The glass + button above the tab bar (a plain blue button when Reduce Transparency is on). One line with the same shortcuts as the web: `tomorrow 30m #label !fri @list` |
+| Settings | The gear on Lists. Your GitHub account and Sign out, the Features with the same switches as the web, the version and build, and a link to the web app (set `EXPO_PUBLIC_WEB_URL` in `.env.local`) |
+| Offline | Every list you have seen is saved on the phone (`expo-sqlite` key-value store, never the sign-in tokens, which stay in the Keychain). The app opens on those lists at once, even with no network, and swaps in live data when Convex connects. Changes made offline show at once, can be undone, and send when the network is back, as long as the app stays open |
 | Drag the + | Drag the + button into a list and a gap opens where the new Task will go. Let go to name it. In Inbox, Anytime, Someday, Areas and Projects it lands exactly there. Today and Upcoming have no hand-set order yet, so the gap opens at the end of a section (Today, This Evening, a day). Drag back to the button to cancel |
 
 Every change shows in the same frame and raises an Undo toast. Shaking the phone undoes the newest change.

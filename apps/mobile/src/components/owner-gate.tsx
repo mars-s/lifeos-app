@@ -1,4 +1,4 @@
-import { useAuthActions } from "@convex-dev/auth/react";
+import { useAuthActions, useAuthToken } from "@convex-dev/auth/react";
 import { useOauth, useSignInWithGithub } from "@convex-dev/auth/methods/github/react";
 import { useConvexAuth } from "convex/react";
 import { ConvexError } from "convex/values";
@@ -107,8 +107,9 @@ class AccessBoundary extends Component<{ children: ReactNode }, { refusal: Refus
 export const OwnerGate = ({ children }: { children: ReactNode }) => {
   const { colors } = useKit();
   const { isLoading, isAuthenticated } = useConvexAuth();
-  if (isLoading) return <View style={[styles.screen, { backgroundColor: colors.background }]} />;
-  return isAuthenticated ? <AccessBoundary>{children}</AccessBoundary> : <SignInScreen />;
+  const savedSession = useAuthToken() !== null;
+  if (isLoading && !savedSession) return <View style={[styles.screen, { backgroundColor: colors.background }]} />;
+  return isAuthenticated || isLoading ? <AccessBoundary>{children}</AccessBoundary> : <SignInScreen />;
 };
 
 const styles = StyleSheet.create({

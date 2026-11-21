@@ -1,5 +1,6 @@
 import { createChange, noDrafts } from "@lifeos/backend/client/change";
 import { createUndoStack } from "@lifeos/backend/client/undo-stack";
+import { holdUnsaved } from "@lifeos/backend/client/view-cache";
 import { toast } from "@/components/ui/toast";
 import { convex } from "@/lib/convex";
 import { haptic } from "@/lib/haptics";
@@ -27,7 +28,11 @@ export const undo = createUndoStack({
 const OFFLINE = { ok: false, error: { kind: "not_connected" } } as const;
 
 export const change = createChange({
-  mutate: (mutation, args, options) => (convex ? convex.mutation(mutation, args, options) : Promise.resolve(OFFLINE)),
+  mutate: (mutation, args, options) => {
+    if (!convex) return Promise.resolve(OFFLINE);
+    const release = holdUnsaved(options.optimisticUpdate);
+    return convex.mutation(mutation, args, options).finally(release);
+  },
   showUndo: undo.showUndo,
   say: (title) => void toast(title, { icon: false }),
   refuse: (title, reason) => {

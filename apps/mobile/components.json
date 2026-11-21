@@ -39,6 +39,10 @@
     "checkbox": {
       "version": "0.5.7",
       "kitVersion": 6
+    },
+    "switch": {
+      "version": "0.5.7",
+      "kitVersion": 6
     }
   },
   "files": {
@@ -48,6 +52,7 @@
     "src/components/ui/card.tsx": "fc6aff7a23126045370d0690410ce81b44580115369d521fa8ce4221e76b7a5c",
     "src/components/ui/toast.tsx": "c322203c0c51bd501eadce5d0cb717278a8e739e2fe0e3a6b6d2bb64ba064f15",
     "src/components/ui/calendar.tsx": "ad6ab8627b343d077e524f2b4cbaad861cac3a482aa10e11da174bb05086fd1d",
-    "src/components/ui/checkbox.tsx": "890288e6b5f1becdb5fd7ee2a01cc5bbd74f03924f6512188d7ec8f8de9b6073"
+    "src/components/ui/checkbox.tsx": "890288e6b5f1becdb5fd7ee2a01cc5bbd74f03924f6512188d7ec8f8de9b6073",
+    "src/components/ui/switch.tsx": "88611ae4d875f75d60d8d7decb18bff8d14f14f99f6f8441d131d5be09cb4480"
   }
 }

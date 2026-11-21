@@ -1,49 +1,15 @@
 "use client";
 
-import type { OptimisticLocalStore } from "convex/browser";
 import { useMemo } from "react";
 import { api } from "@lifeos/backend/api";
+import { switchFeature, withFeature } from "@lifeos/backend/client/feature-actions";
 import { FEATURES, type FeatureId, type FeatureSettings, type FeatureStatus } from "@lifeos/backend/features";
 import { useChange } from "../changes";
 import { useQuietView } from "../hooks";
 
-export type FeatureState = { feature: FeatureId; enabled: boolean; settings: FeatureSettings[FeatureId]; status: FeatureStatus };
-
-export const STATUS_WORDS = {
-  off: () => "Off",
-  ready: () => "On",
-  needs_key: () => "Needs a key",
-  needs_feature: () => "Needs AI",
-  needs_setup: () => "Needs your home address",
-} satisfies { [K in FeatureStatus["kind"]]: () => string };
+export { STATUS_WORDS, type FeatureState } from "@lifeos/backend/client/feature-actions";
 
 export const statusTone = (status: FeatureStatus) => (status.kind === "ready" ? "positive" : status.kind === "off" ? "quiet" : "negative");
-
-const withFeature = (feature: FeatureId, change: (state: FeatureState) => FeatureState) => (store: OptimisticLocalStore) => {
-  const states = store.getQuery(api.platform.features.list, {});
-  if (states) store.setQuery(api.platform.features.list, {}, states.map((state) => (state.feature === feature ? change(state) : state)));
-};
-
-const hideTrips = (store: OptimisticLocalStore) => {
-  for (const { args } of store.getAllQueries(api.places.trips.forTask)) store.setQuery(api.places.trips.forTask, args, null);
-};
-
-const WHEN_OFF = {
-  ai: (store: OptimisticLocalStore) => {
-    for (const { args } of store.getAllQueries(api.planner.smartEstimates.forTask)) store.setQuery(api.planner.smartEstimates.forTask, args, { kind: "presets" });
-    for (const { args } of store.getAllQueries(api.ai.steps.forTask)) store.setQuery(api.ai.steps.forTask, args, { kind: "off" });
-    hideTrips(store);
-  },
-  places: hideTrips,
-  templates: () => undefined,
-  smartBlocks: (store: OptimisticLocalStore) => {
-    for (const { args } of store.getAllQueries(api.planner.smartBlocks.range))
-      store.setQuery(api.planner.smartBlocks.range, args, { ok: true, value: { on: false, occurrences: [] } });
-  },
-} satisfies Record<FeatureId, (store: OptimisticLocalStore) => void>;
-
-const switched = (enabled: boolean, before: FeatureStatus) =>
-  enabled ? (before.kind === "off" ? ({ kind: "ready" } as const) : before) : ({ kind: "off" } as const);
 
 export const useFeatureOn = (feature: FeatureId) => {
   const states = useQuietView(api.platform.features.list, {});
@@ -57,19 +23,7 @@ export const useFeatures = () => {
     () => ({
       states,
       of: (feature: FeatureId) => states?.find((state) => state.feature === feature),
-      setEnabled: (feature: FeatureId, enabled: boolean) => {
-        const before = states?.find((state) => state.feature === feature);
-        return change({
-          title: `${FEATURES[feature].title} ${enabled ? "on" : "off"}`,
-          mutation: api.platform.features.setEnabled,
-          args: { feature, enabled },
-          apply: (store) => {
-            withFeature(feature, (state) => ({ ...state, enabled, status: switched(enabled, state.status) }))(store);
-            if (!enabled) WHEN_OFF[feature](store);
-          },
-          revert: withFeature(feature, (state) => (before ? { ...state, enabled: before.enabled, status: before.status } : state)),
-        });
-      },
+      setEnabled: (feature: FeatureId, enabled: boolean) => switchFeature(change, states, feature, enabled),
       setTravelMode: (travelMode: FeatureSettings["places"]["travelMode"]) => {
         const before = states?.find((state) => state.feature === "places")?.settings;
         return change({

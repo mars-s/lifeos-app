@@ -1,0 +1,55 @@
+import type { OptimisticLocalStore } from "convex/browser";
+import type { FunctionReturnType } from "convex/server";
+import { api } from "../../convex/_generated/api";
+import { FEATURES, type FeatureId, type FeatureStatus } from "../features";
+import type { ChangeFn } from "./change";
+
+export type FeatureState = FunctionReturnType<typeof api.platform.features.list>[number];
+
+export const STATUS_WORDS = {
+  off: () => "Off",
+  ready: () => "On",
+  needs_key: () => "Needs a key",
+  needs_feature: () => "Needs AI",
+  needs_setup: () => "Needs your home address",
+} satisfies { [K in FeatureStatus["kind"]]: () => string };
+
+export const withFeature = (feature: FeatureId, change: (state: FeatureState) => FeatureState) => (store: OptimisticLocalStore) => {
+  const states = store.getQuery(api.platform.features.list, {});
+  if (states) store.setQuery(api.platform.features.list, {}, states.map((state) => (state.feature === feature ? change(state) : state)));
+};
+
+const hideTrips = (store: OptimisticLocalStore) => {
+  for (const { args } of store.getAllQueries(api.places.trips.forTask)) store.setQuery(api.places.trips.forTask, args, null);
+};
+
+const WHEN_OFF = {
+  ai: (store: OptimisticLocalStore) => {
+    for (const { args } of store.getAllQueries(api.planner.smartEstimates.forTask)) store.setQuery(api.planner.smartEstimates.forTask, args, { kind: "presets" });
+    for (const { args } of store.getAllQueries(api.ai.steps.forTask)) store.setQuery(api.ai.steps.forTask, args, { kind: "off" });
+    hideTrips(store);
+  },
+  places: hideTrips,
+  templates: () => undefined,
+  smartBlocks: (store: OptimisticLocalStore) => {
+    for (const { args } of store.getAllQueries(api.planner.smartBlocks.range))
+      store.setQuery(api.planner.smartBlocks.range, args, { ok: true, value: { on: false, occurrences: [] } });
+  },
+} satisfies Record<FeatureId, (store: OptimisticLocalStore) => void>;
+
+const switched = (enabled: boolean, before: FeatureStatus) =>
+  enabled ? (before.kind === "off" ? ({ kind: "ready" } as const) : before) : ({ kind: "off" } as const);
+
+export const switchFeature = (change: ChangeFn, states: readonly FeatureState[] | undefined, feature: FeatureId, enabled: boolean) => {
+  const before = states?.find((state) => state.feature === feature);
+  return change({
+    title: `${FEATURES[feature].title} ${enabled ? "on" : "off"}`,
+    mutation: api.platform.features.setEnabled,
+    args: { feature, enabled },
+    apply: (store) => {
+      withFeature(feature, (state) => ({ ...state, enabled, status: switched(enabled, state.status) }))(store);
+      if (!enabled) WHEN_OFF[feature](store);
+    },
+    revert: withFeature(feature, (state) => (before ? { ...state, enabled: before.enabled, status: before.status } : state)),
+  });
+};
