@@ -106,6 +106,20 @@ pnpm dev:mobile
 
 Run `pnpm check` for lint, Clippy, type checks, tests and the web build. Set `LIFEOS_CONVEX_URL` and `WAKU_PUBLIC_CONVEX_URL` for the check in a fresh worktree.
 
+## Deploy the web app
+
+The web app is live at <https://lifeos.zephyrus.qzz.io>. Every page is static, so Cloudflare serves the Waku build (`apps/web/dist/public`) as a Worker with static assets only, on a Workers Custom Domain. `apps/web/wrangler.jsonc` holds the config. It turns off the `workers.dev` and preview URLs, so the custom domain is the only way in.
+
+```sh
+pnpm --filter @lifeos/web deploy
+```
+
+The script builds with `WAKU_PUBLIC_CONVEX_URL` set to the hosted deployment, then runs `wrangler deploy`. Wrangler must be logged in to the Cloudflare account in the config (`npx wrangler@latest whoami`).
+
+Sign-in works there because `convex/auth.ts` lists `https://lifeos.zephyrus.qzz.io` as an allowed return origin, next to `SITE_URL` (localhost) and the Convex site URL (the Mac and iPhone bounce routes). The GitHub callback does not change.
+
+Cloudflare Access sits in front of the domain as a second gate. Its policy allows only the owner's email and signs in with GitHub. It is set up in the Zero Trust dashboard, not in this repo. Access only guards the web page: GitHub sends sign-in back through the Convex site URL, which Access does not cover, and the page then loads again behind the gate with its Access cookie.
+
 ## Docs
 
 - [Domain glossary](CONTEXT.md)

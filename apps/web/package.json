@@ -6,6 +6,7 @@
     "dev": "waku dev",
     "build": "waku build",
     "start": "waku start",
+    "deploy": "WAKU_PUBLIC_CONVEX_URL=https://curious-pigeon-412.ap-southeast-2.convex.cloud waku build && pnpm dlx wrangler@4.166.0 deploy",
     "typecheck": "tsc --noEmit",
     "build:mark": "node scripts/build-mark.ts",
     "test": "vitest run"
