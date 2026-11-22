@@ -2,6 +2,8 @@
 
 import { ArrowsOutLineVertical } from "@phosphor-icons/react";
 import type { IsoDate } from "@lifeos/backend/date";
+import { useEffect, useState, type PointerEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { DayMeter } from "@/components/lifeos/capacity";
 import { GoalEditor, LoadBreakdown } from "@/components/lifeos/day-goal";
 import { formatMinutes } from "@/components/lifeos/format";
@@ -58,6 +60,53 @@ const summary = (day: PlanDay) => {
   return `${parts.filter(Boolean).join(", ")}. Change the goal`;
 };
 
+type CardSpot = { top: number; left: number };
+
+const CARD_GAP = 4;
+
+const HoverCard = ({ spot, shown, children }: { spot: CardSpot | null; shown: boolean; children: ReactNode }) =>
+  spot &&
+  createPortal(
+    <div
+      aria-hidden="true"
+      data-day-breakdown=""
+      data-shown={shown || undefined}
+      style={spot}
+      className="pointer-events-none fixed z-[100] w-64 origin-top-left scale-[0.97] rounded-xl bg-popover p-3 text-foreground opacity-0 shadow-float transition-[opacity,scale] duration-[125ms] ease-out starting:scale-[0.97] starting:opacity-0 data-shown:scale-100 data-shown:opacity-100 data-shown:delay-300 motion-reduce:scale-100 motion-reduce:starting:scale-100"
+    >
+      {children}
+    </div>,
+    document.body,
+  );
+
+const useHoverCard = () => {
+  const [spot, setSpot] = useState<CardSpot | null>(null);
+  const [hovered, setHovered] = useState(false);
+
+  useEffect(() => {
+    if (!hovered) return;
+    const hide = () => setHovered(false);
+    window.addEventListener("scroll", hide, { capture: true, passive: true });
+    window.addEventListener("resize", hide, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", hide, { capture: true });
+      window.removeEventListener("resize", hide);
+    };
+  }, [hovered]);
+
+  return {
+    spot,
+    shown: hovered,
+    onPointerEnter: (event: PointerEvent<HTMLElement>) => {
+      if (event.pointerType === "touch") return;
+      const box = event.currentTarget.getBoundingClientRect();
+      setSpot({ top: box.bottom + CARD_GAP, left: box.left + CARD_GAP });
+      setHovered(true);
+    },
+    onPointerLeave: () => setHovered(false),
+  };
+};
+
 export const DayHeader = ({
   day,
   isToday,
@@ -70,6 +119,8 @@ export const DayHeader = ({
   onSpread: (date: IsoDate) => void;
 }) => {
   const spreadable = day.tasks.some((task) => task.status.kind === "open" && !day.boxed.has(task._id));
+  const [editing, setEditing] = useState(false);
+  const { spot, shown, onPointerEnter, onPointerLeave } = useHoverCard();
   const breakdown = (
     <LoadBreakdown areas={day.areas} planned={day.planned} guessed={day.guessed} unestimated={day.unestimated} goal={day.goal} free={day.free} />
   );
@@ -93,21 +144,18 @@ export const DayHeader = ({
         side="bottom"
         align="start"
         className="w-80 space-y-4"
+        onOpenChange={setEditing}
         trigger={
           <button
             type="button"
             aria-label={`${longDay(day.date)}: ${summary(day)}`}
-            className="group/meter relative block w-full space-y-1.5 rounded-lg px-3 py-1 text-left transition-[background-color,scale] duration-(--dur-press) ease-out outline-none hover:bg-foreground/[0.035] focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99]"
+            onPointerEnter={onPointerEnter}
+            onPointerLeave={onPointerLeave}
+            className="group/meter block w-full space-y-1.5 rounded-lg px-3 py-1 text-left transition-[background-color,scale] duration-(--dur-press) ease-out outline-none hover:bg-foreground/[0.035] focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99]"
           >
             <DayMeter slices={day.slices} goal={day.goal} free={day.free} />
             <span className={cn("block text-micro text-muted-foreground")}>
               <LoadLine day={day} />
-            </span>
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute top-full left-1 z-30 mt-1 block w-64 origin-top-left scale-[0.97] rounded-xl bg-popover p-3 opacity-0 shadow-float transition-[opacity,scale] duration-[125ms] ease-out group-hover/meter:scale-100 group-hover/meter:opacity-100 group-hover/meter:delay-300 group-data-[state=open]/meter:hidden motion-reduce:scale-100"
-            >
-              {breakdown}
             </span>
           </button>
         }
@@ -124,6 +172,9 @@ export const DayHeader = ({
           />
         </div>
       </Popover>
+      <HoverCard spot={editing ? null : spot} shown={shown}>
+        {breakdown}
+      </HoverCard>
     </>
   );
 };
