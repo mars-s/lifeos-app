@@ -111,7 +111,7 @@ Run `pnpm check` for lint, Clippy, type checks, tests and the web build. Set `LI
 The web app is live at <https://lifeos.zephyrus.qzz.io>. Every page is static, so Cloudflare serves the Waku build (`apps/web/dist/public`) as a Worker with static assets only, on a Workers Custom Domain. `apps/web/wrangler.jsonc` holds the config. It turns off the `workers.dev` and preview URLs, so the custom domain is the only way in.
 
 ```sh
-pnpm --filter @lifeos/web deploy
+pnpm --filter @lifeos/web run deploy
 ```
 
 The script builds with `WAKU_PUBLIC_CONVEX_URL` set to the hosted deployment, then runs `wrangler deploy`. Wrangler must be logged in to the Cloudflare account in the config (`npx wrangler@latest whoami`).
