@@ -89,7 +89,22 @@ Convex Core owns the data, Activity and Jobs. Waku runs the web app, Tauri wraps
 
 ## Run it
 
-Use Node 22.18 or later and pnpm 10. The Mac app also needs Rust and the macOS build tools.
+[devenv](https://devenv.sh) gives every tool the repo needs: Node 24, pnpm (the exact `packageManager` version), Rust 1.95 with Clippy and rustfmt, CocoaPods, uv and gh. They live in the Nix store and only appear inside the repo. Xcode stays the system one: it gives every compiler, linker and SDK, for the Mac app and the iPhone app alike.
+
+1. Install devenv (with nix-darwin, add `pkgs.devenv` to `environment.systemPackages`) and Xcode.
+2. In the repo, run `direnv allow` once. Each `cd` into the repo then loads the tools. Without direnv, use `devenv shell`.
+3. Run `doctor` to see which tool comes from where.
+
+`devenv up` starts the web dev server on port 3000. `LIFEOS_WEB_PORT=3101 devenv up` moves it. Two more processes only start when named:
+
+```sh
+devenv up convex   # convex dev: pushes functions to the hosted dev deployment on every save
+devenv up metro    # Expo dev server for the iPhone development build, port 8081 (LIFEOS_METRO_PORT)
+```
+
+`tauri dev` (`pnpm dev:desktop`) starts its own web dev server on port 3000, so stop `devenv up` first.
+
+Without devenv, use Node 22.18 or later and pnpm 10. The Mac app also needs Rust and the macOS build tools.
 
 ```sh
 pnpm install

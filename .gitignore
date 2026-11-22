@@ -19,3 +19,8 @@ apps/web/art-source/**/*.png
 
 .claude/worktrees/
 .wrangler/
+
+.devenv*
+.direnv/
+devenv.local.nix
+devenv.local.yaml

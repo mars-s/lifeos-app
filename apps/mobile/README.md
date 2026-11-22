@@ -6,6 +6,8 @@ The iPhone app. It reads and writes the same hosted Convex backend as the web an
 
 The app uses native modules that Expo Go does not ship (Gesture Handler 3, Reanimated 4, the keyboard controller, SecureStore), so it runs as a development build.
 
+Run every command below inside the repo's devenv (see the root README): install devenv, run `direnv allow` once, and `cd` into the repo. It gives Node, pnpm and CocoaPods, sets a UTF-8 locale for `pod install`, and leaves the compilers and SDK to Xcode. `devenv up metro` starts the dev server (step 3) on port 8081, or on `LIFEOS_METRO_PORT`. `devenv up` on its own starts only the web app. After a Node update or `nix-collect-garbage`, run `pod install` again: `ios/.xcode.env.local` holds the path to Node in the Nix store.
+
 1. Write the deployment URL to `apps/mobile/.env.local`:
 
    ```sh
