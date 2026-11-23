@@ -15,6 +15,8 @@ import {
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { cnProps, alpha, motion, readableOn, useKit } from '@/lib/kit';
+import { fonts, usePlanner } from '@/lib/kit-theme';
+import { useTactile } from '@/lib/tactile';
 
 export type SegmentedControlVariant = 'pill' | 'underline' | 'outline';
 export type SegmentedControlSize = 'sm' | 'md' | 'lg';
@@ -88,7 +90,9 @@ export function SegmentedControl({
   style,
     className,
 }: SegmentedControlProps) {
-  const { colors, radius, dark, shadow } = useKit();
+  const { colors, radius } = useKit();
+  const depth = useTactile();
+  const tones = usePlanner();
   const gid = 'sc' + useId().replace(/[^a-zA-Z0-9]/g, '');
   const reduce = useReduceMotion();
   const items: SegmentOption[] = options.map((o) => (typeof o === 'string' ? { value: o, label: o } : o));
@@ -177,7 +181,7 @@ export function SegmentedControl({
   const pill = variant === 'pill';
   const underline = variant === 'underline';
   const outline = variant === 'outline';
-  const segRadius = Math.min(radius.md, (s.h - INSET * 2) / 2);
+  const segRadius = pill ? (s.h - INSET * 2) / 2 : Math.min(radius.md, (s.h - INSET * 2) / 2);
 
   const activeFg = pill ? (accent ? readableOn(accent) : colors.foreground) : underline ? colors.foreground : tint;
   const idleFg = colors.mutedForeground;
@@ -187,9 +191,8 @@ export function SegmentedControl({
         top: INSET,
         bottom: INSET,
         borderRadius: segRadius,
-        backgroundColor: accent ?? (dark ? colors.input : colors.background),
-        borderWidth: accent ? 0 : StyleSheet.hairlineWidth,
-        borderColor: alpha(colors.foreground, dark ? 0.1 : 0.06),
+        backgroundColor: accent ?? tones.surfaceRaised,
+        ...(accent ? null : depth.raised),
       }
     : underline
       ? { bottom: 0, height: 3, borderTopLeftRadius: 3, borderTopRightRadius: 3, backgroundColor: tint }
@@ -203,7 +206,7 @@ export function SegmentedControl({
         };
 
   // onLayout x includes the track border; absolute children start inside it.
-  const trackBorder = pill ? StyleSheet.hairlineWidth : outline ? 1 : 0;
+  const trackBorder = outline ? 1 : 0;
 
   return (
     <View {...cnProps(className)}
@@ -216,9 +219,8 @@ export function SegmentedControl({
         pill && {
           padding: INSET,
           borderRadius: segRadius + INSET,
-          backgroundColor: colors.muted,
-          borderWidth: trackBorder,
-          borderColor: colors.border,
+          backgroundColor: alpha(colors.foreground, 0.05),
+          ...depth.well,
         },
         outline && { padding: INSET, borderRadius: segRadius + INSET, borderWidth: 1, borderColor: colors.border },
         underline && { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
@@ -230,7 +232,6 @@ export function SegmentedControl({
         style={[
           styles.indicator,
           indicator,
-          pill && !accent && shadow('md'),
           {
             left: trackBorder ? Animated.add(lx, -trackBorder) : lx,
             width: Animated.subtract(rx, lx),
@@ -288,8 +289,7 @@ interface SegmentProps {
 }
 
 function Segment({ option, active, onPress, onPressIn, onLayout, fullWidth, size, height, activeFg, idleFg, disabled, reduce }: SegmentProps) {
-  const { font } = useKit();
-  const ff = font.family ? { fontFamily: font.family } : null;
+  const ff = { fontFamily: fonts.medium };
   // a: text colour (JS). press: content squish, pop: little bounce on selection (native, same view).
   const [a] = useState(() => new Animated.Value(active ? 1 : 0));
   const [press] = useState(() => new Animated.Value(1));

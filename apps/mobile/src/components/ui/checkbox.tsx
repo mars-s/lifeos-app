@@ -42,14 +42,14 @@ export function Checkbox({
   style,
     className,
 }: CheckboxProps) {
-  const { colors, radius, font } = useKit();
+  const { colors, font } = useKit();
   const reduce = useReduceMotion();
   const ff = font.family ? { fontFamily: font.family } : null;
   const tint = accent ?? colors.accent;
   // The tick must read on the fill: white on a dark accent, ink on a light one (the dark theme's default
   // accent is near-white, where a fixed white tick vanished).
   const tick = accent ? readableOn(accent) : colors.accentForeground;
-  const corner = shape === 'circle' ? size / 2 : Math.min(size / 2, radius.sm + 1);
+  const corner = shape === 'circle' ? size / 2 : Math.round(size / 3);
   const [inner, setInner] = useState(defaultChecked);
   const on = checked ?? inner;
 
@@ -75,7 +75,7 @@ export function Checkbox({
     onChange?.(!on);
   };
 
-  const border = colors.input;
+  const border = alpha(colors.foreground, 0.3);
   const fg = colors.foreground;
   const muted = colors.mutedForeground;
 
@@ -170,7 +170,7 @@ function useReduceMotion() {
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  box: { borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  box: { borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   burst: { position: 'absolute', borderWidth: 2 },
   text: { flex: 1, paddingTop: 1 },
   labelBox: { alignSelf: 'flex-start' },

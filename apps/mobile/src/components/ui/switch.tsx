@@ -1,9 +1,10 @@
 import * as Haptics from 'expo-haptics';
-import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
+import Svg, { Circle, Path } from 'react-native-svg';
 
 import { cnProps, alpha, motion, readableOn, useKit, usePanResponder } from '@/lib/kit';
+import { useTactile } from '@/lib/tactile';
 
 export type SwitchVariant = 'ios' | 'material' | 'icon';
 export type SwitchSize = 'sm' | 'md' | 'lg';
@@ -44,6 +45,8 @@ const MOON = 'M20 14.2A8 8 0 1 1 9.8 4a6.4 6.4 0 0 0 10.2 10.2z';
 const CHECK = 'M5.5 12.5l4 4L18.5 7.5';
 const CROSS = 'M7 7l10 10M17 7L7 17';
 
+const MARK = 10;
+
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 
 /**
@@ -67,9 +70,9 @@ export function Switch({
   style,
     className,
 }: SwitchProps) {
-  const { colors, dark, font } = useKit();
+  const { colors, font } = useKit();
+  const depth = useTactile();
   const ff = font.family ? { fontFamily: font.family } : null;
-  const gid = 'sw' + useId().replace(/[^a-zA-Z0-9]/g, '');
   const reduce = useReduceMotion();
   const tint = accent ?? colors.accent;
   const [inner, setInner] = useState(defaultValue);
@@ -186,7 +189,7 @@ export function Switch({
   );
 
   const paint = reduce ? tone : pos;
-  const offTrack = material ? alpha(colors.mutedForeground, 0.12) : alpha(colors.foreground, dark ? 0.16 : 0.1);
+  const offTrack = material ? alpha(colors.mutedForeground, 0.12) : alpha(colors.foreground, 0.12);
   const trackBg = paint.interpolate({ inputRange: [0, 1], outputRange: [offTrack, tint], extrapolate: 'clamp' });
   const trackBorder = paint.interpolate({ inputRange: [0, 1], outputRange: [colors.mutedForeground, tint], extrapolate: 'clamp' });
   const onFg = readableOn(tint);
@@ -206,34 +209,30 @@ export function Switch({
       style={[
         styles.track,
         { width: W, height: H, borderRadius: H / 2, backgroundColor: trackBg },
+        !material && depth.recessed,
         material && { borderWidth: border, borderColor: trackBorder },
       ]}
     >
-      {material ? null : (
-        // Depth: a soft sheen over the top half, a touch of shade at the bottom, and a hairline edge.
-        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-          <Svg width={W} height={H}>
-            <Defs>
-              <LinearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor="#ffffff" stopOpacity={dark ? 0.12 : 0.24} />
-                <Stop offset="0.55" stopColor="#ffffff" stopOpacity={0} />
-                <Stop offset="1" stopColor="#000000" stopOpacity={0.07} />
-              </LinearGradient>
-            </Defs>
-            <Rect width={W} height={H} rx={H / 2} fill={`url(#${gid})`} />
-            <Rect
-              x={0.5}
-              y={0.5}
-              width={W - 1}
-              height={H - 1}
-              rx={(H - 1) / 2}
-              fill="none"
-              stroke={colors.foreground}
-              strokeOpacity={dark ? 0.08 : 0.06}
-            />
-          </Svg>
-        </View>
-      )}
+      {variant === 'ios' ? (
+        <>
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.markOn, { left: Math.round(W * 0.23), top: (H - Math.round(H * 0.36)) / 2, height: Math.round(H * 0.36), opacity: paint }]}
+          />
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.markOff,
+              {
+                right: Math.round(W * 0.17),
+                top: (H - MARK) / 2,
+                borderColor: alpha(colors.foreground, 0.4),
+                opacity: paint.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+              },
+            ]}
+          />
+        </>
+      ) : null}
       <Animated.View pointerEvents="none" style={[styles.thumb, { width: thumbW, height: thumbH, left, top }]}>
         <Animated.View
           style={[
@@ -248,7 +247,7 @@ export function Switch({
             },
           ]}
         />
-        <Animated.View style={[StyleSheet.absoluteFill, !material && styles.shadow, { borderRadius: H, backgroundColor: thumbBg }]} />
+        <Animated.View style={[StyleSheet.absoluteFill, { borderRadius: H, backgroundColor: thumbBg }, !material && (on ? depth.thumbOn : depth.thumbOff)]} />
         {material ? (
           <Animated.View
             style={[
@@ -370,11 +369,7 @@ const styles = StyleSheet.create({
   track: { justifyContent: 'center' },
   thumb: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
   halo: { position: 'absolute' },
-  shadow: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(0,0,0,0.06)',
-    // boxShadow: the same soft thumb shadow on iOS and Android.
-    boxShadow: '0px 2px 8px rgba(0,0,0,0.22)',
-  },
+  markOn: { position: 'absolute', width: 2, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.8)' },
+  markOff: { position: 'absolute', width: MARK, height: MARK, borderRadius: MARK / 2, borderWidth: 1.5 },
   glyph: { position: 'absolute' },
 });
