@@ -1,8 +1,11 @@
 "use client";
 
 import { Archive, CalendarDots, CaretLeft, CaretRight, Flag, Moon, Stack, Star, Tray, type Icon } from "@phosphor-icons/react";
-import { useState, type ReactNode } from "react";
+import { AnimatePresence, motion, useIsPresent, useReducedMotion } from "motion/react";
+import { useState, type ReactNode, type Ref } from "react";
+import { MorphText } from "@/components/ui/morph-text";
 import { Popover, PopoverClose } from "@/components/ui/popover-panel";
+import { enter, exit } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
 import { MenuRow, ToolButton } from "./tool-button";
 
@@ -50,78 +53,117 @@ export const MonthGrid = ({
   onPick: (date: string) => void;
 }) => {
   const Close = closeOnPick ? PopoverClose : StayOpen;
+  const reduce = useReducedMotion();
   const [month, setMonth] = useState(monthOf(value && value >= today ? value : today));
+  const [step, setStep] = useState(0);
   const { blanks, dates } = daysIn(month);
   const firstMonth = monthOf(today);
+  const shift = reduce ? 0 : step * MONTH_SHIFT_PX;
   return (
     <div className="px-1 pt-1 pb-1.5">
       <div className="mb-1 flex items-center">
         <p aria-live="polite" className="flex-1 pl-1.5 text-small font-medium">
-          {monthTitle.format(Date.parse(`${month}-01T00:00:00Z`))}
+          <MorphText>{monthTitle.format(Date.parse(`${month}-01T00:00:00Z`))}</MorphText>
         </p>
         {(
           [
             [-1, CaretLeft, "Earlier month"],
             [1, CaretRight, "Later month"],
           ] as const
-        ).map(([step, Caret, label]) => (
+        ).map(([direction, Caret, label]) => (
           <button
             key={label}
             type="button"
             aria-label={label}
-            disabled={step === -1 && month <= firstMonth}
-            onClick={() => setMonth(shiftMonth(month, step))}
+            disabled={direction === -1 && month <= firstMonth}
+            onClick={() => {
+              setStep(direction);
+              setMonth(shiftMonth(month, direction));
+            }}
             className="grid size-7 place-items-center rounded-full text-muted-foreground transition-[background-color,color,scale] duration-(--dur-press) ease-out hover:bg-foreground/[0.06] hover:text-foreground active:scale-[0.9] disabled:pointer-events-none disabled:opacity-30"
           >
             <Caret weight="bold" className="size-3.5" aria-hidden="true" />
           </button>
         ))}
       </div>
-      <div
-        role="group"
-        aria-label="Pick a date"
-        className="grid grid-cols-7 justify-items-center gap-y-0.5"
-        onKeyDown={(event) => {
-          const step = ARROW_STEPS[event.key];
-          if (step === undefined || !(event.target instanceof HTMLElement)) return;
-          event.preventDefault();
-          event.stopPropagation();
-          const days = [...event.currentTarget.querySelectorAll<HTMLElement>("button:not(:disabled)")];
-          days[days.indexOf(event.target) + step]?.focus();
-        }}
-      >
+      <div aria-hidden="true" className="mb-0.5 grid grid-cols-7 justify-items-center">
         {WEEKDAYS.map((weekday) => (
-          <span key={weekday} aria-hidden="true" className="grid h-6 w-8 place-items-center text-micro text-faint-foreground">
+          <span key={weekday} className="grid h-6 w-8 place-items-center text-micro text-faint-foreground">
             {weekday.slice(0, 1)}
           </span>
         ))}
-        {Array.from({ length: blanks }, (_, index) => (
-          <span key={index} aria-hidden="true" />
-        ))}
-        {dates.map((date) => (
-          <Close key={date} asChild>
-            <button
-              type="button"
-              disabled={date < today}
-              aria-label={dayTitle.format(Date.parse(`${date}T00:00:00Z`))}
-              aria-pressed={date === value}
-              onClick={() => onPick(date)}
-              className={cn(
-                "grid size-8 place-items-center rounded-full text-small tabular-nums transition-[background-color,color,scale] duration-(--dur-press) ease-out active:scale-[0.9] disabled:pointer-events-none disabled:text-faint-foreground/60",
-                date === value
-                  ? tone === "brand"
-                    ? "bg-brand font-medium text-brand-foreground"
-                    : "bg-deadline font-medium text-background"
-                  : "hover:bg-foreground/[0.07]",
-                date === today && date !== value && "font-semibold text-brand",
-              )}
-            >
-              {Number(date.slice(8))}
-            </button>
-          </Close>
-        ))}
+      </div>
+      <div
+        role="group"
+        aria-label="Pick a date"
+        className="relative"
+        onKeyDown={(event) => {
+          const arrow = ARROW_STEPS[event.key];
+          if (arrow === undefined || !(event.target instanceof HTMLElement)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const days = [...event.currentTarget.querySelectorAll<HTMLElement>("[data-month-days]:not([inert]) button:not(:disabled)")];
+          days[days.indexOf(event.target) + arrow]?.focus();
+        }}
+      >
+        <AnimatePresence initial={false} mode="popLayout" custom={shift}>
+          <MonthDays key={month} shift={shift}>
+            {Array.from({ length: blanks }, (_, index) => (
+              <span key={index} aria-hidden="true" />
+            ))}
+            {dates.map((date) => (
+              <Close key={date} asChild>
+                <button
+                  type="button"
+                  disabled={date < today}
+                  aria-label={dayTitle.format(Date.parse(`${date}T00:00:00Z`))}
+                  aria-pressed={date === value}
+                  onClick={() => onPick(date)}
+                  className={cn(
+                    "grid size-8 place-items-center rounded-full text-small tabular-nums transition-[background-color,color,scale] duration-(--dur-press) ease-out active:scale-[0.9] disabled:pointer-events-none disabled:text-faint-foreground/60",
+                    date === value
+                      ? tone === "brand"
+                        ? "bg-brand font-medium text-brand-foreground"
+                        : "bg-deadline font-medium text-background"
+                      : "hover:bg-foreground/[0.07]",
+                    date === today && date !== value && "font-semibold text-brand",
+                  )}
+                >
+                  {Number(date.slice(8))}
+                </button>
+              </Close>
+            ))}
+          </MonthDays>
+        </AnimatePresence>
       </div>
     </div>
+  );
+};
+
+const MONTH_SHIFT_PX = 16;
+
+const monthSlide = {
+  from: (shift: number) => ({ opacity: 0, transform: `translateX(${shift}px)` }),
+  at: { opacity: 1, transform: "translateX(0px)", transition: enter },
+  to: (shift: number) => ({ opacity: 0, transform: `translateX(${-shift}px)`, transition: exit }),
+};
+
+const MonthDays = ({ shift, children, ref }: { shift: number; children: ReactNode; ref?: Ref<HTMLDivElement> }) => {
+  const present = useIsPresent();
+  return (
+    <motion.div
+      ref={ref}
+      data-month-days
+      inert={!present}
+      custom={shift}
+      variants={monthSlide}
+      initial="from"
+      animate="at"
+      exit="to"
+      className="grid grid-cols-7 justify-items-center gap-y-0.5"
+    >
+      {children}
+    </motion.div>
   );
 };
 
@@ -155,7 +197,7 @@ export const WhenPicker = ({
       active
       className={cn("pr-2.5", isToday(when, today) && "[&>svg]:text-brand")}
     >
-      <span className="pl-1.5 font-medium">{label}</span>
+      <MorphText className="pl-1.5 font-medium">{label}</MorphText>
     </ToolButton>
   );
   const options = [

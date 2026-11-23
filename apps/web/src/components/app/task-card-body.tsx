@@ -2,7 +2,7 @@
 
 import { ListChecks, Stamp } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { api } from "@lifeos/backend/api";
 import type { IsoDate } from "@lifeos/backend/date";
 import type { PlannerTask } from "@lifeos/backend/types";
@@ -16,7 +16,7 @@ import { baseDate } from "@lifeos/backend/client/repeat";
 import { RepeatPicker } from "@/components/lifeos/repeat-picker";
 import { ToolButton } from "@/components/lifeos/tool-button";
 import { WorkBlockList } from "@/components/lifeos/work-blocks";
-import { instant, springLayout } from "@/lib/motion-tokens";
+import { enter, exit, instant, spring, springLayout } from "@/lib/motion-tokens";
 import { deadlineMark, localDate, relativeDay, shortDay, whenLabel } from "./dates";
 import { FocusSection, FocusTool } from "./focus";
 import { useQuietView } from "./hooks";
@@ -50,12 +50,26 @@ const useStableKeys = (items: PlannerTask["checklist"]) => {
   return items.map((item) => ({ id: item._id, key: keys.get(item._id)?.key ?? item._id, title: item.title, done: item.done }));
 };
 
-const Chip = ({ colour, children }: { colour: PlannerTask["labels"][number]["colour"]; children: ReactNode }) => (
-  <span className="inline-flex h-6 max-w-full min-w-0 items-center gap-1.5 rounded-full bg-foreground/[0.06] px-2 text-small text-foreground/80">
-    <AreaDot colour={colour} className="size-1.5 transition-[background-color] duration-(--dur-fast)" />
-    <span className="truncate">{children}</span>
-  </span>
-);
+const CHIP_OUT = { opacity: 0, scale: 0.95 };
+const CHIP_IN = { opacity: 1, scale: 1 };
+
+const Chip = ({ colour, children, ref }: { colour: PlannerTask["labels"][number]["colour"]; children: ReactNode; ref?: Ref<HTMLSpanElement> }) => {
+  const reduce = useReducedMotion();
+  return (
+    <motion.span
+      ref={ref}
+      layout={reduce ? false : "position"}
+      initial={reduce ? { opacity: 0 } : CHIP_OUT}
+      animate={CHIP_IN}
+      exit={{ ...(reduce ? { opacity: 0 } : CHIP_OUT), transition: exit }}
+      transition={reduce ? enter : { ...enter, layout: spring }}
+      className="inline-flex h-6 max-w-full min-w-0 items-center gap-1.5 rounded-full bg-foreground/[0.06] px-2 text-small text-foreground/80"
+    >
+      <AreaDot colour={colour} className="size-1.5 transition-[background-color] duration-(--dur-fast)" />
+      <span className="truncate">{children}</span>
+    </motion.span>
+  );
+};
 
 const draftField = "block w-full bg-transparent outline-none placeholder:text-faint-foreground";
 
@@ -212,12 +226,18 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
       <FocusSection task={task} today={today} />
       <div className="-ml-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1.5">
         <WhenPicker when={task.when} label={whenLabel(task.when, today)} today={today} onChange={actions.setWhen} />
-        {task.area && <Chip colour={task.area.colour}>{task.project?.title ?? task.area.title}</Chip>}
-        {task.labels.map((label) => (
-          <Chip key={label._id} colour={label.colour}>
-            {label.name}
-          </Chip>
-        ))}
+        <AnimatePresence initial={false} mode="popLayout">
+          {task.area && (
+            <Chip key={task.project?._id ?? task.area._id} colour={task.area.colour}>
+              {task.project?.title ?? task.area.title}
+            </Chip>
+          )}
+          {task.labels.map((label) => (
+            <Chip key={label._id} colour={label.colour}>
+              {label.name}
+            </Chip>
+          ))}
+        </AnimatePresence>
         <span className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-0.5">
           <FocusTool task={task} />
           <LabelPicker
