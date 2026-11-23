@@ -1,4 +1,4 @@
-import { Minus, Plus } from "lucide-react-native";
+import { Minus, Plus, type LucideIcon } from "lucide-react-native";
 import { useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
@@ -25,9 +25,10 @@ import {
 import { localIsoDate, type IsoDate } from "@lifeos/backend/date";
 import { Calendar } from "@/components/ui/calendar";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import { QuietButton } from "@/components/suggested-steps";
+import { Button, IconButton } from "@/components/button";
 import { haptic } from "@/lib/haptics";
-import { useKit } from "@/lib/kit";
+import { alpha, useKit } from "@/lib/kit";
+import { useTactile } from "@/lib/tactile";
 import { fonts, usePlanner } from "@/lib/kit-theme";
 
 const UNIT_LABELS = { days: "Day", weeks: "Week", months: "Month", years: "Year" } as const;
@@ -46,25 +47,15 @@ const isOneOf = <T extends string>(options: readonly T[], value: string): value 
 
 const Stepper = ({ value, min, max, label, onChange }: { value: number; min: number; max: number; label: string; onChange: (value: number) => void }) => {
   const { colors } = useKit();
-  const tones = usePlanner();
+  const depth = useTactile();
   const step = (by: number) => {
     const next = Math.min(Math.max(value + by, min), max);
     if (next === value) return;
     haptic("snap");
     onChange(next);
   };
-  const button = (by: number, disabled: boolean, icon: ReactNode, name: string) => (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${name}: ${label}`}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      hitSlop={6}
-      onPress={() => step(by)}
-      style={({ pressed }) => [styles.stepButton, { opacity: disabled ? 0.3 : 1, transform: [{ scale: pressed ? 0.9 : 1 }] }]}
-    >
-      {icon}
-    </Pressable>
+  const button = (by: number, disabled: boolean, icon: LucideIcon, name: string) => (
+    <IconButton label={`${name}: ${label}`} variant="raised" size="sm" icon={icon} haptic={null} disabled={disabled} hitSlop={6} onPress={() => step(by)} />
   );
   return (
     <View
@@ -74,11 +65,11 @@ const Stepper = ({ value, min, max, label, onChange }: { value: number; min: num
       accessibilityValue={{ min, max, now: value }}
       accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
       onAccessibilityAction={(event) => step(event.nativeEvent.actionName === "increment" ? 1 : -1)}
-      style={[styles.stepper, { backgroundColor: tones.surface }]}
+      style={[styles.stepper, depth.well, { backgroundColor: alpha(colors.foreground, 0.05) }]}
     >
-      {button(-1, value <= min, <Minus size={16} color={colors.mutedForeground} strokeWidth={2.25} />, "Fewer")}
+      {button(-1, value <= min, Minus, "Fewer")}
       <Text style={[styles.stepValue, { color: colors.foreground }]}>{value}</Text>
-      {button(1, value >= max, <Plus size={16} color={colors.mutedForeground} strokeWidth={2.25} />, "More")}
+      {button(1, value >= max, Plus, "More")}
     </View>
   );
 };
@@ -211,11 +202,13 @@ export const RepeatCustom = ({ schedule, end, base, today, mode, onCancel, onCom
         )}
       </Text>
       <View style={styles.actions}>
-        <QuietButton label="Back" onPress={onCancel} />
-        <QuietButton
-          primary
+        <Button variant="quiet" size="sm" title="Back" onPress={onCancel} />
+        <Button
+          variant="primary"
+          size="sm"
+          haptic={null}
           disabled={!built}
-          label="Repeat"
+          title="Repeat"
           onPress={() => {
             if (!built) return;
             haptic("toggle");
@@ -232,7 +225,7 @@ const styles = StyleSheet.create({
   line: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 40 },
   text: { fontFamily: fonts.regular, fontSize: 16, lineHeight: 22 },
   caption: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 18 },
-  stepper: { flexDirection: "row", alignItems: "center", height: 36, borderRadius: 18, paddingHorizontal: 2 },
+  stepper: { flexDirection: "row", alignItems: "center", height: 38, borderRadius: 19, padding: 2 },
   stepButton: { width: 34, height: 34, alignItems: "center", justifyContent: "center" },
   stepValue: { fontFamily: fonts.monoMedium, fontSize: 15, minWidth: 28, textAlign: "center" },
   weekdays: { flexDirection: "row", justifyContent: "space-between" },

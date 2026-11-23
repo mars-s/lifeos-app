@@ -5,13 +5,15 @@ import { viewOf, type ActiveFocus, type FocusActions } from "@lifeos/backend/cli
 import { parseEstimateText } from "@lifeos/backend/estimate";
 import { MAX_FOCUS_MINUTES, type FocusPlanChoice } from "@lifeos/backend/focus";
 import { phaseLine, primaryFor } from "@/components/focus-pill";
+import { Button, IconButton } from "@/components/button";
 import { DotRing, countdown, useFocusTone } from "@/components/focus-time";
 import { Toaster } from "@/components/ui/toast";
 import { useAlertStatus } from "@/lib/focus-alerts";
 import { haptic } from "@/lib/haptics";
-import { useKit } from "@/lib/kit";
+import { alpha, useKit } from "@/lib/kit";
 import { fonts, usePlanner } from "@/lib/kit-theme";
 import { useFocus, useFocusNow } from "@/lib/focus";
+import { useTactile } from "@/lib/tactile";
 
 const FOCUS_LENGTHS = [15, 25, 45, 50, 90] as const;
 const BREAK_LENGTHS = [5, 10, 15] as const;
@@ -42,42 +44,35 @@ const Dial = ({ active, actions }: { active: ActiveFocus; actions: FocusActions 
         </View>
       </View>
       <View style={styles.controls}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={view.phase === "break" ? "End the break" : "Stop the Focus Session"}
-          onPress={() => {
-            haptic("drop");
-            actions.stop();
-          }}
-          style={({ pressed }) => [styles.round, { backgroundColor: tones.surface, transform: [{ scale: pressed ? 0.94 : 1 }] }]}
-        >
-          <Square size={18} color={colors.foreground} fill={colors.foreground} />
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={primary.label}
-          onPress={() => {
-            haptic("toggle");
-            primary.run();
-          }}
-          style={({ pressed }) => [styles.main, { backgroundColor: colors.foreground, transform: [{ scale: pressed ? 0.96 : 1 }] }]}
-        >
-          <Icon size={18} color={colors.background} fill={primary.label === "Pause" || primary.label === "Resume" || primary.label === "Back to focus" ? colors.background : "transparent"} />
-          <Text style={[styles.mainLabel, { color: colors.background }]}>{primary.label}</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Add 5 minutes"
+        <IconButton
+          label={view.phase === "break" ? "End the break" : "Stop the Focus Session"}
+          size="lg"
+          icon={Square}
+          iconFill
+          haptic="drop"
+          onPress={actions.stop}
+        />
+        <Button
+          variant="primary"
+          size="lg"
+          title={primary.label}
+          icon={Icon}
+          iconFill={primary.label === "Pause" || primary.label === "Resume" || primary.label === "Back to focus"}
+          onPress={primary.run}
+          style={styles.main}
+        />
+        <IconButton
+          label="Add 5 minutes"
+          size="lg"
           disabled={!view.timed}
-          onPress={() => {
-            haptic("toggle");
-            actions.extend(5);
-          }}
-          style={({ pressed }) => [styles.round, { backgroundColor: tones.surface, opacity: view.timed ? 1 : 0.35, transform: [{ scale: pressed ? 0.94 : 1 }] }]}
-        >
-          <Plus size={14} color={colors.foreground} strokeWidth={2.5} />
-          <Text style={[styles.five, { color: colors.foreground }]}>5</Text>
-        </Pressable>
+          onPress={() => actions.extend(5)}
+          render={(ink) => (
+            <>
+              <Plus size={14} color={ink} strokeWidth={2.5} />
+              <Text style={[styles.five, { color: ink }]}>5</Text>
+            </>
+          )}
+        />
       </View>
     </View>
   );
@@ -86,8 +81,9 @@ const Dial = ({ active, actions }: { active: ActiveFocus; actions: FocusActions 
 const Segment = ({ plan, onChange }: { plan: FocusPlanChoice; onChange: (plan: FocusPlanChoice) => void }) => {
   const { colors } = useKit();
   const tones = usePlanner();
+  const depth = useTactile();
   return (
-    <View accessibilityRole="tablist" style={[styles.segment, { backgroundColor: tones.surface }]}>
+    <View accessibilityRole="tablist" style={[styles.segment, depth.well, { backgroundColor: alpha(colors.foreground, 0.05) }]}>
       {(["open", "pomodoro"] as const).map((mode) => {
         const selected = plan.mode === mode;
         return (
@@ -100,7 +96,7 @@ const Segment = ({ plan, onChange }: { plan: FocusPlanChoice; onChange: (plan: F
               haptic("snap");
               onChange({ ...plan, mode });
             }}
-            style={[styles.segmentItem, selected ? [styles.segmentOn, { backgroundColor: colors.popover }] : null]}
+            style={[styles.segmentItem, selected ? [depth.raised, { backgroundColor: tones.surfaceRaised }] : null]}
           >
             <Text style={[styles.segmentLabel, { color: selected ? colors.foreground : colors.mutedForeground }]}>{mode === "open" ? "Stopwatch" : "Pomodoro"}</Text>
           </Pressable>
@@ -264,15 +260,12 @@ const styles = StyleSheet.create({
   dialTime: { fontFamily: fonts.monoMedium, fontSize: 44, lineHeight: 52, letterSpacing: -1, fontVariant: ["tabular-nums"] },
   dialUnder: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 18 },
   controls: { flexDirection: "row", alignItems: "center", gap: 14, marginTop: 20 },
-  round: { width: 52, height: 52, borderRadius: 26, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 1 },
   five: { fontFamily: fonts.monoMedium, fontSize: 15, lineHeight: 20 },
-  main: { height: 52, minWidth: 152, paddingHorizontal: 22, borderRadius: 26, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
-  mainLabel: { fontFamily: fonts.semibold, fontSize: 16, lineHeight: 20 },
+  main: { minWidth: 152 },
   rule: { height: StyleSheet.hairlineWidth, marginVertical: 20 },
   plan: { gap: 12 },
-  segment: { flexDirection: "row", borderRadius: 10, padding: 2 },
-  segmentItem: { flex: 1, height: 34, alignItems: "center", justifyContent: "center", borderRadius: 8 },
-  segmentOn: { shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 } },
+  segment: { flexDirection: "row", borderRadius: 999, padding: 2 },
+  segmentItem: { flex: 1, height: 34, alignItems: "center", justifyContent: "center", borderRadius: 999 },
   segmentLabel: { fontFamily: fonts.medium, fontSize: 14, lineHeight: 18 },
   lengths: { flexDirection: "row", alignItems: "center", gap: 8 },
   lengthLabel: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 18, width: 48 },

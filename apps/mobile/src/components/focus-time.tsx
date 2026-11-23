@@ -1,9 +1,10 @@
 import { Timer } from "lucide-react-native";
-import { ActionSheetIOS, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActionSheetIOS, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import { isFocusingOn, viewOf, wholeMinutes, type ActiveFocus, type FocusView } from "@lifeos/backend/client/focus";
 import { formatMinutes } from "@lifeos/backend/estimate";
 import type { PlannerTask } from "@lifeos/backend/types";
+import { Button } from "@/components/button";
 import { haptic } from "@/lib/haptics";
 import { useKit } from "@/lib/kit";
 import { fonts, usePlanner } from "@/lib/kit-theme";
@@ -178,23 +179,16 @@ export const FocusCardSection = ({ task, onOptions }: { task: PlannerTask; onOpt
           {estimate === undefined ? null : <Text style={[styles.of, { color: tones.faintForeground }]}>of {formatMinutes(estimate)}</Text>}
         </View>
         {open ? (
-          <Pressable
-            accessibilityRole="button"
+          <Button
+            title={label}
+            size="sm"
+            variant={ours ? "primary" : "secondary"}
             accessibilityLabel={ours ? `${label} the Focus Session` : "Start a Focus Session"}
-            onPress={() => {
-              haptic("toggle");
-              if (ours) actions.toggle();
-              else actions.start(task);
-            }}
+            onPress={() => (ours ? actions.toggle() : actions.start(task))}
             onLongPress={onOptions}
             hitSlop={6}
-            style={({ pressed }) => [
-              styles.focusButton,
-              { backgroundColor: ours ? colors.accent : tones.surface, transform: [{ scale: pressed ? 0.96 : 1 }] },
-            ]}
-          >
-            <Text style={[styles.focusLabel, { color: ours ? colors.accentForeground : colors.foreground }]}>{label}</Text>
-          </Pressable>
+            style={styles.focusButton}
+          />
         ) : null}
       </View>
       {actual > 0 || estimate !== undefined ? (
@@ -218,8 +212,7 @@ const styles = StyleSheet.create({
   sectionValue: { flex: 1, flexDirection: "row", alignItems: "baseline", gap: 6 },
   bigFigure: { fontFamily: fonts.monoMedium, fontSize: 15, lineHeight: 22, fontVariant: ["tabular-nums"] },
   of: { fontFamily: fonts.mono, fontSize: 13, lineHeight: 18 },
-  focusButton: { minWidth: 76, height: 34, paddingHorizontal: 14, borderRadius: 17, alignItems: "center", justifyContent: "center" },
-  focusLabel: { fontFamily: fonts.semibold, fontSize: 15, lineHeight: 20 },
+  focusButton: { minWidth: 76 },
   sectionMeter: { flexDirection: "row", alignItems: "center", gap: 10, paddingLeft: 30, paddingBottom: 6 },
   over: { fontFamily: fonts.mono, fontSize: 12, lineHeight: 18 },
 });

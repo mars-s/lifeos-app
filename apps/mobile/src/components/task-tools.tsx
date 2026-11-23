@@ -17,7 +17,7 @@ import { Toaster } from "@/components/ui/toast";
 import { EmptyNote } from "@/components/task-list";
 import { ProgressRing } from "@/components/progress-ring";
 import { RepeatCustom, dateOf } from "@/components/repeat-custom";
-import { QuietButton } from "@/components/suggested-steps";
+import { Button } from "@/components/button";
 import { useSmartEstimate, useSteps } from "@/lib/ai";
 import { change } from "@/lib/change";
 import { haptic } from "@/lib/haptics";
@@ -192,15 +192,16 @@ const EstimateTool = ({ task, today, close }: ToolProps) => {
           <Text style={[styles.hint, { color: colors.mutedForeground }]}>Big one. Split it up?</Text>
           <View style={styles.bigActions}>
             {steps.available ? (
-              <QuietButton
-                label="Break into steps"
+              <Button
+                size="sm"
+                title="Break into steps"
                 onPress={() => {
                   steps.ask();
                   close();
                 }}
               />
             ) : null}
-            {task.status.kind === "open" ? <QuietButton label="Convert to Project" onPress={() => turnIntoProject(task, today)} /> : null}
+            {task.status.kind === "open" ? <Button size="sm" title="Convert to Project" onPress={() => turnIntoProject(task, today)} /> : null}
           </View>
         </View>
       ) : null}
@@ -279,7 +280,6 @@ const nextLine = (repeat: TaskRepeat) => {
 
 const RepeatTool = ({ task, today, close }: ToolProps) => {
   const { colors } = useKit();
-  const tones = usePlanner();
   const actions = useMemo(() => repeatActions(change, task, today), [task, today]);
   const [custom, setCustom] = useState<RepeatMode | null>(null);
   const repeat = task.repeat?.active ? task.repeat : undefined;
@@ -323,15 +323,7 @@ const RepeatTool = ({ task, today, close }: ToolProps) => {
             {next}
           </Text>
           {repeat?.next.kind === "due" ? (
-            <Pressable
-              accessibilityRole="button"
-              disabled={isOptimistic(repeat.ruleId)}
-              onPress={() => pick(actions.skip)}
-              style={({ pressed }) => [styles.skip, { backgroundColor: tones.surface, opacity: isOptimistic(repeat.ruleId) ? 0.4 : 1, transform: [{ scale: pressed ? 0.96 : 1 }] }]}
-            >
-              <SkipForward size={14} color={colors.mutedForeground} fill={colors.mutedForeground} />
-              <Text style={[styles.skipLabel, { color: colors.foreground }]}>Skip Next</Text>
-            </Pressable>
+            <Button size="sm" title="Skip Next" icon={SkipForward} iconFill haptic={null} disabled={isOptimistic(repeat.ruleId)} onPress={() => pick(actions.skip)} />
           ) : null}
         </View>
       ) : null}
@@ -494,8 +486,6 @@ const styles = StyleSheet.create({
   rule: { height: StyleSheet.hairlineWidth, marginHorizontal: 8, marginVertical: 6 },
   next: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 48, paddingHorizontal: 8, marginTop: 6, borderTopWidth: StyleSheet.hairlineWidth },
   nextText: { flex: 1, fontFamily: fonts.regular, fontSize: 15, lineHeight: 20 },
-  skip: { flexDirection: "row", alignItems: "center", gap: 6, height: 34, borderRadius: 17, paddingHorizontal: 12 },
-  skipLabel: { fontFamily: fonts.medium, fontSize: 14 },
   search: { flexDirection: "row", alignItems: "center", gap: 8, height: 44, borderRadius: 12, paddingHorizontal: 12, marginHorizontal: 8, marginBottom: 6 },
   searchField: { flex: 1, fontFamily: fonts.regular, fontSize: 17, height: 44 },
   lead: { width: 22, alignItems: "center" },

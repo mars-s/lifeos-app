@@ -4,9 +4,10 @@ import { useConvexAuth } from "convex/react";
 import { ConvexError } from "convex/values";
 import * as WebBrowser from "expo-web-browser";
 import { Component, useState, type ReactNode } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { api } from "@lifeos/backend/api";
 import type { AccessError } from "@lifeos/backend/types";
+import { Button } from "@/components/button";
 import { LifeosMark } from "@/components/lifeos-mark";
 import { iphoneReturnUrl } from "@/lib/convex";
 import { haptic } from "@/lib/haptics";
@@ -47,19 +48,7 @@ const SignInScreen = () => {
       <Text style={[text.sm, styles.hint, { color: colors.mutedForeground }]}>
         A calm place to plan the day. Sign in to pick up where you left off.
       </Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ busy }}
-        disabled={busy}
-        onPress={() => void start()}
-        style={({ pressed }) => [
-          styles.button,
-          { backgroundColor: colors.primary, transform: [{ scale: pressed ? 0.97 : 1 }] },
-        ]}
-      >
-        {busy ? <ActivityIndicator color={colors.primaryForeground} /> : null}
-        <Text style={[text.md, styles.buttonLabel, { color: colors.primaryForeground }]}>Sign in with GitHub</Text>
-      </Pressable>
+      <Button variant="primary" title="Sign in with GitHub" loading={busy} haptic={null} onPress={() => void start()} style={styles.button} />
       <Text accessibilityLiveRegion="polite" style={[text.sm, styles.hint, { color: colors.danger }]}>
         {shown}
       </Text>
@@ -77,13 +66,7 @@ const NotOwnerScreen = ({ message, onLeave }: { message: string; onLeave: () => 
         This is not your LifeOS
       </Text>
       <Text style={[text.sm, styles.hint, { color: colors.mutedForeground }]}>{message}</Text>
-      <Pressable
-        accessibilityRole="button"
-        onPress={leave}
-        style={({ pressed }) => [styles.button, { backgroundColor: colors.primary, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
-      >
-        <Text style={[text.md, styles.buttonLabel, { color: colors.primaryForeground }]}>Sign out</Text>
-      </Pressable>
+      <Button variant="primary" title="Sign out" onPress={leave} style={styles.button} />
     </View>
   );
 };
@@ -116,14 +99,5 @@ const styles = StyleSheet.create({
   screen: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16, paddingHorizontal: 32 },
   title: { fontFamily: fonts.semibold },
   hint: { fontFamily: fonts.regular, textAlign: "center", minHeight: 20 },
-  button: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    height: 48,
-    paddingHorizontal: 24,
-    borderRadius: 999,
-    marginTop: 8,
-  },
-  buttonLabel: { fontFamily: fonts.medium },
+  button: { marginTop: 8 },
 });

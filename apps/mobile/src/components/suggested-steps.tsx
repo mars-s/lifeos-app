@@ -3,32 +3,13 @@ import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import Animated, { FadeIn, FadeOut, ReduceMotion, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withTiming } from "react-native-reanimated";
 import { MODELS, isModelId } from "@lifeos/backend/ai";
+import { Button } from "@/components/button";
 import { STEPS_FAILED, type Steps } from "@/lib/ai";
 import { useKit } from "@/lib/kit";
 import { fonts, usePlanner } from "@/lib/kit-theme";
 import { FAST_MS } from "@/lib/motion";
 
 type Draft = { key: number; title: string };
-
-export const QuietButton = ({ label, onPress, primary, disabled }: { label: string; onPress: () => void; primary?: boolean; disabled?: boolean }) => {
-  const { colors } = useKit();
-  const tones = usePlanner();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ disabled: disabled === true }}
-      disabled={disabled}
-      onPress={onPress}
-      hitSlop={6}
-      style={({ pressed }) => [
-        styles.button,
-        { backgroundColor: primary ? colors.accent : tones.surface, opacity: disabled ? 0.4 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] },
-      ]}
-    >
-      <Text style={[styles.buttonLabel, { color: primary ? colors.accentForeground : colors.foreground }]}>{label}</Text>
-    </Pressable>
-  );
-};
 
 const Ghost = ({ width, delay }: { width: `${number}%`; delay: number }) => {
   const tones = usePlanner();
@@ -76,9 +57,9 @@ const DraftSteps = ({ steps, project, answeredBy, onAccept, onAgain, onDismiss }
       ))}
       {project ? <Text style={[styles.note, { color: colors.mutedForeground }]}>This looks big enough to be a Project. For now, the steps go in the Checklist.</Text> : null}
       <View style={styles.actions}>
-        <QuietButton primary disabled={titles.length === 0} label={titles.length === 1 ? "Add 1 step" : `Add ${titles.length} steps`} onPress={() => onAccept(titles)} />
-        <QuietButton label="Ask again" onPress={onAgain} />
-        <QuietButton label="Dismiss" onPress={onDismiss} />
+        <Button variant="primary" size="sm" disabled={titles.length === 0} title={titles.length === 1 ? "Add 1 step" : `Add ${titles.length} steps`} onPress={() => onAccept(titles)} />
+        <Button variant="quiet" size="sm" title="Ask again" onPress={onAgain} />
+        <Button variant="quiet" size="sm" title="Dismiss" onPress={onDismiss} />
       </View>
       <Text style={[styles.model, { color: tones.faintForeground }]}>{model}</Text>
     </>
@@ -116,8 +97,8 @@ export const SuggestedSteps = ({ steps }: { steps: Steps }) => {
             {STEPS_FAILED[view.error]}
           </Text>
           <View style={styles.actions}>
-            <QuietButton label="Try again" onPress={steps.again} />
-            <QuietButton label="Dismiss" onPress={steps.dismiss} />
+            <Button size="sm" title="Try again" onPress={steps.again} />
+            <Button variant="quiet" size="sm" title="Dismiss" onPress={steps.dismiss} />
           </View>
         </>
       ) : null}
@@ -141,7 +122,5 @@ const styles = StyleSheet.create({
   leaveOut: { width: 36, minHeight: 38, alignItems: "center", justifyContent: "center" },
   note: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 20, paddingVertical: 4 },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingTop: 8 },
-  button: { height: 36, borderRadius: 18, paddingHorizontal: 14, alignItems: "center", justifyContent: "center" },
-  buttonLabel: { fontFamily: fonts.medium, fontSize: 15, lineHeight: 20 },
   model: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 16, paddingTop: 8, textAlign: "right" },
 });

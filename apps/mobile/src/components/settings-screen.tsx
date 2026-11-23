@@ -1,11 +1,12 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import * as Application from "expo-application";
 import { Stack } from "expo-router";
-import { Frame, Globe, MapPin, Smartphone, Sparkles, Stamp, type LucideIcon } from "lucide-react-native";
+import { Frame, Globe, LogOut, MapPin, Smartphone, Sparkles, Stamp, type LucideIcon } from "lucide-react-native";
 import { Alert, Linking, ScrollView, StyleSheet, View } from "react-native";
 import { api } from "@lifeos/backend/api";
 import { STATUS_WORDS, switchFeature, type FeatureState } from "@lifeos/backend/client/feature-actions";
 import { FEATURES, type FeatureIcon } from "@lifeos/backend/features";
+import { Button } from "@/components/button";
 import { ListGroup, ListItem, type ListItemIconProps } from "@/components/ui/list-item";
 import { Switch } from "@/components/ui/switch";
 import { change } from "@/lib/change";
@@ -39,7 +40,9 @@ const Account = () => {
         subtitle="Signed in with GitHub"
         avatar={{ src: login ? `https://github.com/${login}.png?size=96` : undefined, name: login ?? "GitHub" }}
       />
-      <ListItem title="Sign out" icon="logout" destructive chevron={false} onPress={ask} />
+      <View style={styles.signOut}>
+        <Button size="sm" title="Sign out" icon={LogOut} haptic={null} onPress={ask} />
+      </View>
     </ListGroup>
   );
 };
@@ -113,4 +116,5 @@ const styles = StyleSheet.create({
   feature: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingLeft: 16 },
   tile: { width: 30, height: 30, borderRadius: 8, alignItems: "center", justifyContent: "center", marginTop: 12 },
   featureBody: { flex: 1, paddingVertical: 11, paddingRight: 16 },
+  signOut: { alignItems: "flex-end", paddingHorizontal: 12, paddingVertical: 10 },
 });

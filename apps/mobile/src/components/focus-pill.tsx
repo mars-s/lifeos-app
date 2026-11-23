@@ -6,11 +6,12 @@ import Animated, { FadeIn, FadeOut, ReduceMotion } from "react-native-reanimated
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { viewOf, type ActiveFocus, type FocusActions, type FocusView } from "@lifeos/backend/client/focus";
 import { roundOf, POMODOROS_PER_LONG_BREAK } from "@lifeos/backend/focus";
+import { IconButton } from "@/components/button";
 import { CAPTURE_SIZE, TAB_BAR_CLEARANCE, useGlass } from "@/components/capture-button";
 import { DotRing, countdown, useFocusTone } from "@/components/focus-time";
 import { haptic } from "@/lib/haptics";
 import { useKit } from "@/lib/kit";
-import { fonts, usePlanner } from "@/lib/kit-theme";
+import { fonts } from "@/lib/kit-theme";
 import { useFocus, useFocusNow } from "@/lib/focus";
 import { BASE_MS, EASE_OUT, FAST_MS } from "@/lib/motion";
 
@@ -40,7 +41,6 @@ export const phaseLine = (active: ActiveFocus, view: FocusView) => {
 
 const PillBody = ({ active, actions }: { active: ActiveFocus; actions: FocusActions }) => {
   const { colors } = useKit();
-  const tones = usePlanner();
   const router = useRouter();
   const now = useFocusNow(active.state.kind === "running");
   const view = viewOf(active, now);
@@ -71,18 +71,14 @@ const PillBody = ({ active, actions }: { active: ActiveFocus; actions: FocusActi
         </View>
         <Text style={[styles.time, { color: view.status === "paused" ? colors.mutedForeground : colors.foreground }]}>{time}</Text>
       </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={primary.label}
+      <IconButton
+        label={primary.label}
+        variant="primary"
+        size="sm"
         hitSlop={4}
-        onPress={() => {
-          haptic("toggle");
-          primary.run();
-        }}
-        style={({ pressed }) => [styles.primary, { backgroundColor: tones.surfaceRaised, transform: [{ scale: pressed ? 0.92 : 1 }] }]}
-      >
-        <Icon size={17} color={colors.foreground} fill={Icon === Coffee || Icon === SkipForward ? "transparent" : colors.foreground} strokeWidth={2} />
-      </Pressable>
+        onPress={primary.run}
+        render={(ink) => <Icon size={17} color={ink} fill={Icon === Coffee || Icon === SkipForward ? "transparent" : ink} strokeWidth={2} />}
+      />
     </View>
   );
 };
@@ -122,5 +118,4 @@ const styles = StyleSheet.create({
   title: { fontFamily: fonts.medium, fontSize: 15, lineHeight: 19 },
   phase: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 16 },
   time: { fontFamily: fonts.monoMedium, fontSize: 16, lineHeight: 20, fontVariant: ["tabular-nums"], paddingRight: 8 },
-  primary: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
 });

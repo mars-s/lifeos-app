@@ -15,6 +15,7 @@ import { formatMinutes } from "@lifeos/backend/estimate";
 import type { PlannerTask } from "@lifeos/backend/types";
 import { change } from "@/lib/change";
 import { drag, type DayPlace, type Drop } from "@/lib/magic-plus";
+import { IconButton } from "@/components/button";
 import { haptic } from "@/lib/haptics";
 import { useKit } from "@/lib/kit";
 import { fonts, usePlanner } from "@/lib/kit-theme";
@@ -216,15 +217,7 @@ export const CaptureScreen = () => {
         <Text style={[styles.lands, { color: colors.mutedForeground }]}>
           {ready ? `Saves to ${landing(capture, placement, today)}` : slot ? `New Task in ${slot.label}` : "tomorrow 30m #label !fri"}
         </Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Save"
-          accessibilityState={{ disabled: !ready }}
-          onPress={save}
-          style={({ pressed }) => [styles.save, { backgroundColor: ready ? colors.accent : tones.surfaceRaised, transform: [{ scale: pressed ? 0.94 : 1 }] }]}
-        >
-          <ArrowUp size={20} color={ready ? colors.accentForeground : tones.faintForeground} strokeWidth={2.5} />
-        </Pressable>
+        <IconButton label="Save" variant="primary" icon={ArrowUp} haptic={null} disabled={!ready} onPress={save} />
       </View>
     </View>
   );
@@ -241,5 +234,4 @@ const styles = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4 },
   foot: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 44 },
   lands: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 20 },
-  save: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
 });
