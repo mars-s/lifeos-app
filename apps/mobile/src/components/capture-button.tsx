@@ -11,6 +11,7 @@ import { haptic } from "@/lib/haptics";
 import { useKit } from "@/lib/kit";
 import { drag, dropAt, nearestGap, todaySlot } from "@/lib/magic-plus";
 import { EASE_OUT, PRESS_MS, SPRING_SETTLE } from "@/lib/motion";
+import { useTactile } from "@/lib/tactile";
 import { useLocalDate } from "@/lib/views";
 
 const SIZE = 58;
@@ -45,6 +46,7 @@ const useTapSlot = () => {
 
 export const CaptureButton = () => {
   const { colors, shadow } = useKit();
+  const depth = useTactile();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const glass = useGlass();
@@ -144,7 +146,7 @@ export const CaptureButton = () => {
             {plus}
           </GlassView>
         ) : (
-          <View style={[styles.button, { backgroundColor: colors.accent }]}>{plus}</View>
+          <View style={[styles.button, depth.raised, { backgroundColor: colors.accent }]}>{plus}</View>
         )}
       </Animated.View>
     </GestureDetector>
