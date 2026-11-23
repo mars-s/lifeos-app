@@ -1,5 +1,6 @@
 "use client";
 
+import { AnimatePresence } from "motion/react";
 import { DotsThree } from "@phosphor-icons/react";
 import { useRef, useState } from "react";
 import { api } from "@lifeos/backend/api";
@@ -16,6 +17,7 @@ import { RollingNumber } from "@/components/ui/rolling-number";
 import { useContainerActions } from "../container-actions";
 import { deadlineMark, whenLabel } from "../dates";
 import { useView } from "../hooks";
+import { Arrive, Fold, Folding } from "../fold";
 import { ListPage, ListSkeleton, Missing, RouteLink, SectionHeading } from "../list-page";
 import { placeAttr } from "../new-task-place";
 import { useShell } from "../shell-context";
@@ -124,19 +126,16 @@ export const AreaScreen = ({ areaId }: { areaId: Id<"areas"> }) => {
       }
       subtitle={`${plural(view.projects.length, "Project")}, ${plural(view.tasks.length + openInProjects, "Task")}`}
     >
-      {view.tasks.length + view.projects.length === 0 && !drafting ? (
+      <Fold show={view.tasks.length + view.projects.length > 0 || drafting} appear={false}>
+        <TaskItems tasks={view.tasks} show={{ star: true, when: true }} hostsDrafts="inline" sortable />
+        <Fold show={view.projects.length > 0}>
+          <SectionHeading className="mb-3 border-b-0">Projects</SectionHeading>
+          <ProjectRows projects={view.projects} colour={areaVar(view.area.colour)} />
+        </Fold>
+      </Fold>
+      <Arrive show={view.tasks.length + view.projects.length === 0 && !drafting}>
         <EmptyState title="Nothing open here" hint="Press N for a new Task, or right-click for a new Project." className="py-12" />
-      ) : (
-        <>
-          <TaskItems tasks={view.tasks} show={{ star: true, when: true }} hostsDrafts="inline" sortable />
-          {view.projects.length > 0 && (
-            <>
-              <SectionHeading className="mb-3 border-b-0">Projects</SectionHeading>
-              <ProjectRows projects={view.projects} colour={areaVar(view.area.colour)} />
-            </>
-          )}
-        </>
-      )}
+      </Arrive>
     </ListPage>
   );
 };
@@ -159,6 +158,7 @@ export const ProjectScreen = ({ projectId }: { projectId: Id<"projects"> }) => {
   const colour = view.area ? areaVar(view.area.colour) : "var(--brand)";
   const deadline = view.project.deadline ? deadlineMark(view.project.deadline, today) : undefined;
   const open = view.sections.reduce((sum, section) => sum + section.tasks.length, 0);
+  const projectEmpty = open === 0 && view.sections.length === 1 && !drafting;
   return (
     <ListPage
       title={view.project.title}
@@ -208,7 +208,29 @@ export const ProjectScreen = ({ projectId }: { projectId: Id<"projects"> }) => {
       <div className="mb-5 select-text">
         <NotesField notes={view.project.notes} onSave={(notes) => actions.setProjectNotes(view.project, notes)} />
       </div>
-      {open === 0 && view.sections.length === 1 && !drafting ? (
+      <Fold show={!projectEmpty} appear={false}>
+        <AnimatePresence initial={false}>
+          {view.sections.map((section) =>
+            section.heading ? (
+              <Folding key={section.heading._id}>
+                <section
+                  {...placeAttr({
+                    slot: headingSlot(section.heading._id),
+                    when: { kind: "anytime" },
+                    parent: { kind: "project", projectId, headingId: section.heading._id },
+                  })}
+                >
+                  <SectionHeading>{section.heading.title}</SectionHeading>
+                  <TaskItems tasks={section.tasks} show={{ star: true, when: true }} hostsDrafts="inline" slot={headingSlot(section.heading._id)} sortable />
+                </section>
+              </Folding>
+            ) : (
+              <TaskItems key="loose" tasks={section.tasks} show={{ star: true, when: true }} hostsDrafts="inline" sortable />
+            ),
+          )}
+        </AnimatePresence>
+      </Fold>
+      <Arrive show={projectEmpty}>
         <EmptyState
           spot="done"
           title={view.progress.total === 0 ? "No Tasks yet" : "Every Task is done"}
@@ -226,25 +248,7 @@ export const ProjectScreen = ({ projectId }: { projectId: Id<"projects"> }) => {
           }
           className="py-12"
         />
-      ) : (
-        view.sections.map((section) =>
-          section.heading ? (
-            <section
-              key={section.heading._id}
-              {...placeAttr({
-                slot: headingSlot(section.heading._id),
-                when: { kind: "anytime" },
-                parent: { kind: "project", projectId, headingId: section.heading._id },
-              })}
-            >
-              <SectionHeading>{section.heading.title}</SectionHeading>
-              <TaskItems tasks={section.tasks} show={{ star: true, when: true }} hostsDrafts="inline" slot={headingSlot(section.heading._id)} sortable />
-            </section>
-          ) : (
-            <TaskItems key="loose" tasks={section.tasks} show={{ star: true, when: true }} hostsDrafts="inline" sortable />
-          ),
-        )
-      )}
+      </Arrive>
     </ListPage>
   );
 };

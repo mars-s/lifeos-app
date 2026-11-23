@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/lifeos/states";
 import { instant, springLayout } from "@/lib/motion-tokens";
 import { clockTime, localDate, longDay, relativeDay } from "../dates";
 import { useView } from "../hooks";
+import { Arrive, Fold, Folding } from "../fold";
 import { ListPage, ListSkeleton, SectionHeading } from "../list-page";
 import { useShell } from "../shell-context";
 import { LIST_META } from "../sidebar";
@@ -129,26 +130,33 @@ export const TrashScreen = () => {
     >
       {!view ? (
         <ListSkeleton />
-      ) : count === 0 ? (
-        <EmptyState title="Trash is empty" hint="Tasks, Projects and Areas you remove wait here until you put them back or delete them." className="py-16" />
       ) : (
-        <div className="@container">
-          {groupByDay(view.rows).map(([date, rows]) => (
-            <section key={date}>
-              <SectionHeading aside={<span className="font-mono text-small font-normal text-faint-foreground">{rows.length}</span>}>
-                {relativeDay(date, today) ?? longDay(date)}
-              </SectionHeading>
-              <ul className="-mx-3">
-                <AnimatePresence initial={false}>
-                  {rows.map((row) => (
-                    <Row key={row.id} row={row} actions={actions} />
-                  ))}
-                </AnimatePresence>
-              </ul>
-            </section>
-          ))}
-          {view.truncated && <p className="mt-6 text-small text-faint-foreground">Showing the newest 500. Put some back or empty Trash to see older ones.</p>}
-        </div>
+        <>
+          <Fold show={count > 0} appear={false} className="@container">
+            <AnimatePresence initial={false}>
+              {groupByDay(view.rows).map(([date, rows]) => (
+                <Folding key={date}>
+                  <section>
+                    <SectionHeading aside={<span className="font-mono text-small font-normal text-faint-foreground">{rows.length}</span>}>
+                      {relativeDay(date, today) ?? longDay(date)}
+                    </SectionHeading>
+                    <ul className="-mx-3">
+                      <AnimatePresence initial={false}>
+                        {rows.map((row) => (
+                          <Row key={row.id} row={row} actions={actions} />
+                        ))}
+                      </AnimatePresence>
+                    </ul>
+                  </section>
+                </Folding>
+              ))}
+            </AnimatePresence>
+            {view.truncated && <p className="mt-6 text-small text-faint-foreground">Showing the newest 500. Put some back or empty Trash to see older ones.</p>}
+          </Fold>
+          <Arrive show={count === 0}>
+            <EmptyState title="Trash is empty" hint="Tasks, Projects and Areas you remove wait here until you put them back or delete them." className="py-16" />
+          </Arrive>
+        </>
       )}
     </ListPage>
   );

@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/lifeos/states";
 import { instant, springLayout } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
 import { useView, valueOf } from "../hooks";
+import { Arrive, Fold, Folding } from "../fold";
 import { ListPage, ListSkeleton, RouteLink, SectionHeading } from "../list-page";
 import { useShell } from "../shell-context";
 import { placeAttr, type NewTaskPlace } from "../new-task-place";
@@ -111,14 +112,21 @@ export const AnytimeScreen = () => {
     <ListPage title="Anytime" icon={LIST_META.anytime.icon}>
       {!view ? (
         <ListSkeleton />
-      ) : view.groups.length === 0 && !drafting ? (
-        <EmptyState spot="anytime" title="Nothing waiting" hint="Tasks you can do whenever you have time show here, grouped by Area." className="py-16" />
       ) : (
         <>
-          <TaskItems tasks={NO_TASKS} show={{ star: true }} hostsDrafts="above" />
-          {view.groups.map((group) => (
-            <Group key={group.key} group={group} show={{ star: true }} when="anytime" />
-          ))}
+          <Fold show={view.groups.length > 0 || drafting} appear={false}>
+            <TaskItems tasks={NO_TASKS} show={{ star: true }} hostsDrafts="above" />
+            <AnimatePresence initial={false}>
+              {view.groups.map((group) => (
+                <Folding key={group.key}>
+                  <Group group={group} show={{ star: true }} when="anytime" />
+                </Folding>
+              ))}
+            </AnimatePresence>
+          </Fold>
+          <Arrive show={view.groups.length === 0 && !drafting}>
+            <EmptyState spot="anytime" title="Nothing waiting" hint="Tasks you can do whenever you have time show here, grouped by Area." className="py-16" />
+          </Arrive>
         </>
       )}
     </ListPage>
@@ -160,15 +168,24 @@ export const SomedayScreen = () => {
     <ListPage title="Someday" icon={LIST_META.someday.icon}>
       {!view ? (
         <ListSkeleton />
-      ) : view.groups.length + view.projects.length === 0 && !drafting ? (
-        <EmptyState spot="someday" title="No someday ideas yet" hint="Park a Task here when it is worth keeping but not worth planning." className="py-16" />
       ) : (
         <>
-          <TaskItems tasks={NO_TASKS} hostsDrafts="above" />
-          {view.groups.map((group) => (
-            <Group key={group.key} group={group} show={{}} when="someday" />
-          ))}
-          {view.projects.length > 0 && <ParkedProjects projects={view.projects} />}
+          <Fold show={view.groups.length + view.projects.length > 0 || drafting} appear={false}>
+            <TaskItems tasks={NO_TASKS} hostsDrafts="above" />
+            <AnimatePresence initial={false}>
+              {view.groups.map((group) => (
+                <Folding key={group.key}>
+                  <Group group={group} show={{}} when="someday" />
+                </Folding>
+              ))}
+            </AnimatePresence>
+            <Fold show={view.projects.length > 0}>
+              <ParkedProjects projects={view.projects} />
+            </Fold>
+          </Fold>
+          <Arrive show={view.groups.length + view.projects.length === 0 && !drafting}>
+            <EmptyState spot="someday" title="No someday ideas yet" hint="Park a Task here when it is worth keeping but not worth planning." className="py-16" />
+          </Arrive>
         </>
       )}
     </ListPage>

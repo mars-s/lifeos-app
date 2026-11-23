@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { longDay } from "../dates";
 import { useLiveFocus } from "../focus";
 import { useView, valueOf } from "../hooks";
+import { Arrive, Fold } from "../fold";
 import { ListPage, ListSkeleton, SectionHeading } from "../list-page";
 import { useShell } from "../shell-context";
 import { placeAttr } from "../new-task-place";
@@ -88,20 +89,23 @@ export const TodayScreen = () => {
       <CalendarToday today={today} />
       {!view ? (
         <ListSkeleton />
-      ) : view.tasks.length + view.evening.length === 0 && !drafting ? (
-        <EmptyState spot="today-clear" title="Today is clear" hint="Nothing scheduled and nothing due. Enjoy the space." className="py-16" />
       ) : (
         <>
-          <PlannedStrip tasks={[...view.tasks, ...view.evening]} />
-          <TaskItems tasks={view.tasks} show={{ context: true }} hostsDrafts="inline" day={{ date: today, evening: false }} />
-          {view.evening.length > 0 && (
-            <section {...placeAttr({ slot: EVENING_SLOT, when: { kind: "scheduled", date: today, evening: true } })}>
-              <SectionHeading leading={<Moon weight="fill" className="size-4 text-muted-foreground" aria-hidden="true" />}>
-                This Evening
-              </SectionHeading>
-              <TaskItems tasks={view.evening} show={{ context: true }} hostsDrafts="inline" slot={EVENING_SLOT} day={{ date: today, evening: true }} />
-            </section>
-          )}
+          <Fold show={view.tasks.length + view.evening.length > 0 || drafting} appear={false}>
+            <PlannedStrip tasks={[...view.tasks, ...view.evening]} />
+            <TaskItems tasks={view.tasks} show={{ context: true }} hostsDrafts="inline" day={{ date: today, evening: false }} />
+            <Fold show={view.evening.length > 0}>
+              <section {...placeAttr({ slot: EVENING_SLOT, when: { kind: "scheduled", date: today, evening: true } })}>
+                <SectionHeading leading={<Moon weight="fill" className="size-4 text-muted-foreground" aria-hidden="true" />}>
+                  This Evening
+                </SectionHeading>
+                <TaskItems tasks={view.evening} show={{ context: true }} hostsDrafts="inline" slot={EVENING_SLOT} day={{ date: today, evening: true }} />
+              </section>
+            </Fold>
+          </Fold>
+          <Arrive show={view.tasks.length + view.evening.length === 0 && !drafting}>
+            <EmptyState spot="today-clear" title="Today is clear" hint="Nothing scheduled and nothing due. Enjoy the space." className="py-16" />
+          </Arrive>
         </>
       )}
     </ListPage>
@@ -115,10 +119,15 @@ export const InboxScreen = () => {
     <ListPage title="Inbox" icon={LIST_META.inbox.icon}>
       {!view ? (
         <ListSkeleton />
-      ) : view.tasks.length === 0 && !drafting ? (
-        <EmptyState spot="inbox-empty" title="The Inbox is empty" hint="New thoughts land here, ready to sort." className="py-16" />
       ) : (
-        <TaskItems tasks={view.tasks} hostsDrafts="inline" sortable />
+        <>
+          <Fold show={view.tasks.length > 0 || drafting} appear={false}>
+            <TaskItems tasks={view.tasks} hostsDrafts="inline" sortable />
+          </Fold>
+          <Arrive show={view.tasks.length === 0 && !drafting}>
+            <EmptyState spot="inbox-empty" title="The Inbox is empty" hint="New thoughts land here, ready to sort." className="py-16" />
+          </Arrive>
+        </>
       )}
     </ListPage>
   );

@@ -98,26 +98,38 @@ function Items({ parts: P, groups }: { parts: Parts; groups: MenuGroup[] }) {
     ));
 }
 
-function SubSurface({ parts: P, children }: { parts: Parts; children: React.ReactNode }) {
+function SubMenu({ parts: P, item, reserve }: { parts: Parts; item: Extract<MenuItem, { type: "submenu" }>; reserve: boolean }) {
+  const [open, setOpen] = useState(false);
   const reduce = useReducedMotion();
   return (
-    <P.Portal>
-      <P.SubContent sideOffset={6} alignOffset={-4} collisionPadding={8} {...slot}>
-        <motion.div
-          data-submenu
-          initial={{ opacity: 0, scale: reduce ? 1 : 0.97 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={reduce ? instant : { duration: 0.15, ease: EASE_OUT }}
-          style={{
-            transformOrigin:
-              "var(--radix-dropdown-menu-content-transform-origin, var(--radix-context-menu-content-transform-origin))",
-          }}
-          className={surface}
-        >
-          {children}
-        </motion.div>
-      </P.SubContent>
-    </P.Portal>
+    <P.Sub open={open} onOpenChange={setOpen}>
+      <P.SubTrigger disabled={item.disabled} className={cn(row, "data-[state=open]:bg-foreground/[0.07]")}>
+        <Glyph icon={item.icon} leading={item.leading} accent={item.accent} reserve={reserve} />
+        <span className="min-w-0 flex-1 truncate">{item.label}</span>
+        <CaretRight weight="bold" aria-hidden="true" className="size-3 text-faint-foreground" />
+      </P.SubTrigger>
+      <AnimatePresence>
+        {open && (
+          <P.Portal forceMount>
+            <P.SubContent forceMount sideOffset={6} alignOffset={-4} collisionPadding={8} {...slot}>
+              <motion.div
+                data-submenu
+                initial={{ opacity: 0, scale: reduce ? 1 : 0.97 }}
+                animate={{ opacity: 1, scale: 1, transition: reduce ? instant : { duration: 0.15, ease: EASE_OUT } }}
+                exit={{ opacity: 0, transition: reduce ? instant : { duration: 0.1, ease: EASE_OUT } }}
+                style={{
+                  transformOrigin:
+                    "var(--radix-dropdown-menu-content-transform-origin, var(--radix-context-menu-content-transform-origin))",
+                }}
+                className={surface}
+              >
+                <Items parts={P} groups={item.groups ?? [{ items: item.items }]} />
+              </motion.div>
+            </P.SubContent>
+          </P.Portal>
+        )}
+      </AnimatePresence>
+    </P.Sub>
   );
 }
 
@@ -168,20 +180,7 @@ function Entry({ parts: P, item, reserve }: { parts: Parts; item: MenuItem; rese
       </div>
     );
   }
-  if (item.type === "submenu") {
-    return (
-      <P.Sub>
-        <P.SubTrigger disabled={item.disabled} className={cn(row, "data-[state=open]:bg-foreground/[0.07]")}>
-          <Glyph icon={item.icon} leading={item.leading} accent={item.accent} reserve={reserve} />
-          <span className="min-w-0 flex-1 truncate">{item.label}</span>
-          <CaretRight weight="bold" aria-hidden="true" className="size-3 text-faint-foreground" />
-        </P.SubTrigger>
-        <SubSurface parts={P}>
-          <Items parts={P} groups={item.groups ?? [{ items: item.items }]} />
-        </SubSurface>
-      </P.Sub>
-    );
-  }
+  if (item.type === "submenu") return <SubMenu parts={P} item={item} reserve={reserve} />;
   return (
     <P.Item
       className={cn(row, item.indent && "pl-7", item.destructive && "text-negative data-[highlighted]:bg-negative/10")}

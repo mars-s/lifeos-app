@@ -1,6 +1,7 @@
 "use client";
 
 import { usePaginatedQuery } from "convex/react";
+import { AnimatePresence } from "motion/react";
 import { useMemo, useState } from "react";
 import { api } from "@lifeos/backend/api";
 import { addDays, type IsoDate } from "@lifeos/backend/date";
@@ -9,6 +10,7 @@ import { ActivityTimeline, type Brush } from "@/components/lifeos/activity-timel
 import { EmptyState } from "@/components/lifeos/states";
 import { endOfLocalDay, localDate, longDay, relativeDay, startOfLocalDay } from "../dates";
 import { useView } from "../hooks";
+import { Folding } from "../fold";
 import { ListPage, ListSkeleton, SectionHeading } from "../list-page";
 import { useShell } from "../shell-context";
 import { LIST_META } from "../sidebar";
@@ -60,14 +62,18 @@ export const LogbookScreen = () => {
           ) : results.length === 0 ? (
             <p className="py-10 text-center text-small text-muted-foreground">No Tasks were completed in this range.</p>
           ) : (
-            groupByDay(results).map(([date, tasks]) => (
-              <section key={date}>
-                <SectionHeading aside={<span className="font-mono text-small font-normal text-faint-foreground">{tasks.length}</span>}>
-                  {relativeDay(date, today) ?? longDay(date)}
-                </SectionHeading>
-                <TaskItems tasks={tasks} show={{ context: true, closedAt: true }} />
-              </section>
-            ))
+            <AnimatePresence initial={false}>
+              {groupByDay(results).map(([date, tasks]) => (
+                <Folding key={date}>
+                  <section>
+                    <SectionHeading aside={<span className="font-mono text-small font-normal text-faint-foreground">{tasks.length}</span>}>
+                      {relativeDay(date, today) ?? longDay(date)}
+                    </SectionHeading>
+                    <TaskItems tasks={tasks} show={{ context: true, closedAt: true }} />
+                  </section>
+                </Folding>
+              ))}
+            </AnimatePresence>
           )}
           {(status === "CanLoadMore" || status === "LoadingMore") && (
             <button

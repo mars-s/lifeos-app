@@ -1,5 +1,6 @@
 "use client";
 
+import { AnimatePresence } from "motion/react";
 import { Flag, Repeat } from "@phosphor-icons/react";
 import { api } from "@lifeos/backend/api";
 import { addDays, type IsoDate } from "@lifeos/backend/date";
@@ -13,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { useCommitmentsByDay } from "../calendar";
 import { UPCOMING_DAYS, dayNumber, daysBetween, deadlineMark, monthLong, relativeDay, weekdayLong } from "../dates";
 import { useQuietView, useView, valueOf } from "../hooks";
+import { Arrive, Fold, Folding } from "../fold";
 import { ListSkeleton } from "../list-page";
 import { openMenuFor } from "../menus";
 import { useShell } from "../shell-context";
@@ -155,30 +157,31 @@ export const UpcomingList = () => {
   const later = [...new Set([...(view?.days ?? []).map((day) => day.date as IsoDate), ...commitments.keys(), ...occurrences.map((row) => row.date as IsoDate)])]
     .filter((date) => !week.includes(date))
     .toSorted();
+  const nothing = !!view && view.days.length === 0 && commitments.size === 0 && occurrences.length === 0 && !drafting;
   return (
     <div className="mx-auto w-full max-w-[44rem] px-5 pt-2 pb-28 md:px-10 md:pt-0 [&_[data-arrow-item]]:scroll-mt-28 md:[&_[data-arrow-item]]:scroll-mt-20">
       {!view ? (
         <ListSkeleton />
-      ) : view.days.length === 0 && commitments.size === 0 && occurrences.length === 0 && !drafting ? (
-        <EmptyState
-          spot="upcoming"
-          title="Nothing coming up"
-          hint={`Tasks with a date or a Deadline, and calendar events, in the next ${UPCOMING_DAYS / 7} weeks show here.`}
-          className="py-16"
-        />
       ) : (
         <>
-          <TaskItems tasks={NO_TASKS} show={{ context: true, when: true }} hostsDrafts="above" className="mb-4" />
-          {[...week, ...later].map((date) => (
-            <DaySection
-              key={date}
-              date={date}
-              day={byDate.get(date)}
-              occurrences={repeatsOn.get(date)}
-              commitments={commitments.get(date)}
-              today={today}
+          <Fold show={!nothing} appear={false}>
+            <TaskItems tasks={NO_TASKS} show={{ context: true, when: true }} hostsDrafts="above" className="mb-4" />
+            <AnimatePresence initial={false}>
+              {[...week, ...later].map((date) => (
+                <Folding key={date}>
+                  <DaySection date={date} day={byDate.get(date)} occurrences={repeatsOn.get(date)} commitments={commitments.get(date)} today={today} />
+                </Folding>
+              ))}
+            </AnimatePresence>
+          </Fold>
+          <Arrive show={nothing}>
+            <EmptyState
+              spot="upcoming"
+              title="Nothing coming up"
+              hint={`Tasks with a date or a Deadline, and calendar events, in the next ${UPCOMING_DAYS / 7} weeks show here.`}
+              className="py-16"
             />
-          ))}
+          </Arrive>
         </>
       )}
     </div>

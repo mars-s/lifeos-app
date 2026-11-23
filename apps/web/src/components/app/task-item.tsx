@@ -18,7 +18,7 @@ import { lowerFirst, repeatLabel } from "@lifeos/backend/client/repeat";
 import { ActualChip, DeadlineMarker, EstimateChip, TaskCheckbox } from "@/components/lifeos/task-row";
 import { AnchoredPopover, type AnchoredPopoverProps } from "@/components/ui/popover-panel";
 import { haptic } from "@/lib/haptics";
-import { instant, springLayout } from "@/lib/motion-tokens";
+import { enter, exit, instant, spring, springLayout } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
 import { clockTime, deadlineMark, isToday, localDate, shortDay, whenLabel } from "./dates";
 import { drafts, isDraftTask, useDraftCount, useRows } from "./drafts";
@@ -323,6 +323,8 @@ export type TaskItemShow = {
 
 const ROW_HIDDEN = { height: 0, opacity: 0, overflow: "hidden" };
 const ROW_SHOWN = { height: "auto", opacity: 1, transitionEnd: { overflow: "visible" } };
+const ROW_FADED = { opacity: 0 };
+const ROW_LIT = { opacity: 1 };
 
 const NO_SHOW: TaskItemShow = {};
 
@@ -441,10 +443,10 @@ const TaskItemRow = ({ task, itemKey, show = NO_SHOW, sortable, today, card, onC
       data-task-id={task._id}
       data-open-card={open ? "" : undefined}
       data-selected={selected ? "" : undefined}
-      initial={settled ? false : ROW_HIDDEN}
-      animate={ROW_SHOWN}
-      exit={ROW_HIDDEN}
-      transition={reduce || (unsaved && quick) ? instant : springLayout}
+      initial={settled ? false : reduce ? ROW_FADED : ROW_HIDDEN}
+      animate={reduce ? ROW_LIT : ROW_SHOWN}
+      exit={{ ...(reduce ? ROW_FADED : ROW_HIDDEN), transition: unsaved && quick ? instant : reduce ? exit : spring }}
+      transition={unsaved && quick ? instant : reduce ? enter : springLayout}
       onAnimationComplete={() => {
         if (open && unsaved) container.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
       }}
