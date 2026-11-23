@@ -6,7 +6,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import { Archive, CalendarDots, CheckSquare, GearSix, Kanban, Plus, Shapes, Stack, Star, Trash, Tray, type Icon } from "@phosphor-icons/react";
 import { generateKeyBetween } from "fractional-indexing";
-import { motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { SidebarView } from "@lifeos/backend/types";
 import { areaVar } from "@/components/lifeos/area";
@@ -16,7 +16,7 @@ import { ProgressPie } from "@/components/lifeos/progress-ring";
 import { Popover } from "@/components/ui/popover-panel";
 import { RollingNumber } from "@/components/ui/rolling-number";
 import { haptic } from "@/lib/haptics";
-import { instant, spring } from "@/lib/motion-tokens";
+import { enter, exit, instant, spring } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
 import {
   areaStepKey,
@@ -27,6 +27,7 @@ import {
   type ContainerActions,
   type SidebarArea,
 } from "./container-actions";
+import { Folding } from "./fold";
 import { RouteLink } from "./list-page";
 import { sameRoute, type ListKind, type Route, type Via } from "./route";
 import { useNeedsAttention } from "./settings/attention";
@@ -175,16 +176,27 @@ const NavItem = ({
       )}
       {glyph}
       <span className="relative min-w-0 flex-1 truncate">{label}</span>
-      {count !== undefined && count > 0 && (
-        <>
-          <span className="sr-only">, </span>
-          <RollingNumber value={count} className="relative font-mono text-micro text-faint-foreground" />
-        </>
-      )}
+      <AnimatePresence initial={false}>
+        {count !== undefined && count > 0 && (
+          <motion.span key="count" initial={{ opacity: 0 }} animate={{ opacity: 1, transition: enter }} exit={{ opacity: 0, transition: exit }} className="relative">
+            <span className="sr-only">, </span>
+            <RollingNumber value={count} className="font-mono text-micro text-faint-foreground" />
+          </motion.span>
+        )}
+      </AnimatePresence>
       {trailing}
     </RouteLink>
   );
 };
+
+const Leaving = ({ id, className, children }: { id: string; className?: string; children: ReactNode }) =>
+  isDraftId(id) ? (
+    <div className={className}>{children}</div>
+  ) : (
+    <Folding appear={false} className="mx-0 px-0">
+      <div className={className}>{children}</div>
+    </Folding>
+  );
 
 const DraftRow = ({ kind, indent, onCommit }: { kind: "area" | "project"; indent: boolean; onCommit: (title: string) => void }) => {
   const { setDraft } = useShell();
@@ -221,7 +233,9 @@ const ProjectItem = ({
   via: Via;
   actions: ContainerActions;
 }) => {
+  const reduce = useReducedMotion();
   const { setNodeRef, listeners, transform, transition, isDragging } = useSortable({
+    transition: reduce ? null : undefined,
     id: project._id,
     data: { kind: "project" },
     disabled: isDraftId(project._id),
@@ -259,7 +273,9 @@ const ProjectItem = ({
 
 const AreaGroup = ({ area, via, actions }: { area: SidebarArea; via: Via; actions: ContainerActions }) => {
   const { draft } = useShell();
+  const reduce = useReducedMotion();
   const { setNodeRef, listeners, transform, transition, isDragging, isOver, active } = useSortable({
+    transition: reduce ? null : undefined,
     id: area._id,
     data: { kind: "area" },
     disabled: isDraftId(area._id),
@@ -288,9 +304,13 @@ const AreaGroup = ({ area, via, actions }: { area: SidebarArea; via: Via; action
         />
       </div>
       <SortableContext items={area.projects.map((project) => project._id)} strategy={verticalListSortingStrategy}>
-        {area.projects.map((project) => (
-          <ProjectItem key={project._id} project={project} colour={areaVar(area.colour)} indent via={via} actions={actions} />
-        ))}
+        <AnimatePresence initial={false}>
+          {area.projects.map((project) => (
+            <Leaving key={project._id} id={project._id}>
+              <ProjectItem project={project} colour={areaVar(area.colour)} indent via={via} actions={actions} />
+            </Leaving>
+          ))}
+        </AnimatePresence>
       </SortableContext>
       {draft?.kind === "project" && draft.areaId === area._id && (
         <DraftRow kind="project" indent onCommit={(title) => actions.createProject(title, area._id)} />
@@ -463,10 +483,14 @@ const Sortables = ({ view, actions, children }: { view: SidebarView; actions: Co
 
 const Areas = ({ areas, via, actions }: { areas: SidebarArea[]; via: Via; actions: ContainerActions }) => (
   <SortableContext items={areas.map((area) => area._id)} strategy={verticalListSortingStrategy}>
-    <div className="flex flex-col gap-4">
-      {areas.map((area) => (
-        <AreaGroup key={area._id} area={area} via={via} actions={actions} />
-      ))}
+    <div className="-mt-4 flex flex-col">
+      <AnimatePresence initial={false}>
+        {areas.map((area) => (
+          <Leaving key={area._id} id={area._id} className="pt-4">
+            <AreaGroup area={area} via={via} actions={actions} />
+          </Leaving>
+        ))}
+      </AnimatePresence>
     </div>
   </SortableContext>
 );
@@ -503,9 +527,13 @@ export const Sidebar = ({ view, via, notice }: { view: SidebarView | undefined; 
           {(view.projects.length > 0 || looseDraft) && (
             <div>
               <SortableContext items={view.projects.map((project) => project._id)} strategy={verticalListSortingStrategy}>
-                {view.projects.map((project) => (
-                  <ProjectItem key={project._id} project={project} colour="var(--muted-foreground)" indent={false} via={via} actions={actions} />
-                ))}
+                <AnimatePresence initial={false}>
+                  {view.projects.map((project) => (
+                    <Leaving key={project._id} id={project._id}>
+                      <ProjectItem project={project} colour="var(--muted-foreground)" indent={false} via={via} actions={actions} />
+                    </Leaving>
+                  ))}
+                </AnimatePresence>
               </SortableContext>
               {looseDraft && <DraftRow kind="project" indent={false} onCommit={(title) => actions.createProject(title, null)} />}
             </div>

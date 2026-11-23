@@ -356,7 +356,8 @@ export const useCardHost = () => {
 };
 
 const SortableRow = ({ id, disabled, children }: { id: string; disabled: boolean; children: ReactNode }) => {
-  const { setNodeRef, listeners, transform, transition, isDragging } = useSortable({ id, disabled });
+  const reduce = useReducedMotion();
+  const { setNodeRef, listeners, transform, transition, isDragging } = useSortable({ id, disabled, transition: reduce ? null : undefined });
   return (
     <div
       ref={setNodeRef}
