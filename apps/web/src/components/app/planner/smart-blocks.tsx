@@ -2,6 +2,7 @@
 
 import { ArrowsClockwise, CaretDown, DotsThree, Plus, X } from "@phosphor-icons/react";
 import type { OptimisticLocalStore } from "convex/browser";
+import { motion, useReducedMotion } from "motion/react";
 import { useMemo, useState } from "react";
 import { api } from "@lifeos/backend/api";
 import type { Id } from "@lifeos/backend/dataModel";
@@ -16,6 +17,7 @@ import { Menu, type MenuGroup } from "@/components/ui/action-menu";
 import { Button } from "@/components/ui/action-button";
 import { KeyCombo } from "@/components/ui/key-hint";
 import { haptic } from "@/lib/haptics";
+import { enter, exit } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
 import { useChange } from "../changes";
 import { dayMonth, minuteOfDay, momentAt, weekdayShort } from "../dates";
@@ -543,6 +545,7 @@ export const SmartBlockBar = ({
   onAccept: () => void;
   onCancel: () => void;
 }) => {
+  const reduce = useReducedMotion();
   const areas = useQuietView(api.planner.smartBlocks.priority, {}) ?? [];
   const labels = useQuietView(api.planner.labels.list, {}) ?? [];
   const labelsFor = repeatLabels(draft.date);
@@ -623,11 +626,14 @@ export const SmartBlockBar = ({
     "inline-flex h-7 items-center gap-1 rounded-full bg-foreground/[0.05] pr-2 pl-2.5 text-small text-muted-foreground transition-[background-color,color,scale] duration-(--dur-press) ease-out hover:bg-foreground/[0.09] hover:text-foreground active:scale-[0.97]";
 
   return (
-    <div
+    <motion.div
       role="region"
       aria-label="Smart Block"
       data-no-select=""
-      className="absolute inset-x-2 bottom-2 z-40 flex max-h-[min(30rem,60%)] animate-fade-in flex-col overflow-hidden rounded-xl bg-popover px-3 pt-2.5 pb-2 shadow-float"
+      initial={reduce ? { opacity: 0 } : { opacity: 0, transform: "translateY(8px)" }}
+      animate={{ opacity: 1, transform: "translateY(0px)", transition: enter }}
+      exit={{ opacity: 0, transform: reduce ? "translateY(0px)" : "translateY(8px)", transition: exit }}
+      className="absolute inset-x-2 bottom-2 z-40 flex max-h-[min(30rem,60%)] flex-col overflow-hidden rounded-xl bg-popover px-3 pt-2.5 pb-2 shadow-float"
     >
       <div className="flex items-center gap-2">
         <Menu
@@ -795,6 +801,6 @@ export const SmartBlockBar = ({
           </Button>
         </span>
       </div>
-    </div>
+    </motion.div>
   );
 };

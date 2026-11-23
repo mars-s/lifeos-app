@@ -4,7 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { MorphText } from "@/components/ui/morph-text";
 import { haptic } from "@/lib/haptics";
-import { exit, instant, springSettle } from "@/lib/motion-tokens";
+import { EASE_OUT, exit, instant, springSettle } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
 import { areaVar, type AreaColour } from "./area";
 import { calendarInk } from "./commitments";
@@ -597,6 +597,7 @@ export const Timebox = ({
               );
             })}
           </AnimatePresence>
+          <AnimatePresence>
           {previews.map((preview, index) => (
             <motion.div
               key={preview.id}
@@ -604,7 +605,8 @@ export const Timebox = ({
               data-spread-preview=""
               initial={reduce ? { opacity: 0 } : { opacity: 0, transform: "translateY(4px)" }}
               animate={{ opacity: 1, transform: "translateY(0px)" }}
-              transition={{ duration: reduce ? 0.12 : 0.22, ease: [0.23, 1, 0.32, 1], delay: reduce ? 0 : Math.min(index, 12) * 0.035 }}
+              exit={{ opacity: 0, transition: exit }}
+              transition={{ duration: reduce ? 0.12 : 0.22, ease: EASE_OUT, delay: reduce ? 0 : Math.min(index, 12) * 0.035 }}
               className={cn(
                 "pointer-events-none absolute z-20 overflow-hidden rounded-lg px-2 text-small outline-[1.5px] -outline-offset-[1.5px] outline-dashed",
                 toPx(preview.minutes) < 26 ? "flex items-center py-0 leading-none" : "py-1",
@@ -623,6 +625,7 @@ export const Timebox = ({
               )}
             </motion.div>
           ))}
+          </AnimatePresence>
           {ghost && (
             <div
               aria-hidden="true"

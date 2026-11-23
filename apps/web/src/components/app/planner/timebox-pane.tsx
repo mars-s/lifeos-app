@@ -2,6 +2,7 @@
 
 import { useDroppable } from "@dnd-kit/core";
 import { CaretLeft, CaretRight } from "@phosphor-icons/react";
+import { AnimatePresence } from "motion/react";
 import { useEffect, useMemo } from "react";
 import { addDays, type IsoDate } from "@lifeos/backend/date";
 import type { PlannerTask } from "@lifeos/backend/types";
@@ -13,6 +14,7 @@ import { Segmented } from "@/components/ui/segmented-control";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 import { dayMonth, dayNumber, localDate, minuteOfDay, momentAt, monthShort, monthYear, monthYearShort, startOfWeek, weekdayShort } from "../dates";
+import { Fold } from "../fold";
 import { useNow } from "../hooks";
 import { useSelectionActions } from "../selection-actions";
 import { SleepButton } from "../sleep-setting";
@@ -165,10 +167,21 @@ export const TimeboxPane = ({
           <Segmented label="Timebox view" options={modes(narrow)} value={mode} onValueChange={(next) => onView({ mode: next, anchor })} className="ml-1" />
         </div>
       </header>
-      {spread && <SpreadBar spread={spread} isToday={spread.date === today} onApply={onApplySpread} onCancel={onCancelSpread} />}
-      {smart.draft && (
-        <SmartBlockBar draft={smart.draft} fill={smart.fill} onChange={smart.setDraft} onAccept={smart.onAccept} onCancel={() => smart.setDraft(null)} />
-      )}
+      <Fold show={spread !== null} className="mx-0 shrink-0 px-0">
+        {spread && <SpreadBar spread={spread} isToday={spread.date === today} onApply={onApplySpread} onCancel={onCancelSpread} />}
+      </Fold>
+      <AnimatePresence>
+        {smart.draft && (
+          <SmartBlockBar
+            key="smart-block"
+            draft={smart.draft}
+            fill={smart.fill}
+            onChange={smart.setDraft}
+            onAccept={smart.onAccept}
+            onCancel={() => smart.setDraft(null)}
+          />
+        )}
+      </AnimatePresence>
       <Timebox
         days={days}
         commitments={data.commitments}
@@ -258,7 +271,7 @@ const SpreadBar = ({
     <div
       role="region"
       aria-label="Spread across the day"
-      className="mx-2 mb-2 shrink-0 animate-fade-in rounded-xl bg-popover px-3 py-2.5 shadow-float"
+      className="mx-2 mb-2 rounded-xl bg-popover px-3 py-2.5 shadow-float"
     >
       <p className="text-small font-medium" aria-live="polite">
         {headline}
