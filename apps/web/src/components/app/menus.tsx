@@ -108,6 +108,8 @@ const targetOf: (element: Element) => Target = (element) => {
   return { kind: "empty" };
 };
 
+const fromKeyboard = (event: MouseEvent) => (event instanceof PointerEvent && event.pointerType !== "" ? false : event.button !== 2);
+
 export const openMenuFor = (element: Element, viaKeyboard = false) => {
   const box = element.getBoundingClientRect();
   element.dispatchEvent(
@@ -117,6 +119,7 @@ export const openMenuFor = (element: Element, viaKeyboard = false) => {
       clientX: viaKeyboard ? box.left + Math.min(box.width / 2, 120) : box.left,
       clientY: viaKeyboard ? box.top + box.height / 2 : box.bottom + 6,
       detail: viaKeyboard ? 0 : 1,
+      button: viaKeyboard ? 0 : 2,
     }),
   );
 };
@@ -773,7 +776,7 @@ export const AppMenu = ({ sidebar, children }: { sidebar: SidebarView | undefine
               return;
             }
             touched.current = null;
-            prepare(event.target, { x: event.clientX, y: event.clientY }, event.detail === 0);
+            prepare(event.target, { x: event.clientX, y: event.clientY }, fromKeyboard(event.nativeEvent));
           }}
         >
           {children}

@@ -59,7 +59,7 @@ export const SelectionBar = () => {
             </span>
             <BarButton icon={CheckCircle} label="Complete the selected Tasks" onClick={() => actions.completeSoon(selection.tasks())} />
             <BarButton icon={Trash} label="Move the selected Tasks to Trash" onClick={() => actions.trash(selection.tasks())} />
-            <BarButton icon={DotsThree} weight="bold" label="More actions" onClick={(event) => openMenuFor(event.currentTarget)} />
+            <BarButton icon={DotsThree} weight="bold" label="More actions" onClick={(event) => openMenuFor(event.currentTarget, event.detail === 0)} />
             <span aria-hidden="true" className="mx-1 h-5 w-px bg-border" />
             <BarButton icon={X} weight="bold" label="Clear the selection" onClick={() => selection.clear()} />
           </motion.div>

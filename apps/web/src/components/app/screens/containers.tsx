@@ -59,7 +59,7 @@ const EditableTitle = ({ title, label, onSave }: { title: string; label: string;
         type="button"
         aria-label="More actions"
         title="More actions"
-        onClick={(event) => openMenuFor(event.currentTarget)}
+        onClick={(event) => openMenuFor(event.currentTarget, event.detail === 0)}
         className="grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-[background-color,color,scale] duration-(--dur-press) ease-out hover:bg-foreground/[0.06] hover:text-foreground active:scale-[0.92]"
       >
         <DotsThree weight="bold" className="size-5" aria-hidden="true" />

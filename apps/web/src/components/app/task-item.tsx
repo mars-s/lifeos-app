@@ -397,6 +397,8 @@ const TaskItemRow = ({ task, itemKey, show = NO_SHOW, sortable, today, card, onC
   const tile = show.tileOn !== undefined;
   const plannedToday = task.workBlocks.find((block) => !block.done && localDate(block.start) === (show.tileOn || today));
   const unsaved = isDraftTask(task._id);
+  const sublineId = useId();
+  const subline = !open && !(tile && !closed) && ((show.context && task.context) || (task.deadline && !closed));
   const close = (byKey: boolean) => {
     const active = document.activeElement;
     if (active instanceof HTMLElement && container.current?.contains(active)) active.blur();
@@ -479,6 +481,7 @@ const TaskItemRow = ({ task, itemKey, show = NO_SHOW, sortable, today, card, onC
       >
         <div className={cn("flex items-start gap-x-3 px-3 py-2", tile && !open && "flex-wrap gap-y-0.5")}>
           <StatusBox task={task} today={today} />
+          <div className="min-w-0 flex-1">
           {editable ? (
             <TitleField task={task} today={today} onCreated={() => close(true)} />
           ) : (
@@ -486,6 +489,7 @@ const TaskItemRow = ({ task, itemKey, show = NO_SHOW, sortable, today, card, onC
             type="button"
             data-arrow-item
             aria-expanded={open}
+            aria-describedby={subline ? sublineId : undefined}
             onFocus={(event) => {
               if (event.currentTarget.matches(":focus-visible") && !selection.has(itemKey)) selection.only(itemKey);
             }}
@@ -494,12 +498,11 @@ const TaskItemRow = ({ task, itemKey, show = NO_SHOW, sortable, today, card, onC
               setClosedByKey(true);
               setOpenCard(open ? null : { key: itemKey, instant: true });
             }}
-            className="min-w-0 flex-1 rounded-md text-left outline-none"
+            className="block w-full min-w-0 rounded-md text-left outline-none"
           >
             {tile && !open && !closed ? (
               <span className="line-clamp-2 break-words">{task.title}</span>
             ) : (
-              <>
             <span className="flex items-center gap-1.5">
               {show.star && isToday(task.when, today) && (
                 <>
@@ -528,12 +531,19 @@ const TaskItemRow = ({ task, itemKey, show = NO_SHOW, sortable, today, card, onC
               {!open && task.checklist.length > 0 && <ChecklistCount items={task.checklist} />}
               {!open && task.repeat?.active && <RepeatMark repeat={task.repeat} />}
             </span>
-            {!open && ((show.context && task.context) || (task.deadline && !closed)) && (
-              <span
-                className={cn(
-                  "flex items-center gap-1.5 text-small text-muted-foreground",
-                  !(show.context && task.context) && "@md:hidden",
-                )}
+            )}
+          </button>
+          )}
+          <AnimatePresence initial={false}>
+            {subline && (
+              <motion.span
+                key="subline"
+                id={sublineId}
+                initial={ROW_HIDDEN}
+                animate={ROW_SHOWN}
+                exit={ROW_HIDDEN}
+                transition={transition}
+                className={cn("flex items-center gap-1.5 text-small text-muted-foreground", !(show.context && task.context) && "@md:hidden")}
               >
                 {show.context && task.context && (
                   <>
@@ -543,12 +553,10 @@ const TaskItemRow = ({ task, itemKey, show = NO_SHOW, sortable, today, card, onC
                   </>
                 )}
                 {task.deadline && !closed && <DeadlineMarker deadline={deadlineMark(task.deadline, today)} className="ml-auto @md:hidden" />}
-              </span>
+              </motion.span>
             )}
-              </>
-            )}
-          </button>
-          )}
+          </AnimatePresence>
+          </div>
           {!open && (
             <span className="flex shrink-0 items-center gap-3 pt-px">
               {!closed && !unsaved && <RowFocus task={task} />}
