@@ -38,6 +38,8 @@ import type { getConfig as File_Connect_getConfig } from './pages/connect';
 // prettier-ignore
 import type { getConfig as File_Design_getConfig } from './pages/design';
 // prettier-ignore
+import type { getConfig as File_DesignAi_getConfig } from './pages/design/ai';
+// prettier-ignore
 import type { getConfig as File_DesignNotes_getConfig } from './pages/design/notes';
 // prettier-ignore
 import type { getConfig as File_AppLayout_getConfig } from './pages/(app)/_layout';
@@ -63,6 +65,7 @@ type Page =
 | ({ path: '/capture' } & GetConfigResponse<typeof File_Capture_getConfig>)
 | ({ path: '/connect' } & GetConfigResponse<typeof File_Connect_getConfig>)
 | ({ path: '/design' } & GetConfigResponse<typeof File_Design_getConfig>)
+| ({ path: '/design/ai' } & GetConfigResponse<typeof File_DesignAi_getConfig>)
 | ({ path: '/design/notes' } & GetConfigResponse<typeof File_DesignNotes_getConfig>);
 
 // prettier-ignore
