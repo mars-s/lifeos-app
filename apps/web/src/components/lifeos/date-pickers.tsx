@@ -252,8 +252,8 @@ export const DeadlinePicker = ({
   onChange: (deadline: string | null) => void;
 }) => {
   const trigger = label ? (
-    <ToolButton icon={Flag} label={`Deadline: ${label}`} active className={cn("pr-2.5", overdue ? "text-negative" : "text-deadline")}>
-      <span className="pl-1.5 font-medium">{label}</span>
+    <ToolButton icon={Flag} label={`Deadline: ${label}`} active className={cn("pr-2.5 @max-xs:pr-1.5", overdue ? "text-negative" : "text-deadline")}>
+      <span className="pl-1.5 font-medium @max-xs:hidden">{label}</span>
     </ToolButton>
   ) : (
     <ToolButton icon={Flag} label="Deadline" />

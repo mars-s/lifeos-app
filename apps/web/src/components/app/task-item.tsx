@@ -131,7 +131,7 @@ const EstimatePopover = ({
   const actions = useSelectionActions(today);
   return (
     <AnchoredPopover {...popover} title="Estimate" side="bottom" align="end" className="w-64">
-      <TaskEstimateField task={task} onChange={(minutes) => actions.setEstimate([task], minutes)} />
+      <TaskEstimateField task={task} labelled={false} onChange={(minutes) => actions.setEstimate([task], minutes)} />
     </AnchoredPopover>
   );
 };

@@ -72,6 +72,7 @@ export const EstimateField = ({
   onChange,
   onSteps,
   onProject,
+  labelled = true,
   className,
 }: {
   minutes: number | undefined;
@@ -79,6 +80,7 @@ export const EstimateField = ({
   onChange: (minutes: number | null) => void;
   onSteps?: (() => void) | undefined;
   onProject?: (() => void) | undefined;
+  labelled?: boolean | undefined;
   className?: string;
 }) => {
   const [draft, setDraft] = useState<string | null>(null);
@@ -107,10 +109,12 @@ export const EstimateField = ({
   };
 
   return (
-    <div role="group" aria-label="Estimate" className={cn("grid grid-cols-[3.75rem_minmax(0,1fr)] items-start gap-x-1.5 gap-y-1", className)}>
-      <span aria-hidden="true" className="text-small leading-7 text-muted-foreground">
-        Estimate
-      </span>
+    <div role="group" aria-label="Estimate" className={cn("grid items-start gap-x-1.5 gap-y-1", labelled ? "grid-cols-[3.75rem_minmax(0,1fr)] @max-xs:grid-cols-1" : "grid-cols-1", className)}>
+      {labelled && (
+        <span aria-hidden="true" className="text-small leading-7 text-muted-foreground @max-xs:leading-5">
+          Estimate
+        </span>
+      )}
       <div className="flex flex-wrap items-center gap-1 @md:gap-1.5">
       {smart?.kind === "thinking" && <Ghosts />}
       {chips.map(({ minutes: chip, probability }) => {
@@ -196,7 +200,7 @@ export const EstimateField = ({
       </span>
       </div>
       {big && (
-        <p className="col-start-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-micro text-pretty text-muted-foreground">
+        <p className="col-start-[-2] flex flex-wrap items-center gap-x-2 gap-y-1 text-micro text-pretty text-muted-foreground">
           Big one. Split it into a Project?
           {onSteps && (
             <button
@@ -219,7 +223,7 @@ export const EstimateField = ({
         </p>
       )}
       {smart?.kind === "note" && (
-        <p role="status" className="col-start-2 text-micro text-pretty text-faint-foreground">
+        <p role="status" className="col-start-[-2] text-micro text-pretty text-faint-foreground">
           {smart.note}
         </p>
       )}

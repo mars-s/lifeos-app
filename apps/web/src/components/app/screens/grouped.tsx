@@ -151,8 +151,9 @@ const ParkedProjects = ({ projects }: { projects: SomedayView["projects"] }) => 
             />
             <span className="min-w-0 flex-1 truncate">{project.title}</span>
             {project.area && <span className="shrink-0 text-small text-faint-foreground">{project.area.title}</span>}
-            <span className="shrink-0 font-mono text-small text-faint-foreground">
+            <span title={`${project.progress.done} of ${project.progress.total} Tasks done`} className="shrink-0 font-mono text-small text-faint-foreground">
               {project.progress.done}/{project.progress.total}
+              <span className="sr-only"> Tasks done</span>
             </span>
           </RouteLink>
         </li>

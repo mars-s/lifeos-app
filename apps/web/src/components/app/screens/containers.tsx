@@ -87,8 +87,9 @@ const ProjectRows = ({ projects, colour }: { projects: AreaView["projects"]; col
             <span className="min-w-0 flex-1 truncate font-medium">{project.title}</span>
             {project.when.kind === "someday" && <span className="shrink-0 text-small text-faint-foreground">Someday</span>}
             {project.deadline && <DeadlineMarker deadline={deadlineMark(project.deadline, today)} className="hidden @md:inline-flex" />}
-            <span className="shrink-0 font-mono text-small text-muted-foreground">
+            <span title={`${project.progress.done} of ${project.progress.total} Tasks done`} className="shrink-0 font-mono text-small text-muted-foreground">
               {project.progress.done}/{project.progress.total}
+              <span className="sr-only"> Tasks done</span>
             </span>
           </RouteLink>
         </li>

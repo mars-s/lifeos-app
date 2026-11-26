@@ -35,11 +35,13 @@ export const TaskEstimateField = ({
   onChange,
   onSteps,
   onProject,
+  labelled,
 }: {
   task: PlannerTask;
   onChange: (minutes: number | null) => void;
   onSteps?: () => void;
   onProject?: () => void;
+  labelled?: boolean;
 }) => {
   const saved = !isDraftTask(task._id);
   const unestimated = saved && task.estimateMinutes === undefined;
@@ -61,5 +63,5 @@ export const TaskEstimateField = ({
     const timer = setTimeout(() => setGaveUpOn(round), THINKING_PATIENCE_MS);
     return () => clearTimeout(timer);
   }, [thinking, round]);
-  return <EstimateField minutes={task.estimateMinutes} smart={smartFor(view, gaveUpOn !== round)} onChange={onChange} onSteps={onSteps} onProject={onProject} />;
+  return <EstimateField minutes={task.estimateMinutes} smart={smartFor(view, gaveUpOn !== round)} onChange={onChange} onSteps={onSteps} onProject={onProject} labelled={labelled} />;
 };
