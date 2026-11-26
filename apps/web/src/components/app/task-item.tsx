@@ -1,7 +1,7 @@
 "use client";
 
 import { Archive, CalendarDots, ListChecks, Moon, Note, Repeat, Stack, Star, Tray, X, type Icon } from "@phosphor-icons/react";
-import { DndContext, KeyboardSensor, MouseSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { DndContext, MouseSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -655,7 +655,7 @@ export const TaskItems = ({
   const change = useChange();
   const sortable = keyed || day !== undefined;
   const shown = useHostedRows(tasks, hostsDrafts ? (slot ?? routeHref(route)) : undefined, hostsDrafts === "inline");
-  const sensors = useSensors(useSensor(MouseSensor, { activationConstraint: { distance: DRAG_START_PX } }), useSensor(KeyboardSensor));
+  const sensors = useSensors(useSensor(MouseSensor, { activationConstraint: { distance: DRAG_START_PX } }));
   const list = useRef<HTMLUListElement>(null);
   const rowWindow = useRowWindow(list, shown, openCard?.key, (task) => `${show?.context && task.context ? "context" : ""}${task.deadline ? "deadline" : ""}`);
   const place = (key: string, to: number) => {
