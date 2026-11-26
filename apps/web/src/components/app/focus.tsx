@@ -297,8 +297,9 @@ export const FocusSection = ({ task, today }: { task: PlannerTask; today: string
           className="overflow-hidden"
         >
           <div className="space-y-2 pb-px">
-            <div role="group" aria-label="Actual Time" className="flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1 @md:gap-x-1.5">
-              <span className="hidden w-[3.75rem] text-small text-muted-foreground @md:inline">Actual</span>
+            <div role="group" aria-label="Actual Time" className="grid grid-cols-[3.75rem_minmax(0,1fr)] items-start gap-x-1.5 @max-xs:grid-cols-1">
+              <span aria-hidden="true" className="text-small leading-7 text-muted-foreground @max-xs:leading-5">Actual</span>
+              <div className="flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1 @md:gap-x-1.5">
               <ActualMeter actual={minutes} estimate={estimate} colour={task.area ? areaVar(task.area.colour) : undefined} className="mr-1" />
               <RollingNumber value={formatMinutes(minutes)} className={cn("font-mono text-small", over > 0 && "text-negative")} />
               {estimate !== undefined && (
@@ -311,6 +312,7 @@ export const FocusSection = ({ task, today }: { task: PlannerTask; today: string
                   <span className="font-mono">{formatMinutes(over)}</span> over
                 </span>
               )}
+              </div>
             </div>
             <FocusHistory
               entries={todays.map((session) => ({
