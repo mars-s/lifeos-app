@@ -2,7 +2,7 @@
 
 import { CalendarDots, CaretLeft, DotsThree, MagnifyingGlass, Notebook, PushPin, Stack, Star, type Icon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { AiMark } from "@/components/lifeos/ai-mark";
+import { AiMark } from "@/components/lifeos/ai-orb";
 import { AreaDot } from "@/components/lifeos/area";
 import { formatMinutes } from "@/components/lifeos/format";
 import { cn } from "@/lib/utils";

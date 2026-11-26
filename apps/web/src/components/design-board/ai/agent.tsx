@@ -5,7 +5,7 @@ import { useRef } from "react";
 import { Button } from "@/components/ui/action-button";
 import { Kbd } from "@/components/ui/key-hint";
 import { MorphText } from "@/components/ui/morph-text";
-import { AiMarkWorking } from "@/components/lifeos/ai-mark";
+import { AiMarkWorking } from "@/components/lifeos/ai-orb";
 import { AreaDot } from "@/components/lifeos/area";
 import { cn } from "@/lib/utils";
 import { DayTrack, LoadRows, ProgressDots } from "./graphs";

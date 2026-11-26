@@ -6,7 +6,7 @@ import { Button, IconButton } from "@/components/ui/action-button";
 import { KeyCombo } from "@/components/ui/key-hint";
 import { MorphText } from "@/components/ui/morph-text";
 import { toast } from "@/components/ui/toast-stack";
-import { AiMark, AiMarkWorking } from "@/components/lifeos/ai-mark";
+import { AiMark, AiMarkWorking } from "@/components/lifeos/ai-orb";
 import { TaskRow, type TaskSummary } from "@/components/lifeos/task-row";
 import { cn } from "@/lib/utils";
 import { Specimen } from "../specimen";

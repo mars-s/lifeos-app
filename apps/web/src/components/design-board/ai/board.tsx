@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { Segmented } from "@/components/ui/segmented-control";
 import { Toaster } from "@/components/ui/toast-stack";
 import { LifeosMark } from "@/components/lifeos/mark";
+import { AiOrb, type AiState } from "@/components/lifeos/ai-orb";
 import { undoLast } from "@/components/lifeos/undo";
 import { Section } from "../specimen";
 import { ThemeContext, useTheme } from "../theme";
@@ -14,6 +15,15 @@ import { NoteSpecimens } from "./notes";
 import { PhoneSpecimens } from "./phone";
 import { RunSpecimens } from "./run";
 import { TaskSpecimens } from "./tasks";
+
+const ORB_STATES = [
+  { state: "idle", label: "Idle" },
+  { state: "reading", label: "Reading" },
+  { state: "writing", label: "Writing" },
+  { state: "needsYou", label: "Needs you" },
+  { state: "done", label: "Done" },
+  { state: "offline", label: "Offline" },
+] as const satisfies readonly { state: AiState; label: string }[];
 
 const SECTIONS = [
   { id: "notes", label: "In Notes" },
@@ -114,6 +124,20 @@ export const AiBoard = () => {
                 </ul>
               </div>
             ))}
+            <div className="rounded-[1.375rem] bg-surface p-5 sm:col-span-2">
+              <h2 className="text-heading font-medium">The mark</h2>
+              <ul data-orbs className="mt-4 grid grid-cols-3 gap-4 sm:grid-cols-6">
+                {ORB_STATES.map(({ state, label }) => (
+                  <li key={state} className="flex flex-col items-center gap-2 text-micro text-muted-foreground">
+                    <span className="flex items-center gap-3">
+                      <AiOrb state={state} className="size-8" aria-hidden="true" />
+                      <AiOrb state={state} aria-hidden="true" />
+                    </span>
+                    {label}
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         </section>
 

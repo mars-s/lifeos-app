@@ -5,7 +5,7 @@ import { useEffect, useId, useReducer, useRef, type KeyboardEvent, type RefObjec
 import { Button } from "@/components/ui/action-button";
 import { Kbd } from "@/components/ui/key-hint";
 import { MorphText } from "@/components/ui/morph-text";
-import { AiMark, AiMarkWorking } from "@/components/lifeos/ai-mark";
+import { AiMark, AiMarkWorking } from "@/components/lifeos/ai-orb";
 import { cn } from "@/lib/utils";
 import { GLASS } from "../notes/parts";
 import { askReducer, matchVerbs, type Ask, type AskEvent, type SourceRef, type Verb } from "./model";

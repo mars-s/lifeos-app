@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { api } from "@lifeos/backend/api";
 import type { IsoDate } from "@lifeos/backend/date";
 import type { PlannerTask } from "@lifeos/backend/types";
-import { AiMark, AiMarkWorking } from "@/components/lifeos/ai-mark";
+import { AiMark, AiMarkWorking } from "@/components/lifeos/ai-orb";
 import { AreaDot } from "@/components/lifeos/area";
 import { StepsPreview, useBreakIntoSteps } from "./break-into-steps";
 import { ChecklistEditor } from "@/components/lifeos/checklist-editor";

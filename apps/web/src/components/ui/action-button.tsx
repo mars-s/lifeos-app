@@ -1,4 +1,5 @@
-import { CircleNotch, type Icon } from "@phosphor-icons/react";
+import { CircleNotch } from "@phosphor-icons/react";
+import type { Glyph } from "@/lib/glyph";
 import { Tooltip } from "@/components/ui/tooltip-hint";
 import { cn } from "@/lib/utils";
 
@@ -27,7 +28,7 @@ export type ButtonProps = React.ComponentProps<"button"> & {
   variant?: ButtonVariant;
   size?: ButtonSize;
   /** Leading Phosphor icon. Line glyphs (check, x, arrows) render bold, others filled. */
-  icon?: Icon;
+  icon?: Glyph;
   iconWeight?: "fill" | "bold";
   /** Shows a spinner in place of the icon and disables the button. */
   loading?: boolean;
@@ -67,7 +68,7 @@ export function Button({
 }
 
 export type IconButtonProps = Omit<ButtonProps, "children" | "icon"> & {
-  icon: Icon;
+  icon: Glyph;
   /** Accessible name; icon buttons have no visible text. */
   label: string;
   /**

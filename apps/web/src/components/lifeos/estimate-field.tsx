@@ -5,7 +5,7 @@ import { parseEstimateText } from "@lifeos/backend/estimate";
 import { Tooltip } from "@/components/ui/tooltip-hint";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
-import { AiMark } from "./ai-mark";
+import { AiMark } from "./ai-orb";
 import { formatMinutes } from "./format";
 
 const ESTIMATE_CHIPS = [10, 15, 30, 60, 120] as const;
@@ -32,14 +32,14 @@ const plainUnits = (days: number) => {
 const CHIP =
   "relative h-7 rounded-md px-2 font-mono text-small transition-[background-color,color,scale,opacity] duration-(--dur-press) ease-out before:absolute before:-inset-x-0.5 before:-inset-y-2 active:scale-[0.94]";
 
-const LIKELY = "bg-brand/[0.12] text-foreground hover:bg-brand/[0.18]";
+const LIKELY = "bg-transparent text-muted-foreground outline-[1.5px] -outline-offset-[1.5px] outline-foreground/35 outline-dashed hover:bg-foreground/[0.05] hover:text-foreground";
 
 const GUESS = "pb-1 starting:opacity-0 motion-safe:duration-(--dur-fast)";
 
 const Odds = ({ probability, selected }: { probability: number; selected: boolean }) => (
   <span aria-hidden="true" className={cn("pointer-events-none absolute inset-x-2 bottom-[3px] h-0.5 overflow-hidden rounded-full", selected ? "bg-brand-foreground/25" : "bg-foreground/10")}>
     <span
-      className={cn("block h-full rounded-full", selected ? "bg-brand-foreground/80" : "bg-brand/70")}
+      className={cn("block h-full rounded-full", selected ? "bg-brand-foreground/80" : "bg-foreground/35")}
       style={{ width: `${Math.max(6, Math.round(probability * 100))}%` }}
     />
   </span>
@@ -61,7 +61,7 @@ const Ghosts = () => (
   </>
 );
 
-const Spark = () => <AiMark weight="bold" aria-hidden="true" className="pointer-events-none absolute -top-1 -right-1 size-2.5 text-brand" />;
+const Spark = () => <AiMark weight="bold" aria-hidden="true" className="pointer-events-none absolute -top-1 -right-1 size-2.5" />;
 
 const chipsFor = (smart: SmartEstimate | undefined) =>
   smart?.kind === "guesses" ? smart.guesses : smart?.kind === "thinking" ? [] : ESTIMATE_CHIPS.map((minutes) => ({ minutes, probability: undefined }));

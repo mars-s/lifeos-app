@@ -4,7 +4,7 @@ import { ArrowCounterClockwise, Star, Tag as TagIcon } from "@phosphor-icons/rea
 import { useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/action-button";
 import { KeyCombo } from "@/components/ui/key-hint";
-import { AiMark } from "@/components/lifeos/ai-mark";
+import { AiMark } from "@/components/lifeos/ai-orb";
 import { AreaDot, areaVar } from "@/components/lifeos/area";
 import { formatClock, formatMinutes, formatRange } from "@/components/lifeos/format";
 import { DeadlineMarker, TaskCheckbox, TaskRow, type TaskSummary } from "@/components/lifeos/task-row";

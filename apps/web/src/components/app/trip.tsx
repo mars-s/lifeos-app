@@ -9,7 +9,7 @@ import { api } from "@lifeos/backend/api";
 import type { Id } from "@lifeos/backend/dataModel";
 import { TRIP_LOOK_LIMIT_MS, type TravelMode } from "@lifeos/backend/features";
 import type { PlannerTask, TripView } from "@lifeos/backend/types";
-import { AiMarkWorking } from "@/components/lifeos/ai-mark";
+import { AiMarkWorking } from "@/components/lifeos/ai-orb";
 import { GlimmBand } from "@/components/lifeos/glimm-band";
 import { ToolButton } from "@/components/lifeos/tool-button";
 import { Button } from "@/components/ui/action-button";
@@ -89,7 +89,7 @@ const Streets = ({ looking }: { looking: boolean }) => (
 
 const LookingRow = ({ query }: { query: string }) => (
   <div className="flex items-start gap-2 motion-safe:animate-fade-in">
-    <AiMarkWorking weight="bold" className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden="true" />
+    <AiMarkWorking weight="bold" className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
     <div className="min-w-0 flex-1">
       <p role="status" className="truncate text-small font-medium">
         Finding the nearest <span translate="no">{placeWords(query)}</span>…
@@ -125,7 +125,7 @@ const TripDetails = ({ taskId, trip, onPick }: { taskId: Id<"tasks">; trip: Trip
   return (
     <>
       <div className="flex items-start gap-2 motion-safe:animate-fade-in">
-        <MapPin weight="fill" className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden="true" />
+        <MapPin weight="fill" className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-small font-medium" translate="no">
             {trip.chosen.name}

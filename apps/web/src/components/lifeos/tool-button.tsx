@@ -1,6 +1,6 @@
 "use client";
 
-import type { Icon } from "@phosphor-icons/react";
+import type { Glyph } from "@/lib/glyph";
 import { cn } from "@/lib/utils";
 
 export const ToolButton = ({
@@ -10,7 +10,7 @@ export const ToolButton = ({
   className,
   children,
   ...props
-}: React.ComponentProps<"button"> & { icon: Icon; label: string; active?: boolean }) => (
+}: React.ComponentProps<"button"> & { icon: Glyph; label: string; active?: boolean }) => (
   <button
     type="button"
     aria-label={label}

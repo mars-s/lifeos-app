@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/action-button";
 import { KeyCombo } from "@/components/ui/key-hint";
 import { Segmented } from "@/components/ui/segmented-control";
 import { toast } from "@/components/ui/toast-stack";
-import { AiMark } from "@/components/lifeos/ai-mark";
+import { AiMark } from "@/components/lifeos/ai-orb";
 import { AreaDot, areaVar } from "@/components/lifeos/area";
 import { formatMinutes } from "@/components/lifeos/format";
 import { TaskCheckbox } from "@/components/lifeos/task-row";

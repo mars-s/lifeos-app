@@ -3,7 +3,8 @@
 // mixed state for checkable items and a leading node for Area dots.
 "use client";
 
-import { CaretRight, Check, Minus, type Icon } from "@phosphor-icons/react";
+import { CaretRight, Check, Minus } from "@phosphor-icons/react";
+import type { Glyph as GlyphComponent } from "@/lib/glyph";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ContextMenu as ContextPrimitive, DropdownMenu } from "radix-ui";
 import { useState } from "react";
@@ -15,7 +16,7 @@ const slot = { asChild: true } as const;
 type Base = {
   id: string;
   label: React.ReactNode;
-  icon?: Icon;
+  icon?: GlyphComponent;
   /** Replaces the icon, for an Area dot or a progress pie. */
   leading?: React.ReactNode;
   /** Draws the icon in the brand colour, for Today. */
@@ -65,7 +66,7 @@ function Glyph({
   destructive,
   reserve,
 }: {
-  icon?: Icon;
+  icon?: GlyphComponent;
   leading?: React.ReactNode;
   accent?: boolean;
   destructive?: boolean;
