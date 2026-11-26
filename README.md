@@ -135,6 +135,17 @@ Sign-in works there because `convex/auth.ts` lists `https://lifeos.zephyrus.qzz.
 
 Cloudflare Access sits in front of the domain as a second gate. Its policy allows only the owner's email and signs in with GitHub. It is set up in the Zero Trust dashboard, not in this repo. Access only guards the web page: GitHub sends sign-in back through the Convex site URL, which Access does not cover, and the page then loads again behind the gate with its Access cookie.
 
+## Deploy the Notes Relay
+
+The Notes Relay is live at <https://lifeos-relay.zephyrus.qzz.io>. It is a Worker (`lifeos-relay`) with one Durable Object per note, on the same Cloudflare account and the Workers Free plan. `apps/relay/wrangler.jsonc` holds the config: SQLite-backed Durable Objects, a Workers Custom Domain, and no `workers.dev` or preview URLs. It sits outside Cloudflare Access, because it checks the Convex Auth token itself.
+
+```sh
+pnpm --filter @lifeos/relay test
+pnpm --filter @lifeos/relay run deploy
+```
+
+The tests run the Worker in the Workers runtime (`@cloudflare/vitest-plugin`) against a local key server. The deploy needs Wrangler logged in to the account in the config. `GET /health` answers `ok` once it is up. The routes are `GET /notes/<noteId>` (the websocket, with the token offered as a second subprotocol after `lifeos-notes`), `POST /notes/<noteId>/sync` (catch-up, with `Authorization: Bearer`) and `DELETE /notes/<noteId>`.
+
 ## Docs
 
 - [Domain glossary](CONTEXT.md)

@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "lifeos-relay",
+  "account_id": "0237a1806e1ca643d880c719e1c3ec91",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "lifeos-relay.zephyrus.qzz.io", "custom_domain": true }],
+  "durable_objects": { "bindings": [{ "name": "NOTE", "class_name": "Note" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Note"] }],
+  "vars": { "CONVEX_CLOUD_URL": "https://curious-pigeon-412.ap-southeast-2.convex.cloud" }
+}
