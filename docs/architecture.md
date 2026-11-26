@@ -20,7 +20,7 @@ Clients (web, Mac, iPhone) read and write Core. Notes are the one exception: eac
 | --- | --- | --- |
 | Always-on Notes peer | The Notes Relay | Below, and `docs/research/notes-sync.md` |
 | Notes archive | Every device's full copy plus the relay's saved copy | A second backup outside Cloudflare (such as a Markdown export from the Mac app): home to be decided |
-| In-app agents (Claude Code, Codex) | The Mac app, while it is awake | Jobs wait in the queue while the Mac sleeps. An always-on runner: home to be decided |
+| Agents on Avi's subscriptions (Claude Code, Codex) | The Mac app, while it is awake | Jobs wait in the queue while the Mac sleeps. The in-app agent on API keys runs in Core (Agents, below). An always-on runner for the subscriptions: home to be decided |
 | Link indexing (`index:link`) | The Mac app, while it is awake | Storing full page content and screenshots: home to be decided |
 | Large files | Home to be decided | |
 
@@ -47,9 +47,15 @@ EventKit only runs on Apple devices, so the Mac app reads Apple Calendar and Cor
 
 ## Agents
 
-- **Runners**: agents run in the Mac app's Worker, using Claude Code or Codex with Avi's subscriptions, while the Mac is awake. A run asked for while it sleeps waits in the queue. An always-on runner is home to be decided: a cloud runner (Vercel Eve or similar, paid per API call through an AI gateway) can be added later as another Worker, with no change to Core.
-- **Power**: agents act on their own and every change can be undone. An agent changes data through the same mutations as the UI, with the actor recorded as that agent run. Activity keeps the inverse of every change, so a whole run can be undone in one step.
-- **Generative UI**: agents answer with structured results rendered by our own components. The AffectUI library in `docs/design/references/affectui/` is the inspiration.
+Changed on 27 November 2026 ([#83](https://github.com/mars-s/lifeos-app/issues/83)). The comparison, the spike and the memory design are in `docs/research/lifeos-ai.md`.
+
+- **One engine**: the Vercel AI SDK 7 (`ToolLoopAgent`), with Convex's Agent component holding each run's thread in Core. The ⌘J box (inline, under the line Avi is on, proposals only) and background agent runs (act, with Undo) are two modes of one agent definition, one tool registry and one run store. There is still no chat.
+- **Runners**: the in-app agent runs in Convex actions with the keys LifeOS holds (OpenAI, OpenCode Go, later xAI), picked through the AI router as the `agent` Capability. Claude Code and Codex with Avi's subscriptions run in the Mac app's Worker as `agent:claude` and `agent:codex` Jobs while the Mac is awake, using LifeOS's MCP tools; Anthropic allows the Claude subscription only there. A run asked for while the Mac sleeps waits in the queue. An always-on cloud runner (Vercel Eve, which is built on the AI SDK, or similar) can be added later as another Worker, with no change to Core.
+- **Tools**: one declaration, two doors. Each MCP tool's definition is adapted into an AI SDK tool that calls the same internal function, so the in-app agent and external agents share every tool and every write goes through `changeMutation`.
+- **Power**: agents act on their own and every change can be undone. An agent changes data through the same mutations as the UI, with the actor recorded as that agent run. Activity keeps the inverse of every change, so a whole run can be undone in one step. Trash, converting to a Project, big batches and anything that cannot be undone wait for Avi's approval; the wait is saved in the thread, so a run resumes whenever he answers.
+- **Streaming**: answers stream as saved deltas over the Convex websocket, so every open device sees them and a reload picks up where it was.
+- **Memory**: one `aiIndex` table with a Convex vector index (OpenAI `text-embedding-3-small`, 512 dimensions) and full-text search covers Tasks, Projects, Areas, note sections, Saved Links, a daily Activity summary and memories. Notes keep their full text on devices and the relay; Core holds section vectors and snippets. What the agent learns about Avi is a separate `memories` table he can see, edit and delete in Settings.
+- **Generative UI**: agents answer with typed message parts (one per tool, plus `data-*` parts) rendered by our own components on web, Mac and later iPhone. The AffectUI library in `docs/design/references/affectui/` is the inspiration.
 
 ## Modules
 
