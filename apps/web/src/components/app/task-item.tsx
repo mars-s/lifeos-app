@@ -566,8 +566,8 @@ const TaskItemRow = ({ task, itemKey, show = NO_SHOW, sortable, today, card, onC
               {show.when && task.when.kind === "scheduled" && !isToday(task.when, today) && (
                 <span className="hidden text-small text-muted-foreground @sm:inline">{whenLabel(task.when, today)}</span>
               )}
-              {task.deadline && !closed && <DeadlineMarker deadline={deadlineMark(task.deadline, today)} className="hidden @md:inline-flex" />}
-              {plannedToday && !closed && (
+              {task.deadline && !closed && !tile && <DeadlineMarker deadline={deadlineMark(task.deadline, today)} className="hidden @md:inline-flex" />}
+              {plannedToday && !closed && !tile && (
                 <span title="Planned start" className="hidden font-mono text-small text-muted-foreground @sm:inline">
                   <span className="sr-only">Planned for </span>
                   {clockTime(plannedToday.start)}
