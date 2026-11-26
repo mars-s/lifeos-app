@@ -88,7 +88,7 @@ const Streets = ({ looking }: { looking: boolean }) => (
 );
 
 const LookingRow = ({ query }: { query: string }) => (
-  <div className="flex items-start gap-2 pl-1 motion-safe:animate-fade-in">
+  <div className="flex items-start gap-2 motion-safe:animate-fade-in">
     <AiMarkWorking weight="bold" className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden="true" />
     <div className="min-w-0 flex-1">
       <p role="status" className="truncate text-small font-medium">
@@ -124,7 +124,7 @@ const TripDetails = ({ taskId, trip, onPick }: { taskId: Id<"tasks">; trip: Trip
 
   return (
     <>
-      <div className="flex items-start gap-2 pl-1 motion-safe:animate-fade-in">
+      <div className="flex items-start gap-2 motion-safe:animate-fade-in">
         <MapPin weight="fill" className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden="true" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-small font-medium" translate="no">
@@ -132,17 +132,17 @@ const TripDetails = ({ taskId, trip, onPick }: { taskId: Id<"tasks">; trip: Trip
             {trip.chosen.suburb && <span className="font-normal text-muted-foreground"> {trip.chosen.suburb}</span>}
           </p>
           <Figures place={trip.chosen} mode={trip.mode} />
-        </div>
-        <span className="flex shrink-0 items-center gap-0.5">
           <a
             href={mapsHref(trip.chosen, trip.mode)}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex h-7 items-center gap-1 rounded-full px-2 text-small text-muted-foreground transition-[background-color,color,scale] duration-(--dur-press) ease-out outline-none hover:bg-foreground/[0.06] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-[0.96]"
+            className="-ml-2 flex h-7 w-fit items-center gap-1 rounded-full px-2 text-small text-muted-foreground transition-[background-color,color,scale] duration-(--dur-press) ease-out outline-none hover:bg-foreground/[0.06] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-[0.96]"
           >
             Open in Maps
             <ArrowSquareOut className="size-3.5" aria-hidden="true" />
           </a>
+        </div>
+        <span className="-mt-1 -mr-1.5 flex shrink-0 items-center gap-0.5">
           {others.length > 0 && (
             <ToolButton
               icon={CaretDown}
@@ -163,7 +163,7 @@ const TripDetails = ({ taskId, trip, onPick }: { taskId: Id<"tasks">; trip: Trip
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={reduce ? instant : springLayout}
-            className="overflow-hidden pl-6"
+            className="overflow-hidden pl-4"
           >
             {others.map((place) => (
               <li key={place.key}>
@@ -205,7 +205,7 @@ const TripPanel = ({ taskId, view }: { taskId: Id<"tasks">; view: Trip | Looking
     });
   };
   return (
-    <section aria-label={trip ? `Trip to ${placeLabel(trip.chosen)}` : "Finding a trip"} aria-busy={!trip} className="grid gap-2">
+    <section aria-label={trip ? `Trip to ${placeLabel(trip.chosen)}` : "Finding a trip"} aria-busy={!trip} className="grid grid-cols-[minmax(0,1fr)] gap-2">
       <div className="relative h-36 overflow-hidden rounded-lg bg-foreground/[0.04]">
         <Streets looking={!trip} />
         {trip && (
@@ -260,7 +260,7 @@ export const TaskTrip = ({ task }: { task: PlannerTask }) => {
           animate={{ height: "auto", opacity: 1 }}
           exit={{ height: 0, opacity: 0 }}
           transition={reduce ? instant : springLayout}
-          className="-my-1 -mr-1 -ml-2 overflow-hidden p-1"
+          className="-m-1 overflow-hidden p-1"
         >
           {(view.kind === "trip" || view.kind === "looking") && <TripPanel taskId={task._id} view={view} />}
           {view.kind === "unfound" && (

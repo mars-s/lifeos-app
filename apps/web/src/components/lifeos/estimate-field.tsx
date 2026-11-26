@@ -32,8 +32,7 @@ const plainUnits = (days: number) => {
 const CHIP =
   "relative h-7 rounded-md px-2 font-mono text-small transition-[background-color,color,scale,opacity] duration-(--dur-press) ease-out before:absolute before:-inset-x-0.5 before:-inset-y-2 active:scale-[0.94]";
 
-const LIKELY =
-  "outline-1 outline-dashed -outline-offset-1 outline-brand/55 text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring";
+const LIKELY = "bg-brand/[0.12] text-foreground hover:bg-brand/[0.18]";
 
 const GUESS = "pb-1 starting:opacity-0 motion-safe:duration-(--dur-fast)";
 
@@ -108,8 +107,11 @@ export const EstimateField = ({
   };
 
   return (
-    <div role="group" aria-label="Estimate" className={cn("flex flex-wrap items-center gap-1 @md:gap-1.5", className)}>
-      <span className="hidden w-[3.75rem] text-small text-muted-foreground @md:inline">Estimate</span>
+    <div role="group" aria-label="Estimate" className={cn("grid grid-cols-[3.75rem_minmax(0,1fr)] items-start gap-x-1.5 gap-y-1", className)}>
+      <span aria-hidden="true" className="text-small leading-7 text-muted-foreground">
+        Estimate
+      </span>
+      <div className="flex flex-wrap items-center gap-1 @md:gap-1.5">
       {smart?.kind === "thinking" && <Ghosts />}
       {chips.map(({ minutes: chip, probability }) => {
         const selected = minutes === chip;
@@ -192,8 +194,9 @@ export const EstimateField = ({
       <span role="status" className={cn("text-micro text-negative", !refused && "sr-only")}>
         {refused ? "Try 45, 1h30 or 1:30" : ""}
       </span>
+      </div>
       {big && (
-        <p className="flex basis-full flex-wrap items-center gap-x-2 gap-y-1 text-micro text-pretty text-muted-foreground @md:pl-[4.125rem]">
+        <p className="col-start-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-micro text-pretty text-muted-foreground">
           Big one. Split it into a Project?
           {onSteps && (
             <button
@@ -216,7 +219,7 @@ export const EstimateField = ({
         </p>
       )}
       {smart?.kind === "note" && (
-        <p role="status" className="basis-full text-micro text-pretty text-faint-foreground @md:pl-[4.125rem]">
+        <p role="status" className="col-start-2 text-micro text-pretty text-faint-foreground">
           {smart.note}
         </p>
       )}

@@ -307,8 +307,8 @@ export const RepeatPicker = ({
   const odd = current && current.kind !== "afterCompletion" && !isPreset(current, base) ? current : undefined;
   const next = repeat && nextLine(repeat);
   const trigger = label ? (
-    <ToolButton icon={Repeat} label={`Repeat: ${label}`} active className="max-w-[15rem] pr-2.5">
-      <span className="truncate pl-1.5 font-medium">{label}</span>
+    <ToolButton icon={Repeat} label={`Repeat: ${label}`} active className="max-w-[15rem] pr-2.5 @max-xs:pr-1.5">
+      <span className="truncate pl-1.5 font-medium @max-xs:hidden">{label}</span>
     </ToolButton>
   ) : (
     <ToolButton icon={Repeat} label="Repeat" />

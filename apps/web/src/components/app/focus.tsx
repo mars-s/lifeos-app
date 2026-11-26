@@ -272,7 +272,7 @@ export const FocusTool = ({ task }: { task: PlannerTask }) => {
         else actions.start(task, event.detail === 0 ? "keyboard" : "pointer");
       }}
     >
-      <span className="pl-1.5 whitespace-nowrap">{label}</span>
+      <span className="pl-1.5 whitespace-nowrap @max-xs:hidden">{label}</span>
     </ToolButton>
   );
 };

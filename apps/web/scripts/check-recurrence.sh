@@ -254,7 +254,7 @@ templates() {
   shot menu-from-template
   menu_item "Weekly review"
   $AB wait 600 >/dev/null
-  expect "document.querySelector('[data-open-card] input[name=title]').value === 'Weekly review'" "New Task from Template opens the new Task at once"
+  expect "document.querySelector('[data-open-card] [name=title]').value === 'Weekly review'" "New Task from Template opens the new Task at once"
   expect "document.querySelector('[data-open-card]').textContent.includes('Look over each Area')" "the new Task has the Template's Checklist"
   shot new-from-template
   close_card

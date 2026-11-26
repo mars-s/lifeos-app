@@ -1,6 +1,6 @@
 "use client";
 
-import { ListChecks, Stamp } from "@phosphor-icons/react";
+import { DotsThree, ListChecks, Stamp } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { api } from "@lifeos/backend/api";
@@ -15,6 +15,7 @@ import { LabelPicker } from "@/components/lifeos/label-picker";
 import { baseDate } from "@lifeos/backend/client/repeat";
 import { RepeatPicker } from "@/components/lifeos/repeat-picker";
 import { ToolButton } from "@/components/lifeos/tool-button";
+import { Menu } from "@/components/ui/action-menu";
 import { WorkBlockList } from "@/components/lifeos/work-blocks";
 import { enter, exit, instant, spring, springLayout } from "@/lib/motion-tokens";
 import { deadlineMark, localDate, relativeDay, shortDay, whenLabel } from "./dates";
@@ -76,7 +77,7 @@ const draftField = "block w-full bg-transparent outline-none placeholder:text-fa
 export const TitleField = ({ task, today, onCreated }: { task: PlannerTask; today: string; onCreated?: () => void }) => {
   const { rename } = useTaskActions(task, today);
   const [draft, setDraft] = useState<string | null>(null);
-  const field = useRef<HTMLInputElement>(null);
+  const field = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     field.current?.focus({ preventScroll: true });
   }, []);
@@ -88,24 +89,26 @@ export const TitleField = ({ task, today, onCreated }: { task: PlannerTask; toda
     if (next && next !== task.title) rename(next);
   };
   return (
-    <input
+    <textarea
       ref={field}
       aria-label="Title"
       name="title"
+      rows={1}
       data-undo={draft === null ? "app" : undefined}
       value={draft ?? task.title}
       placeholder="New Task"
       autoComplete="off"
-      onChange={(event) => setDraft(event.target.value)}
+      onChange={(event) => setDraft(event.target.value.replaceAll(/\s*\n\s*/g, " "))}
       onBlur={commit}
       onKeyDown={(event) => {
         if (event.key !== "Enter" || event.metaKey || event.ctrlKey) return;
+        event.preventDefault();
         const unsaved = drafts.isUnsaved(task._id);
         if (unsaved && event.currentTarget.value.trim() === "") return;
         event.currentTarget.blur();
         if (unsaved) onCreated?.();
       }}
-      className={`${draftField} min-w-0 flex-1 font-medium`}
+      className={`${draftField} field-sizing-content min-w-0 flex-1 resize-none font-medium break-words`}
     />
   );
 };
@@ -129,7 +132,7 @@ export const NotesField = ({ notes, onSave }: { notes: string; onSave: (notes: s
         }}
         className="cursor-text text-small break-words whitespace-pre-wrap text-muted-foreground outline-none"
       >
-        <Linkified text={notes} />
+        <Linkified text={notes.trimEnd().replaceAll(/\n\s*\n(\s*\n)+/g, "\n\n")} />
       </p>
     );
   }
@@ -262,7 +265,9 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
             }}
           />
           {!hasChecklist && <ToolButton icon={ListChecks} label="Checklist" onClick={() => setComposing(true)} />}
-          {steps.available && <ToolButton icon={steps.view?.kind === "thinking" ? AiMarkWorking : AiMark} label="Break into steps" onClick={steps.ask} />}
+          {steps.available && (
+            <ToolButton icon={steps.view?.kind === "thinking" ? AiMarkWorking : AiMark} label="Break into steps" onClick={steps.ask} className="@max-xs:hidden" />
+          )}
           <RepeatPicker
             repeat={repeat && { schedule: repeat.schedule, end: repeat.end, next: repeat.next, settled: !isOptimistic(repeat.ruleId) }}
             base={baseDate(task.when, today as IsoDate)}
@@ -271,7 +276,7 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
             onStop={repeatDo.stop}
             onSkip={repeatDo.skip}
           />
-          {templatesOn && <ToolButton icon={Stamp} label="Save as Template" onClick={() => templateDo.save(task, today)} />}
+          {templatesOn && <ToolButton icon={Stamp} label="Save as Template" onClick={() => templateDo.save(task, today)} className="@max-xs:hidden" />}
           <DeadlinePicker
             deadline={task.deadline}
             label={deadline?.label}
@@ -279,6 +284,20 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
             today={today}
             onChange={actions.setDeadline}
           />
+          {(steps.available || templatesOn) && (
+            <Menu
+              align="end"
+              trigger={<ToolButton icon={DotsThree} label="More" className="@xs:hidden" />}
+              groups={[
+                {
+                  items: [
+                    ...(steps.available ? [{ id: "steps", label: "Break into steps", icon: AiMark, onSelect: steps.ask }] : []),
+                    ...(templatesOn ? [{ id: "template", label: "Save as Template", icon: Stamp, onSelect: () => templateDo.save(task, today) }] : []),
+                  ],
+                },
+              ]}
+            />
+          )}
         </span>
       </div>
     </div>

@@ -23,7 +23,7 @@ export const ToolButton = ({
   >
     <IconComponent weight={active ? "fill" : "regular"} className="size-4" aria-hidden="true" />
     {children ?? (
-      <span className="grid grid-cols-[0fr] transition-[grid-template-columns] duration-(--dur-base) ease-out group-hover/tool:grid-cols-[1fr] group-focus-visible/tool:grid-cols-[1fr] group-aria-expanded/tool:grid-cols-[1fr]">
+      <span className="grid grid-cols-[0fr] transition-[grid-template-columns] @max-xs:hidden duration-(--dur-base) ease-out group-hover/tool:grid-cols-[1fr] group-focus-visible/tool:grid-cols-[1fr] group-aria-expanded/tool:grid-cols-[1fr]">
         <span className="overflow-hidden pl-1.5 whitespace-nowrap">{label}</span>
       </span>
     )}

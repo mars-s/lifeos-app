@@ -8,9 +8,9 @@ export type PlannedBlock = { id: string; day: string; startMinute: number; minut
 const DAY_MINUTES = 24 * 60;
 
 export const WorkBlockList = ({ blocks, colour = "slate", className }: { blocks: PlannedBlock[]; colour?: AreaColour; className?: string }) => (
-  <div className={cn("flex flex-wrap items-center gap-1.5", className)}>
-    <span className="w-[3.75rem] text-small text-muted-foreground">Planned</span>
-    <ul aria-label="Work Blocks" className="contents">
+  <div className={cn("grid grid-cols-[3.75rem_minmax(0,1fr)] items-start gap-x-1.5", className)}>
+    <span className="text-small leading-7 text-muted-foreground">Planned</span>
+    <ul aria-label="Work Blocks" className="flex flex-wrap items-center gap-1.5">
       {blocks.map((block) => (
         <li
           key={block.id}
