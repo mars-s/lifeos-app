@@ -32,6 +32,20 @@ Screenshots Avi picked on 18 November 2026 as the quality bar and the source of 
 | `14-tuffui-message-log.png` | Dot-matrix timeline you can brush to filter, monospace numbers, tiny inline bars, attempt dots. The model for our activity and focus visualisations. |
 | `15-tuffui-component-grid.png` | The wider family: rings, gauges, heatmaps, step charts, lap timers. Tactile, analog and precise. TuffUI is MIT and installs as a shadcn registry (https://tuffui.com/llms.txt). |
 
+## AI on the line (Notion AI, 2023)
+
+Stills from Notion's own launch videos, picked by Avi on 26 November 2026 as the best way he has seen to put AI in an app without a chatbot. The design that uses them is [ai.md](../ai.md).
+
+| File | Take from it |
+| --- | --- |
+| `notion-ai/notion-ai-1.png` | It starts from your own text: a selection, or the line the caret is on. Nothing else on the page changes. |
+| `notion-ai/notion-ai-2.png` | Cmd+J raises one field right under the text, with a short list of actions below it. Quick actions first, typing second. |
+| `notion-ai/notion-ai-3.png` | The actions are plain verbs in groups, with the first one already selected so Enter works at once. |
+| `notion-ai/notion-ai-4.png` | The answer sits under your text, never over it. Then: Replace, Insert below, Continue, and a field to say what to do next. |
+| `notion-ai/notion-ai-5.png` | Free text works in the same field ("Create a table"). There is no second place to type. |
+
+Leave behind: the purple sparkle, the answer living inside the floating box (ours is written onto the page in pencil), and the long menu.
+
 Avi's notes alongside these:
 
 - Keep the deadline and the allocated time separate.
