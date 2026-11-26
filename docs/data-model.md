@@ -66,9 +66,9 @@ One unit of background work.
 
 | Field | Type |
 | --- | --- |
-| `job` | `{ kind: "agent", payload: { request } }`. A new module adds its own kind. |
+| `job` | `{ kind: "agent", payload: { request, mode?, threadId?, taskId? } }`. An in-app run (`ai/runs.ts`) sets `mode` (`ask` for Cmd+J, `run` for work it acts on), the Agent component `threadId` that holds its messages, and the Task it was asked on. A new module adds its own kind. |
 | `idempotencyKey` | Unique per logical piece of work |
-| `status` | `queued { availableAt }`, `claimed { workerId, leaseUntil, heartbeatAt }`, `done { at, receipt }` or `failed { at, error }` |
+| `status` | `queued { availableAt }`, `claimed { workerId, leaseUntil, heartbeatAt }`, `waiting { since }` (an in-app run waiting for Avi to approve a risky change), `done { at, receipt }` or `failed { at, error }` |
 | `attempts` | Claims so far |
 
 | Index | Serves |
@@ -76,6 +76,7 @@ One unit of background work.
 | `by_idempotency_key` | Enqueue returns the existing Job for a repeated key |
 | `by_kind_status_available` (`job.kind`, `status.kind`, `status.availableAt`) | Claim the oldest queued Job of a kind whose retry delay has passed |
 | `by_kind_status_lease` (`job.kind`, `status.kind`, `status.leaseUntil`) | Claim a Job whose lease expired |
+| `by_thread` (`job.payload.threadId`) | Find the Agent Run behind a thread, so its messages are only read through an owner query |
 
 `claim` returns the Job with its attempt number. `heartbeat`, `complete` and `fail` must name that attempt, so a stale attempt cannot finish a Job its Worker has claimed again. Each kind sets its own limits in `jobKinds` (`platform/jobs.ts`): `agent` allows 1 attempt with a 15 minute lease. A failed attempt with `retry: true` waits 5 seconds, doubling up to 5 minutes. An expired lease returns the Job to whichever Worker claims next. After the last attempt the Job fails with `lease_expired`.
 

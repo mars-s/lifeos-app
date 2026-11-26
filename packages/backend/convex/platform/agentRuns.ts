@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import { components } from "../_generated/api";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -6,6 +7,8 @@ import { sha256Hex } from "./workers";
 
 export const MCP_RUN_IDLE_MS = 10 * 60_000;
 export const MCP_WORKER_NAME = "mcp";
+export const IN_APP_WORKER_NAME = "lifeos-ai";
+export const IN_APP_CONNECTION = "run:";
 
 const runKeyPrefix = (connectionId: string) => `mcp:${connectionId}:`;
 
@@ -23,14 +26,14 @@ export const isRunOf = (run: Doc<"jobs"> | null, connectionId: string) =>
 
 export const isLiveRun = (run: Doc<"jobs">, now: number) => run.status.kind === "claimed" && run.status.leaseUntil >= now;
 
-const mcpWorker = async (ctx: MutationCtx) => {
+export const namedWorker = async (ctx: MutationCtx, name: string) => {
   const existing = await ctx.db
     .query("workers")
-    .withIndex("by_name", (q) => q.eq("name", MCP_WORKER_NAME))
+    .withIndex("by_name", (q) => q.eq("name", name))
     .unique();
   if (existing) return existing._id;
   return ctx.db.insert("workers", {
-    name: MCP_WORKER_NAME,
+    name,
     capabilities: [],
     tokenHash: await sha256Hex(crypto.randomUUID()),
   });
@@ -59,8 +62,18 @@ export const mcpRunActor = async (ctx: MutationCtx, caller: AgentCaller) => {
   const jobId: Id<"jobs"> = await ctx.db.insert("jobs", {
     job: { kind: "agent", payload: { request: `${await connectionName(ctx, caller)} over MCP` } },
     idempotencyKey: `${runKeyPrefix(caller.connectionId)}${now}`,
-    status: { kind: "claimed", workerId: await mcpWorker(ctx), leaseUntil: now + MCP_RUN_IDLE_MS, heartbeatAt: now },
+    status: { kind: "claimed", workerId: await namedWorker(ctx, MCP_WORKER_NAME), leaseUntil: now + MCP_RUN_IDLE_MS, heartbeatAt: now },
     attempts: 1,
   });
   return { kind: "agentRun", jobId } as const;
 };
+
+const inAppRunActor = async (ctx: MutationCtx, connectionId: string) => {
+  const jobId = ctx.db.normalizeId("jobs", connectionId.slice(IN_APP_CONNECTION.length));
+  const run = jobId === null ? null : await ctx.db.get("jobs", jobId);
+  if (!jobId || run?.job.kind !== "agent" || !isLiveRun(run, Date.now())) throw new ConvexError("This Agent Run is not active.");
+  return { kind: "agentRun", jobId } as const;
+};
+
+export const runActor = (ctx: MutationCtx, caller: AgentCaller) =>
+  caller.connectionId.startsWith(IN_APP_CONNECTION) ? inAppRunActor(ctx, caller.connectionId) : mcpRunActor(ctx, caller);

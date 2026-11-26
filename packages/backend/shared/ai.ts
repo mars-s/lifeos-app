@@ -6,7 +6,7 @@ export type ProviderSecret = "openai" | "opencodeGo";
 
 export type Transport = "decisions" | "chat";
 
-export type Answer = "choice" | "json";
+export type Answer = "choice" | "json" | "tools";
 
 type ProviderSpec = {
   readonly title: string;
@@ -59,7 +59,7 @@ export const MODELS = {
     model: "gpt-6-luna",
     title: "GPT-6 Luna",
     transport: "chat",
-    answers: ["choice", "json"],
+    answers: ["choice", "json", "tools"],
     price: { input: 0.1, output: 0.5 },
   },
   "openai/gpt-6.1-terra": {
@@ -67,7 +67,7 @@ export const MODELS = {
     model: "gpt-6.1-terra",
     title: "GPT-6.1 Terra",
     transport: "chat",
-    answers: ["choice", "json"],
+    answers: ["choice", "json", "tools"],
     price: { input: 1, output: 5 },
   },
   "opencodeGo/deepseek-v4.1-flash": {
@@ -75,7 +75,7 @@ export const MODELS = {
     model: "deepseek-v4.1-flash",
     title: "DeepSeek V4.1 Flash",
     transport: "chat",
-    answers: ["choice", "json"],
+    answers: ["choice", "json", "tools"],
     price: { input: 0.15, output: 0.6 },
   },
   "opencodeGo/glm-5.3-flash": {
@@ -83,7 +83,7 @@ export const MODELS = {
     model: "glm-5.3-flash",
     title: "GLM-5.3 Flash",
     transport: "chat",
-    answers: ["choice", "json"],
+    answers: ["choice", "json", "tools"],
     price: { input: 0.15, output: 0.5 },
   },
   "opencodeGo/gpt-6-luna": {
@@ -91,7 +91,7 @@ export const MODELS = {
     model: "gpt-6-luna",
     title: "GPT-6 Luna",
     transport: "chat",
-    answers: ["choice", "json"],
+    answers: ["choice", "json", "tools"],
     price: { input: 0.1, output: 0.5 },
   },
   "opencodeGo/glm-5.3": {
@@ -99,7 +99,7 @@ export const MODELS = {
     model: "glm-5.3",
     title: "GLM-5.3",
     transport: "chat",
-    answers: ["choice", "json"],
+    answers: ["choice", "json", "tools"],
     price: { input: 1.4, output: 4.4 },
   },
 } as const satisfies Record<string, ModelSpec>;
@@ -154,14 +154,25 @@ export const CAPABILITIES = {
     tokens: { input: 350, output: 150 },
     per: "Tasks",
   },
+  agent: {
+    title: "LifeOS AI",
+    summary: "Answers Cmd+J on a Task and does the runs you start, through the same changes you make, each one undoable.",
+    asks: "tools",
+    defaultModel: "openai/gpt-6-luna",
+    fallbackModel: "opencodeGo/deepseek-v4.1-flash",
+    onByDefault: true,
+    switchedBy: "ai",
+    tokens: { input: 6000, output: 500 },
+    per: "answers",
+  },
 } as const satisfies Record<string, CapabilitySpec>;
 
 export type CapabilityId = keyof typeof CAPABILITIES;
 export const CAPABILITY_IDS = Object.keys(CAPABILITIES) as CapabilityId[];
-export const vCapabilityId = v.union(v.literal("smartEstimates"), v.literal("breakIntoSteps"), v.literal("tripDetection"));
+export const vCapabilityId = v.union(v.literal("smartEstimates"), v.literal("breakIntoSteps"), v.literal("tripDetection"), v.literal("agent"));
 
 export const vRoute = v.object({ on: v.boolean(), model: v.string() });
-export const vAiSettings = v.object({ routes: v.record(v.string(), vRoute) });
+export const vAiSettings = v.object({ routes: v.record(v.string(), vRoute), askFirst: v.optional(v.boolean()) });
 export type AiSettings = Infer<typeof vAiSettings>;
 export const DEFAULT_AI_SETTINGS: AiSettings = { routes: {} };
 

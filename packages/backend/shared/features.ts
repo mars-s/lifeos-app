@@ -33,7 +33,7 @@ type FeatureSpec<Settings> = {
 export const FEATURES = {
   ai: {
     title: "AI",
-    summary: "Smart Estimates, steps for big Tasks and trip detection, on the models you pick. Nothing is sent while it is off.",
+    summary: "Smart Estimates, steps for big Tasks, trip detection and Cmd+J, on the models you pick. Nothing is sent while it is off.",
     icon: "ai",
     enabledByDefault: false,
     keys: ["openai", "opencodeGo"],

@@ -2,6 +2,7 @@
 import { registerCore, sessionIdentity } from "@convex-dev/auth/test";
 import { registerGithubOauth } from "@convex-dev/auth/components/github/test";
 import { register as registerMcp } from "@convex-dev/mcp/test";
+import { register as registerAgent } from "@convex-dev/agent/test";
 import { createFunctionHandle } from "convex/server";
 import { convexTest } from "convex-test";
 import { vi } from "vitest";
@@ -25,6 +26,7 @@ export const newSignedOutBackend = () => {
   registerCore(t);
   registerGithubOauth(t);
   registerMcp(t);
+  registerAgent(t);
   return t;
 };
 

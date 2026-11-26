@@ -53,7 +53,12 @@ export const vJobKind = v.literal("agent");
 
 export const vCapability = v.union(v.literal("things"), v.literal("calendar"), vJobKind);
 
-export const vJob = v.object({ kind: vJobKind, payload: v.object({ request: v.string() }) });
+export const vRunMode = v.union(v.literal("ask"), v.literal("run"));
+
+export const vJob = v.object({
+  kind: vJobKind,
+  payload: v.object({ request: v.string(), mode: v.optional(vRunMode), threadId: v.optional(v.string()), taskId: v.optional(v.id("tasks")) }),
+});
 
 export const vJobStatus = v.union(
   v.object({ kind: v.literal("queued"), availableAt: v.number() }),
@@ -63,6 +68,7 @@ export const vJobStatus = v.union(
     leaseUntil: v.number(),
     heartbeatAt: v.number(),
   }),
+  v.object({ kind: v.literal("waiting"), since: v.number() }),
   v.object({ kind: v.literal("done"), at: v.number(), receipt: v.any() }),
   v.object({ kind: v.literal("failed"), at: v.number(), error: v.string() }),
 );
@@ -75,6 +81,7 @@ export type UndoTarget = Infer<typeof vUndoTarget>;
 export type JobKind = Infer<typeof vJobKind>;
 export type Capability = Infer<typeof vCapability>;
 export type Job = Infer<typeof vJob>;
+export type RunMode = Infer<typeof vRunMode>;
 export type SecretName = Infer<typeof vSecretName>;
 
 export const platformTables = {
@@ -107,7 +114,8 @@ export const platformTables = {
   })
     .index("by_idempotency_key", ["idempotencyKey"])
     .index("by_kind_status_available", ["job.kind", "status.kind", "status.availableAt"])
-    .index("by_kind_status_lease", ["job.kind", "status.kind", "status.leaseUntil"]),
+    .index("by_kind_status_lease", ["job.kind", "status.kind", "status.leaseUntil"])
+    .index("by_thread", ["job.payload.threadId"]),
   features: defineTable(vFeatureRow).index("by_feature", ["feature"]),
   secrets: defineTable({
     name: vSecretName,

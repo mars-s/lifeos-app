@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import auth from "@convex-dev/auth/convex.config.js";
 import authGithub from "@convex-dev/auth/components/github/convex.config.js";
 import mcp from "@convex-dev/mcp/convex.config.js";
+import agent from "@convex-dev/agent/convex.config.js";
 
 const app = defineApp({
   env: {
@@ -23,4 +24,5 @@ app.use(authGithub, {
   env: { CLIENT_ID: app.env.AUTH_GITHUB_CLIENT_ID, CLIENT_SECRET: app.env.AUTH_GITHUB_CLIENT_SECRET },
 });
 app.use(mcp);
+app.use(agent);
 export default app;

@@ -84,6 +84,7 @@ def main():
             [
                 "Model for Smart Estimates: GPT-6 Luna, Decisions API on OpenAI",
                 "Model for Break into steps: DeepSeek V4.1 Flash on OpenCode Go",
+                "Model for LifeOS AI: GPT-6 Luna on OpenAI",
             ],
         )
         expect("a cost line sits under each model", jobs.get_by_text("About US$0.09 per 1,000 Tasks.").count() >= 1, True)
@@ -103,6 +104,14 @@ def main():
         page.get_by_role("button", name="Undo").first.click()
         page.wait_for_timeout(500)
         expect("and undoes", pickers.first.get_attribute("aria-label"), "Model for Smart Estimates: GPT-6 Luna, Decisions API on OpenAI")
+
+        ask_first = page.get_by_role("switch", name="Ask before every change")
+        expect("runs act with Undo until Avi asks for more", ask_first.get_attribute("aria-checked"), "false")
+        ask_first.click()
+        page.wait_for_timeout(300)
+        expect("one switch makes every run ask first", ask_first.get_attribute("aria-checked"), "true")
+        ask_first.click()
+        page.wait_for_timeout(300)
 
         steps_switch = jobs.get_by_role("switch", name="Break into steps")
         steps_switch.click()

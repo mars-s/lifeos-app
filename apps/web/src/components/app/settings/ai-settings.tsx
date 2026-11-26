@@ -1,12 +1,14 @@
 "use client";
 
-import { CaretUpDown, Check, Key, MapPin, Hourglass, ListChecks, type Icon } from "@phosphor-icons/react";
+import { CaretUpDown, Check, HandPalm, Key, MapPin, Hourglass, ListChecks } from "@phosphor-icons/react";
 import type { OptimisticLocalStore } from "convex/browser";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "@lifeos/backend/api";
 import { CAPABILITIES, costLine, MODELS, modelsFor, PROVIDER_IDS, PROVIDERS, type CapabilityId, type ModelId } from "@lifeos/backend/ai";
 import { Menu, type MenuGroup } from "@/components/ui/action-menu";
 import { Switch } from "@/components/ui/choice-controls";
+import { AiMark } from "@/components/lifeos/ai-orb";
+import type { Glyph } from "@/lib/glyph";
 import { useChange } from "../changes";
 import { useQuietView } from "../hooks";
 import { useFeatures } from "./feature-state";
@@ -16,7 +18,7 @@ import { SettingsGroup, SettingsRow } from "./rows";
 type Overview = FunctionReturnType<typeof api.ai.routing.overview>;
 type CapabilityState = Overview["capabilities"][number];
 
-const CAPABILITY_ICONS = { smartEstimates: Hourglass, breakIntoSteps: ListChecks, tripDetection: MapPin } satisfies Record<CapabilityId, Icon>;
+const CAPABILITY_ICONS = { smartEstimates: Hourglass, breakIntoSteps: ListChecks, tripDetection: MapPin, agent: AiMark } satisfies Record<CapabilityId, Glyph>;
 
 const PROVIDER_HINTS = {
   openai: "Runs the Decisions API, the cheapest way to get Smart Estimates and trip detection.",
@@ -124,6 +126,36 @@ const CapabilityRow = ({ state, keyed }: { state: CapabilityState; keyed: Readon
   );
 };
 
+const setAskFirstIn = (askFirst: boolean) => (store: OptimisticLocalStore) => {
+  const overview = store.getQuery(api.ai.routing.overview, {});
+  if (overview) store.setQuery(api.ai.routing.overview, {}, { ...overview, askFirst });
+};
+
+const AskFirstRow = ({ askFirst }: { askFirst: boolean }) => {
+  const change = useChange();
+  return (
+    <SettingsRow
+      icon={HandPalm}
+      label="Ask before every change"
+      hint="Off, a run acts on changes one undo takes back and asks first only before the Trash, a Task becoming a Project, more than 10 changes, or anything it cannot undo. On, it asks before every change."
+    >
+      <Switch
+        aria-label="Ask before every change"
+        checked={askFirst}
+        onCheckedChange={(on) =>
+          void change({
+            title: on ? "Runs ask before every change" : "Runs act, with Undo",
+            mutation: api.ai.routing.setAskFirst,
+            args: { on },
+            apply: setAskFirstIn(on),
+            revert: setAskFirstIn(askFirst),
+          })
+        }
+      />
+    </SettingsRow>
+  );
+};
+
 export const AiSettings = () => {
   const overview = useQuietView(api.ai.routing.overview, {});
   const keyed = new Set(overview?.keyed ?? []);
@@ -157,6 +189,11 @@ export const AiSettings = () => {
           <p className="px-3.5 py-3.5 text-small text-muted-foreground">Loading…</p>
         )}
       </SettingsGroup>
+      {overview && (
+        <SettingsGroup title="Runs" hint="A run is work you hand LifeOS AI. Every change it makes shows in Activity and can be undone.">
+          <AskFirstRow askFirst={overview.askFirst} />
+        </SettingsGroup>
+      )}
     </>
   );
 };

@@ -362,6 +362,7 @@ describe("moving Smart Estimates under AI", () => {
       { capability: "smartEstimates", on: true, model: "openai/decisions/gpt-6-luna", answering: "openai/decisions/gpt-6-luna" },
       { capability: "breakIntoSteps", on: true, model: "opencodeGo/deepseek-v4.1-flash", answering: "opencodeGo/deepseek-v4.1-flash" },
       { capability: "tripDetection", on: true, model: "openai/decisions/gpt-6-luna", answering: "openai/decisions/gpt-6-luna" },
+      { capability: "agent", on: true, model: "openai/gpt-6-luna", answering: "openai/gpt-6-luna" },
     ]);
   });
 

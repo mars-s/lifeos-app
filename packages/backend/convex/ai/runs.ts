@@ -1,0 +1,247 @@
+import { createThread, listUIMessages, saveMessage, stepCountIs, syncStreams, vStreamArgs } from "@convex-dev/agent";
+import type { ToolSet } from "ai";
+import { paginationOptsValidator } from "convex/server";
+import { v, type Infer } from "convex/values";
+import { err, ok } from "neverthrow";
+import { components, internal } from "../_generated/api";
+import type { Doc, Id } from "../_generated/dataModel";
+import { internalAction, internalMutation, internalQuery, type ActionCtx, type MutationCtx, type QueryCtx } from "../_generated/server";
+import type { ModelId } from "../../shared/ai";
+import { serialise } from "../../shared/result";
+import { MCP_SCOPES, mcpOwnerUserId, ownerMutation, ownerQuery, type AgentCaller } from "../platform/access";
+import { IN_APP_CONNECTION, IN_APP_WORKER_NAME, namedWorker } from "../platform/agentRuns";
+import { featureState } from "../platform/features";
+import { vRunMode, type RunMode } from "../platform/tables";
+import { LIFEOS_TOOLS } from "../tools";
+import { aiToolOf, isReadOnly } from "./adapter";
+import { AGENT_NAME, lifeosAgent } from "./agent";
+import { languageModelFor } from "./models";
+import { asksFirst, QUIET_CHANGE_LIMIT } from "./policy";
+import { attemptsFor, capabilityChain, capabilityReady } from "./routing";
+import type { Attempt } from "./transport";
+
+const RUN_LEASE_MS = 10 * 60_000;
+const MAX_REQUEST = 2000;
+const STEPS = { ask: 4, run: 30 } as const satisfies Record<RunMode, number>;
+const RUN_ONLY_TOOLS = new Set(["undo"]);
+
+export type RunError = { readonly kind: "not_configured" } | { readonly kind: "empty_request" } | { readonly kind: "not_waiting" };
+
+export type RunStatus = "working" | "needsYou" | "done" | "failed";
+
+export const inAppCaller = (jobId: Id<"jobs">) =>
+  ({ userId: mcpOwnerUserId(), scopes: [MCP_SCOPES.read, MCP_SCOPES.write], clientId: "lifeos", connectionId: `${IN_APP_CONNECTION}${jobId}` }) satisfies AgentCaller;
+
+const lease = async (ctx: MutationCtx) => {
+  const now = Date.now();
+  return { kind: "claimed" as const, workerId: await namedWorker(ctx, IN_APP_WORKER_NAME), leaseUntil: now + RUN_LEASE_MS, heartbeatAt: now };
+};
+
+export const beginRun = async (ctx: MutationCtx, args: { request: string; mode: RunMode; taskId?: Id<"tasks"> }) => {
+  const request = args.request.trim().slice(0, MAX_REQUEST);
+  if (request === "") return err<{ jobId: Id<"jobs">; threadId: string }, RunError>({ kind: "empty_request" });
+  if (!(await capabilityReady(ctx, "agent"))) return err<{ jobId: Id<"jobs">; threadId: string }, RunError>({ kind: "not_configured" });
+  const threadId = await createThread(ctx, components.agent, { title: request });
+  const { messageId } = await saveMessage(ctx, components.agent, { threadId, agentName: AGENT_NAME, prompt: request });
+  const jobId = await ctx.db.insert("jobs", {
+    job: { kind: "agent", payload: { request, mode: args.mode, threadId, ...(args.taskId ? { taskId: args.taskId } : {}) } },
+    idempotencyKey: `agent:${threadId}`,
+    status: await lease(ctx),
+    attempts: 1,
+  });
+  await ctx.scheduler.runAfter(0, internal.ai.runs.step, { jobId, promptMessageId: messageId });
+  return ok<{ jobId: Id<"jobs">; threadId: string }, RunError>({ jobId, threadId });
+};
+
+export const start = ownerMutation({
+  args: { request: v.string(), mode: vRunMode, taskId: v.optional(v.id("tasks")) },
+  handler: async (ctx, args) => serialise(await beginRun(ctx, args)),
+});
+
+const STATUS = { queued: "working", claimed: "working", waiting: "needsYou", done: "done", failed: "failed" } as const satisfies Record<Doc<"jobs">["status"]["kind"], RunStatus>;
+
+const statusOf = (job: Doc<"jobs">) => STATUS[job.status.kind];
+
+const runOfThread = (ctx: QueryCtx, threadId: string) =>
+  ctx.db
+    .query("jobs")
+    .withIndex("by_thread", (q) => q.eq("job.payload.threadId", threadId))
+    .unique();
+
+export const viewOf = (job: Doc<"jobs">) => ({
+  jobId: job._id,
+  threadId: job.job.payload.threadId ?? null,
+  request: job.job.payload.request,
+  mode: job.job.payload.mode ?? "run",
+  status: statusOf(job),
+  startedAt: job._creationTime,
+  answeredBy: job.status.kind === "done" && typeof job.status.receipt?.answeredBy === "string" ? (job.status.receipt.answeredBy as string) : null,
+  error: job.status.kind === "failed" ? job.status.error : null,
+});
+
+export const get = ownerQuery({
+  args: { jobId: v.id("jobs") },
+  handler: async (ctx, { jobId }) => {
+    const job = await ctx.db.get("jobs", jobId);
+    return job?.job.payload.threadId ? viewOf(job) : null;
+  },
+});
+
+export const messages = ownerQuery({
+  args: { threadId: v.string(), paginationOpts: paginationOptsValidator, streamArgs: vStreamArgs },
+  handler: async (ctx, args) => {
+    if (!(await runOfThread(ctx, args.threadId))) return { page: [], isDone: true, continueCursor: "" };
+    const [paginated, streams] = await Promise.all([listUIMessages(ctx, components.agent, args), syncStreams(ctx, components.agent, args)]);
+    return { ...paginated, streams };
+  },
+});
+
+export type StepPlan =
+  | { kind: "skip" }
+  | { kind: "go"; threadId: string; mode: RunMode; chain: ModelId[]; askFirst: boolean; changes: number; context: string | null };
+
+const changesOf = async (ctx: QueryCtx, jobId: Id<"jobs">) =>
+  (
+    await ctx.db
+      .query("activity")
+      .withIndex("by_run", (q) => q.eq("actor.jobId", jobId))
+      .take(QUIET_CHANGE_LIMIT + 1)
+  ).length;
+
+export const planFor = internalQuery({
+  args: { jobId: v.id("jobs") },
+  handler: async (ctx, { jobId }) => {
+    const job = await ctx.db.get("jobs", jobId);
+    const threadId = job?.job.payload.threadId;
+    if (!job || !threadId || job.status.kind !== "claimed") return { kind: "skip" } satisfies StepPlan;
+    const [chain, ai, changes] = await Promise.all([capabilityChain(ctx, "agent"), featureState(ctx, "ai"), changesOf(ctx, jobId)]);
+    return {
+      kind: "go",
+      threadId,
+      mode: job.job.payload.mode ?? "run",
+      chain,
+      askFirst: ai.settings.askFirst === true,
+      changes,
+      context: null,
+    } satisfies StepPlan;
+  },
+});
+
+const vOutcome = v.union(
+  v.object({ kind: v.literal("done"), answeredBy: v.string(), inputTokens: v.number(), outputTokens: v.number() }),
+  v.object({ kind: v.literal("waiting") }),
+  v.object({ kind: v.literal("failed"), error: v.string() }),
+);
+
+type Outcome = Infer<typeof vOutcome>;
+
+type GoPlan = Extract<StepPlan, { kind: "go" }>;
+
+export const settle = internalMutation({
+  args: { jobId: v.id("jobs"), outcome: vOutcome },
+  returns: v.null(),
+  handler: async (ctx, { jobId, outcome }) => {
+    const job = await ctx.db.get("jobs", jobId);
+    if (job?.status.kind !== "claimed") return null;
+    const at = Date.now();
+    if (outcome.kind === "waiting") await ctx.db.patch("jobs", jobId, { status: { kind: "waiting", since: at } });
+    else if (outcome.kind === "failed") await ctx.db.patch("jobs", jobId, { status: { kind: "failed", at, error: outcome.error } });
+    else await ctx.db.patch("jobs", jobId, { status: { kind: "done", at, receipt: { answeredBy: outcome.answeredBy, inputTokens: outcome.inputTokens, outputTokens: outcome.outputTokens } } });
+    return null;
+  },
+});
+
+const toolsFor = (ctx: ActionCtx, jobId: Id<"jobs">, mode: RunMode) => {
+  const caller = inAppCaller(jobId);
+  return Object.fromEntries(
+    Object.entries(LIFEOS_TOOLS)
+      .filter(([name, definition]) => !RUN_ONLY_TOOLS.has(name) && (mode === "run" || isReadOnly(definition)))
+      .map(([name, definition]) => [name, aiToolOf(definition, ctx, caller)]),
+  ) satisfies ToolSet;
+};
+
+const approvalPolicy = (plan: GoPlan) => {
+  let changes = plan.changes;
+  return ({ toolCall }: { toolCall: { toolName: string; input: unknown } }) => {
+    const definition = LIFEOS_TOOLS[toolCall.toolName];
+    const readOnly = definition === undefined || isReadOnly(definition);
+    const ask = asksFirst({ toolName: toolCall.toolName, input: toolCall.input, readOnly, changesSoFar: changes, askFirst: plan.askFirst });
+    if (!readOnly && !ask) changes += 1;
+    return ask ? ("user-approval" as const) : undefined;
+  };
+};
+
+const describeError = (error: unknown) => (error instanceof Error ? error.message : String(error)).slice(0, 300);
+
+const tryModel = async (ctx: ActionCtx, plan: GoPlan, attempt: Attempt, tools: ToolSet, promptMessageId: string) => {
+  let failure: unknown = null;
+  const remember = (error: unknown) => {
+    failure ??= error;
+  };
+  try {
+    const result = await lifeosAgent(languageModelFor(attempt, plan.threadId)).streamText(
+      ctx,
+      { threadId: plan.threadId },
+      {
+        promptMessageId,
+        tools,
+        stopWhen: stepCountIs(STEPS[plan.mode]),
+        onError: ({ error }) => remember(error),
+        ...(plan.mode === "run" ? { toolApproval: approvalPolicy(plan) } : {}),
+        ...(plan.context ? { system: plan.context } : {}),
+      },
+      { saveStreamDeltas: { throttleMs: 50 } },
+    );
+    await result.consumeStream({ onError: remember });
+    if (failure === null && (await result.finishReason) === "error") remember(new Error("The model stopped with an error."));
+    if (failure !== null) return err<Outcome, unknown>(failure);
+    const [content, usage] = await Promise.all([result.content, result.totalUsage]);
+    const waiting = content.some((part) => part.type === "tool-approval-request" && !part.isAutomatic);
+    return ok<Outcome, unknown>(
+      waiting ? { kind: "waiting" } : { kind: "done", answeredBy: attempt.model, inputTokens: usage.inputTokens ?? 0, outputTokens: usage.outputTokens ?? 0 },
+    );
+  } catch (error) {
+    return err<Outcome, unknown>(error);
+  }
+};
+
+export const step = internalAction({
+  args: { jobId: v.id("jobs"), promptMessageId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { jobId, promptMessageId }) => {
+    const plan: StepPlan = await ctx.runQuery(internal.ai.runs.planFor, { jobId });
+    if (plan.kind === "skip") return null;
+    const attempts = await attemptsFor(ctx, plan.chain);
+    if (attempts.length === 0) {
+      await ctx.runMutation(internal.ai.runs.settle, { jobId, outcome: { kind: "failed", error: "not_configured" } });
+      return null;
+    }
+    const tools = toolsFor(ctx, jobId, plan.mode);
+    let failure: unknown = null;
+    for (const attempt of attempts) {
+      const outcome = await tryModel(ctx, plan, attempt, tools, promptMessageId);
+      if (outcome.isOk()) {
+        await ctx.runMutation(internal.ai.runs.settle, { jobId, outcome: outcome.value });
+        return null;
+      }
+      failure = outcome.error;
+    }
+    await ctx.runMutation(internal.ai.runs.settle, { jobId, outcome: { kind: "failed", error: describeError(failure) } });
+    return null;
+  },
+});
+
+const vDecision = v.object({ approvalId: v.string(), approved: v.boolean() });
+
+export const respond = ownerMutation({
+  args: { jobId: v.id("jobs"), decisions: v.array(vDecision) },
+  handler: async (ctx, { jobId, decisions }) => {
+    const job = await ctx.db.get("jobs", jobId);
+    const threadId = job?.job.payload.threadId;
+    if (!job || !threadId || job.status.kind !== "waiting") return serialise(err<{ jobId: Id<"jobs"> }, RunError>({ kind: "not_waiting" }));
+    const { messageId } = await ctx.runMutation(components.agent.messages.respondToToolCallApprovals, { threadId, agentName: AGENT_NAME, decisions });
+    await ctx.db.patch("jobs", jobId, { status: await lease(ctx) });
+    await ctx.scheduler.runAfter(0, internal.ai.runs.step, { jobId, promptMessageId: messageId });
+    return serialise(ok<{ jobId: Id<"jobs"> }, RunError>({ jobId }));
+  },
+});

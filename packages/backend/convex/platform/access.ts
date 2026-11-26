@@ -17,7 +17,7 @@ import {
 import type { Doc, Id } from "../_generated/dataModel";
 import type { Actor } from "./tables";
 import { workerForToken } from "./workers";
-import { mcpRunActor } from "./agentRuns";
+import { runActor } from "./agentRuns";
 
 export type AccessRefusal = "signed_out" | "not_owner";
 export type AccessError = { readonly kind: AccessRefusal; readonly message: string };
@@ -210,7 +210,7 @@ export const agentMutation = <Args extends PropertyValidators, Output>(spec: {
         throw new ConvexError("This connection can only read. Reconnect LifeOS with the lifeos:write scope to make changes.");
       }
       let actor: Promise<AgentRunActor> | undefined;
-      const run = () => (actor ??= mcpRunActor(ctx, caller));
+      const run = () => (actor ??= runActor(ctx, caller));
       return spec.handler(ctx, args as ObjectType<Args>, run, caller);
     },
   });

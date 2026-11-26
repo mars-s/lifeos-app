@@ -1,6 +1,6 @@
 "use client";
 
-import type { Icon } from "@phosphor-icons/react";
+import type { Glyph } from "@/lib/glyph";
 import { useId, type ReactNode } from "react";
 import { Switch } from "@/components/ui/choice-controls";
 import { MorphText } from "@/components/ui/morph-text";
@@ -26,7 +26,7 @@ export const SettingsRow = ({
   children,
   below,
 }: {
-  icon: Icon;
+  icon: Glyph;
   label: ReactNode;
   hint?: ReactNode;
   children?: ReactNode;
@@ -56,7 +56,7 @@ export const FeatureRow = ({
   disabled,
   below,
 }: {
-  icon: Icon;
+  icon: Glyph;
   label: string;
   hint: ReactNode;
   checked: boolean;

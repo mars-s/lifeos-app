@@ -62,7 +62,8 @@ A bad id, date, When or Label name comes back as a tool error that says what to 
 | `convex/planner/agentReads.ts` | The read tools and their result shapes |
 | `convex/planner/agentWrites.ts` | The Planner write tools |
 | `convex/platform/agentTools.ts` | `recent_activity` and `undo` |
-| `convex/platform/agentRuns.ts` | One Agent Run per connection |
+| `convex/platform/agentRuns.ts` | One Agent Run per connection, and the in-app runs of `ai/runs.ts` (connection `run:<jobId>`) |
+| `convex/tools.ts` | The one tool registry, shared with the in-app agent through `ai/adapter.ts` |
 | `convex/platform/access.ts` | `agentQuery` and `agentMutation`, the guard every tool goes through |
 | `convex/mcp.test.ts` | Every tool through real MCP HTTP calls |
 

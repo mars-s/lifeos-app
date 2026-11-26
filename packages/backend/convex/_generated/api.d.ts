@@ -8,8 +8,13 @@
  * @module
  */
 
+import type * as ai_adapter from "../ai/adapter.js";
+import type * as ai_agent from "../ai/agent.js";
 import type * as ai_migrations from "../ai/migrations.js";
+import type * as ai_models from "../ai/models.js";
+import type * as ai_policy from "../ai/policy.js";
 import type * as ai_routing from "../ai/routing.js";
+import type * as ai_runs from "../ai/runs.js";
 import type * as ai_steps from "../ai/steps.js";
 import type * as ai_tables from "../ai/tables.js";
 import type * as ai_transport from "../ai/transport.js";
@@ -76,6 +81,7 @@ import type * as platform_secrets from "../platform/secrets.js";
 import type * as platform_tables from "../platform/tables.js";
 import type * as platform_undo from "../platform/undo.js";
 import type * as platform_workers from "../platform/workers.js";
+import type * as tools from "../tools.js";
 
 import type {
   ApiFromModules,
@@ -84,8 +90,13 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "ai/adapter": typeof ai_adapter;
+  "ai/agent": typeof ai_agent;
   "ai/migrations": typeof ai_migrations;
+  "ai/models": typeof ai_models;
+  "ai/policy": typeof ai_policy;
   "ai/routing": typeof ai_routing;
+  "ai/runs": typeof ai_runs;
   "ai/steps": typeof ai_steps;
   "ai/tables": typeof ai_tables;
   "ai/transport": typeof ai_transport;
@@ -152,6 +163,7 @@ declare const fullApi: ApiFromModules<{
   "platform/tables": typeof platform_tables;
   "platform/undo": typeof platform_undo;
   "platform/workers": typeof platform_workers;
+  tools: typeof tools;
 }>;
 
 /**
@@ -184,4 +196,5 @@ export declare const components: {
   auth: import("@convex-dev/auth/_generated/component.js").ComponentApi<"auth">;
   authGithub: import("@convex-dev/auth/components/github/_generated/component.js").ComponentApi<"authGithub">;
   mcp: import("@convex-dev/mcp/_generated/component.js").ComponentApi<"mcp">;
+  agent: import("@convex-dev/agent/_generated/component.js").ComponentApi<"agent">;
 };

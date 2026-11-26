@@ -31,9 +31,15 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ai-sdk/openai-compatible": "3.0.96",
+    "@ai-sdk/provider": "4.0.39",
+    "@ai-sdk/provider-utils": "5.0.85",
+    "@convex-dev/agent": "0.7.11",
     "@convex-dev/auth": "2.0.0",
     "@convex-dev/mcp": "0.1.0-alpha.7",
+    "ai": "7.0.183",
     "convex": "^1.51.0",
+    "convex-helpers": "^0.1.137",
     "fractional-indexing": "^3.2.0",
     "neverthrow": "^8.2.0"
   },

@@ -64,6 +64,7 @@ export const overview = ownerQuery({
     const [ai, places, keyed] = await Promise.all([featureState(ctx, "ai"), featureState(ctx, "places"), keyedProviders(ctx)]);
     return {
       keyed: [...keyed],
+      askFirst: ai.settings.askFirst === true,
       capabilities: CAPABILITY_IDS.map((capability) => {
         const route = routeOf(ai.settings, capability);
         const on = CAPABILITIES[capability].switchedBy === "places" ? places.enabled : route.on;
@@ -86,5 +87,14 @@ export const setRoute = changeMutation({
     const current = routeOf(settings, capability);
     const routes = { ...settings.routes, [capability]: { on: on ?? current.on, model: chosen ?? current.model } };
     return ok<{ changed: boolean }, RouteError>({ changed: await writeFeature(ctx, record, "ai", { settings: { routes } }) });
+  },
+});
+
+export const setAskFirst = changeMutation({
+  action: "ai.askFirst",
+  args: { on: v.boolean() },
+  handler: async (ctx, { on }, record) => {
+    const { settings } = await featureState(ctx, "ai");
+    return ok<{ changed: boolean }, never>({ changed: await writeFeature(ctx, record, "ai", { settings: { ...settings, askFirst: on } }) });
   },
 });
