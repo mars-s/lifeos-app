@@ -85,7 +85,7 @@ The Mac app guides you through permissions on first run. Open Quick Capture from
 
 ## Architecture
 
-Convex Core owns the data, Activity and Jobs. Waku runs the web app, Tauri wraps it for Mac, and Expo runs the iPhone app. The Home Server is a Proxmox LXC that can host Workers. The Core also exposes a remote MCP connector. [Read the architecture](docs/architecture.md).
+Convex Core owns the data, Activity and Jobs. Waku runs the web app, Tauri wraps it for Mac, and Expo runs the iPhone app. A small Cloudflare relay syncs notes between devices. The Core also exposes a remote MCP connector. [Read the architecture](docs/architecture.md).
 
 ## Run it
 

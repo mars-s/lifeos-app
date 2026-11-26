@@ -136,7 +136,8 @@ _Avoid_: AI subtasks.
 
 **Core**: the hosted Convex deployment. It holds the live app data and the Job queue.
 
-**Home Server**: one thin LXC container on Avi's Proxmox box, on his Tailscale network, with the 2 TB SSD. It runs Workers.
+**Notes Relay**: a Cloudflare Worker with one Durable Object per Note. It is the always-on peer that passes Note edits between devices and keeps the saved copy. It holds no other data.
+_Avoid_: Home Server (dropped on 26 November 2026).
 
 **Feature**: an optional capability Avi switches on or off in Settings, such as AI, Places or Templates. It has its own settings page, the keys it needs, and the other Features it works better with. It plugs into surfaces that already exist (the Task card, the command bar) and owns no screen of its own. Its code lives in a Module, or in its own Module folder when it brings tables.
 _Avoid_: plugin, integration, preference (for a whole capability).
@@ -150,7 +151,7 @@ _Avoid_: plugin, integration, preference (for a whole capability).
 **Owner**: the one person a LifeOS belongs to, Avi. He signs in with his GitHub account. Every other account is refused.
 _Avoid_: admin, user (in code, `users` is only Convex Auth's table).
 
-**Worker**: a process outside Convex that works for Core with its own token (the Mac Worker, registered as `things`, which sends Things Imports until Switch Day and Apple Calendar windows while the Mac app is open; agent and indexing Workers on the Home Server, which claim Jobs). Core keeps only the token's SHA-256 hash and the capabilities the Worker has.
+**Worker**: a process outside Convex that works for Core with its own token (the Mac Worker, registered as `things`, which sends Things Imports until Switch Day and Apple Calendar windows while the Mac app is open; and later the agent and link indexing Jobs it claims while the Mac is awake). Core keeps only the token's SHA-256 hash and the capabilities the Worker has.
 
 **Lease**: the time a claimed Job belongs to one Worker. The Worker extends it with a heartbeat. When it runs out, the next Worker to claim takes the Job.
 
@@ -160,7 +161,7 @@ _Avoid_: admin, user (in code, `users` is only Convex Auth's table).
 
 **Actor**: who made a change: Avi, an Agent Run, Things (through a Things Import), or the Recurrence Rule generator.
 
-**Note**: a local-first document kept on each device and the Home Server, merged with a CRDT. Core holds only its searchable projection.
+**Note**: a local-first document kept in full on each device and in the Notes Relay, merged with Yjs. Core holds only its searchable projection.
 
 **Saved Link**: a captured URL, indexed by a Worker, searchable in Core.
 

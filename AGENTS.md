@@ -19,7 +19,7 @@ A calm personal planner for one person, Avi. Web, iPhone and Mac apps share one 
 - Handle expected failures with `neverthrow`. A `Result` that crosses the server/client boundary goes through `serialise` and `deserialise` from `@lifeos/backend/result`, because a class instance does not survive Convex's JSON transport.
 - oxlint runs `@interfere/landmines`. It rejects prose comments and annotated return types. Let names carry meaning and put rationale in the commit or PR.
 - Use the domain words in `CONTEXT.md` (Task, Area, Project, When, Deadline, Estimate, Work Block, and so on). Its Authority section says which system owns which field.
-- `docs/architecture.md` fixes how Core, the Home Server, Workers, Jobs and modules fit together. Build every new feature as part of a module that uses the shared primitives.
+- `docs/architecture.md` fixes how Core, the Notes Relay, Workers, Jobs and modules fit together. Build every new feature as part of a module that uses the shared primitives.
 - The product spec is GitHub issue #15. Design references and what to take from each are in `docs/design/references/`. Check UI work against them.
 
 ## Experience bar

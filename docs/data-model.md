@@ -565,7 +565,7 @@ Each slice adds these as new tables, or as variants of `vEntityRef` and `vJob`. 
 
 ### Notes projection
 
-- **`notes`**: `docId` (the CRDT document id on the peers), `title`, optional `areaId`, `excerpt`, `embedding`, `updatedAt`. Indexes: `by_doc` (the Home Server upserts by document), `by_area_updated`. Search index on `title` and `excerpt`. Vector index on `embedding`, filtered by `areaId`. The documents themselves stay on the peers.
+- **`notes`**: `docId` (the Yjs document id, which is also the Notes Relay's Durable Object name), `title`, optional `areaId`, `excerpt`, `embedding`, `updatedAt`. Indexes: `by_doc` (the Notes Relay upserts by document), `by_area_updated`. Search index on `title` and `excerpt`. Vector index on `embedding`, filtered by `areaId`. The documents themselves stay on the devices and the relay.
 
 ### Saved Links
 

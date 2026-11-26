@@ -2,15 +2,27 @@
 
 Decided with Avi on 18 November 2026. LifeOS is a whole life OS, not only a planner. Tasks and planning come first, then notes, saved links and in-app agents. This page fixes the shape every module plugs into, so later modules do not force a rewrite.
 
+Changed on 26 November 2026 ([#82](https://github.com/mars-s/lifeos-app/issues/82)): the Home Server (the Proxmox container with the 2 TB SSD) is gone. A small relay on Cloudflare Durable Objects is the always-on peer for notes, and the Mac app runs the background work it was going to run.
+
 ## The three places things run
 
 | Place | What it is | What runs there |
 | --- | --- | --- |
 | **Core** | Hosted Convex (free tier), reachable from anywhere | The live app data: Tasks, Areas, Projects, planning, Activity, the Job queue, and searchable indexes of notes and saved links. Every client and the MCP connector talk to it. |
-| **Home Server** | One thin LXC container on Avi's Proxmox box, on his Tailscale network, with the 2 TB SSD | Always-on Workers: in-app agents using Avi's Claude and ChatGPT subscriptions (Claude Code and Codex logged in inside the container), link indexing (a small embedding model, plus the OpenAI API for classification), the always-on Notes peer and archive, and large files. Keep it thin: Node, the two agent CLIs, Tailscale, nothing else. |
-| **Mac app** | Tauri on Avi's MacBook | The Things Worker until Switch Day (it imports from a copy of the Things database every few minutes, one way), the Apple Calendar reader (EventKit, read only), trackpad haptics, a Notes peer, and a fallback agent runner when the Home Server is down. |
+| **Notes Relay** | A Cloudflare Worker with one Durable Object per note (Workers Free plan) | The always-on Notes peer: it passes edits between devices live, keeps the saved copy of every note in Durable Object SQLite, and sends Core each note's searchable copy. It holds nothing else. |
+| **Mac app** | Tauri on Avi's MacBook | The Things Worker until Switch Day (it imports from a copy of the Things database every few minutes, one way), the Apple Calendar reader (EventKit, read only), trackpad haptics, a Notes peer, and the runner for agent and link indexing Jobs while the Mac is awake. |
 
-Clients (web, Mac, iPhone) read and write Core. They never depend on the Home Server being up, except for notes edited on another device, which merge when the peers meet.
+Clients (web, Mac, iPhone) read and write Core. Notes are the one exception: each client keeps its own full copy and syncs it through the Notes Relay, so a note opens and saves with no network at all.
+
+### Where the Home Server's work went
+
+| Work | Now | Notes |
+| --- | --- | --- |
+| Always-on Notes peer | The Notes Relay | Below, and `docs/research/notes-sync.md` |
+| Notes archive | Every device's full copy plus the relay's saved copy | A second backup outside Cloudflare (such as a Markdown export from the Mac app): home to be decided |
+| In-app agents (Claude Code, Codex) | The Mac app, while it is awake | Jobs wait in the queue while the Mac sleeps. An always-on runner: home to be decided |
+| Link indexing (`index:link`) | The Mac app, while it is awake | Storing full page content and screenshots: home to be decided |
+| Large files | Home to be decided | |
 
 ## Workers and Jobs: one pattern for all background work
 
@@ -19,7 +31,7 @@ Anything that must happen outside Convex is a **Job** in Core, claimed by a **Wo
 - A Job has a kind, a payload, an idempotency key, a status (queued, claimed, done, failed), a lease with a heartbeat, an attempt count, and a result or receipt.
 - A Worker registers what it can do (for example `things`, `agent:claude`, `agent:codex`, `index:link`), subscribes to queued Jobs it can handle, claims one with a lease, heartbeats while working, and reports a result. An expired lease returns the Job to the queue.
 - Agent runs, link indexing and note archiving are all Job kinds. There is one queue, one claim rule and one retry rule, so a new module adds a Job kind, not a new queue.
-- The Mac Worker claims no Jobs. Its `things` capability lets it send Things Imports until Switch Day (`docs/leaving-things.md`). Nothing in LifeOS writes to Things. Its `calendar` capability lets it send Apple Calendar windows (below).
+- Today the Mac Worker claims no Jobs. When agents and link indexing arrive, it registers `agent:claude`, `agent:codex` and `index:link` and claims them while the Mac is awake. Its `things` capability lets it send Things Imports until Switch Day (`docs/leaving-things.md`). Nothing in LifeOS writes to Things. Its `calendar` capability lets it send Apple Calendar windows (below).
 
 ## Apple Calendar: read on the Mac, mirrored in Core
 
@@ -35,7 +47,7 @@ EventKit only runs on Apple devices, so the Mac app reads Apple Calendar and Cor
 
 ## Agents
 
-- **Runners**: agents run in a Worker on the Home Server, using Claude Code or Codex with Avi's subscriptions. The Mac app can run them too. A cloud runner (Vercel Eve or similar, paid per API call through an AI gateway) can be added later as another Worker, with no change to Core.
+- **Runners**: agents run in the Mac app's Worker, using Claude Code or Codex with Avi's subscriptions, while the Mac is awake. A run asked for while it sleeps waits in the queue. An always-on runner is home to be decided: a cloud runner (Vercel Eve or similar, paid per API call through an AI gateway) can be added later as another Worker, with no change to Core.
 - **Power**: agents act on their own and every change can be undone. An agent changes data through the same mutations as the UI, with the actor recorded as that agent run. Activity keeps the inverse of every change, so a whole run can be undone in one step.
 - **Generative UI**: agents answer with structured results rendered by our own components. The AffectUI library in `docs/design/references/affectui/` is the inspiration.
 
@@ -176,13 +188,20 @@ Decided with Avi on 19 November 2026 (#59), replacing whole-calendar auto-schedu
 
 ## Notes: local-first
 
-Notes are local-first, like Anytype. The Mac, the iPhone and the Home Server each keep a full copy and can edit offline. Edits merge automatically with a CRDT (Loro, Automerge or Yjs; choose in a dedicated spike). The Home Server is the always-on peer and the archive on the 2 TB SSD. Peers sync directly over Tailscale, and Core can relay changes between peers that cannot reach each other.
+Decided on 26 November 2026 ([#82](https://github.com/mars-s/lifeos-app/issues/82)). The measurements and the relay proof are in `docs/research/notes-sync.md`.
 
-Core keeps only a searchable projection of each note (title, Area, entity references, a short excerpt and an embedding) so Tasks, search and agents can link to notes without holding the documents.
+- **Full copy everywhere.** The Mac app, the iPhone app and the web app each keep every note and can edit offline. Edits merge automatically with **Yjs** (13.6), one Y.Doc per note, its Markdown in one `Y.Text`. Yjs is plain JavaScript, so the same code runs in the browser, the Tauri webview, Hermes on the iPhone and the Worker.
+- **Saved on each device.** The web and Mac apps save with `y-indexeddb`. The iPhone keeps the Y.Doc in Hermes and saves updates and snapshots in `expo-sqlite`.
+- **Editor.** CodeMirror 6 with an Obsidian-style live preview, bound with `y-codemirror.next` (shared undo, cursors). On the iPhone it runs in an Expo DOM component, as a local peer of the Y.Doc in Hermes.
+- **Notes Relay.** A Cloudflare Worker routes `/notes/<noteId>` to that note's Durable Object. The object speaks the standard Yjs sync protocol over a hibernating websocket, so it costs nothing while idle, and saves each update as a row in Durable Object SQLite, compacting to one snapshot every 200 rows. Devices sync through it on any network: live when two are online, and from its saved copy when they are not online together.
+- **Catching up.** Only the open note keeps a websocket. On launch and on reconnect, a device asks the relay for every note whose searchable copy in Core changed since its last sync.
+- **Sign-in.** The Worker checks the Convex Auth access token against the deployment's public keys (`/.well-known/jwks.json`, ES256), with no call to Convex. The token travels as a websocket subprotocol, never in the URL.
+- **Searchable copy in Core.** When a note goes quiet, the relay sends Core its title, Area, entity references and a short excerpt through a `workerMutation`, with its own Worker token. Core adds the embedding through the AI router. Tasks, search and agents link to notes through this copy without holding the documents.
+- **Screens.** The Obsidian look with LifeOS's tactile style is designed in `docs/design/notes.md`.
 
 ## Saved Links
 
-Pocket or mymind style. Capturing a URL creates a Saved Link in Core at once. An `index:link` Job on the Home Server fetches the page, extracts the text, embeds it with a small local model, classifies it (the OpenAI API is allowed for this) and stores the full content and screenshots on the SSD. Core keeps the title, summary, labels, Area and embedding for search.
+Pocket or mymind style. Capturing a URL creates a Saved Link in Core at once. An `index:link` Job, claimed by the Mac app's Worker while the Mac is awake, fetches the page, extracts the text, embeds it with a small local model and classifies it (the OpenAI API is allowed for this). Core keeps the title, summary, labels, Area and embedding for search. Where the full content and screenshots are kept is home to be decided.
 
 ## What this means now
 
