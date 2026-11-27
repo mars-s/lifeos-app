@@ -6,7 +6,8 @@ import { AreaDot } from "@/components/lifeos/area";
 import { ListSkeleton, Missing, ListPage } from "../list-page";
 import { PanelNotice } from "../panel-boundary";
 import type { Route } from "../route";
-import { LIST_META, PLANNER_META, SETTINGS_META } from "../sidebar";
+import { LIST_META, NOTES_META, PLANNER_META, SETTINGS_META } from "../sidebar";
+import { NotesScreen } from "../../notes/notes-screen";
 import { AnytimeScreen, SomedayScreen } from "./grouped";
 import { AreaScreen, ProjectScreen } from "./containers";
 import { LogbookScreen } from "./logbook";
@@ -27,6 +28,8 @@ const headerOf = (route: Route, sidebar: SidebarView | undefined) => {
       return { title: PLANNER_META.label, icon: PLANNER_META.icon };
     case "settings":
       return { title: SETTINGS_META.label, icon: SETTINGS_META.icon };
+    case "notes":
+      return { title: NOTES_META.label, icon: NOTES_META.icon };
     case "area": {
       const area = sidebar?.areas.find((entry) => entry._id === route.id);
       return { title: area?.title ?? "Area", leading: area && <AreaDot colour={area.colour} className="size-3" /> };
@@ -76,6 +79,8 @@ export const Screen = ({ route, sidebar, sidebarFailed }: { route: Route; sideba
           {route.feature ? <FeatureScreen feature={route.feature} /> : <SettingsScreen />}
         </ViewTransition>
       );
+    case "notes":
+      return <NotesScreen docId={route.id ?? null} sidebar={sidebar} />;
     case "missing":
       return <Missing />;
     case "area":

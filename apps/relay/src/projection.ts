@@ -14,7 +14,8 @@ export const projectionOf = (docId: string, doc: Y.Doc) => {
   const meta = doc.getMap<unknown>(NOTE_META);
   const folder = meta.get("folder");
   const day = meta.get("day");
-  const { title, excerpt, words, entities, noteTitles, labels } = projectNote(doc.getText(NOTE_TEXT).toString());
+  const text = doc.getText(NOTE_TEXT).toString();
+  const { title, excerpt, words, entities, noteTitles, labels } = projectNote(typeof day === "string" ? `${day}\n${text}` : text);
   return {
     docId,
     title,

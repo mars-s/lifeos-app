@@ -27,6 +27,8 @@ import { useShell } from "../shell-context";
 import { useTemplateActions } from "../template-actions";
 import { useFeatureOn, useFeatures } from "../settings/feature-state";
 import type { IsoDate } from "@lifeos/backend/date";
+import { useNoteItems } from "../../notes/data";
+import { openBeside } from "../../notes/note-beside";
 import { BarDialog } from "./dialog";
 import { fuzzyScore, rank } from "./fuzzy";
 import {
@@ -45,6 +47,7 @@ import {
   templateItems,
   whenItems,
   type BarItem,
+  noteItems,
   type Page,
   type TaskHit,
 } from "./items";
@@ -135,6 +138,7 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
   const templatesOn = useFeatureOn("templates");
   const features = useFeatures();
   const index = useTaskIndex(today);
+  const notes = useNoteItems(sidebar);
   const [targets, setTargets] = useState(initialTargets);
   const [page, setPage] = useState<Page>("root");
   const [query, setQuery] = useState("");
@@ -211,6 +215,7 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
       },
     });
     const containers = containerItems(sidebar, go);
+    const noteRows = noteItems(notes, today, go);
     const review = inApp || import.meta.env.DEV ? [replayWelcomeItem(replayWelcome)] : [];
 
     if (wanted === "") {
@@ -225,7 +230,7 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
             : [...containers.projects, ...containers.areas].find((item) => item.id === `${entry.kind}:${entry.id}`);
         return found ? [{ ...found, id: `recent:${found.id}`, group: "Recent", keys: undefined }] : [];
       });
-      return [...onTargets, ...recent, ...goTo, ...create, ...more];
+      return [...onTargets, ...recent, ...goTo, ...noteRows.slice(0, 1), ...create, ...more];
     }
 
     const flat =
@@ -242,6 +247,7 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
       rankTasks(wanted, index).map(({ item, score }) => ({ item: taskItem(item, today, open), score })),
       rank(wanted, containers.projects, (item) => item.text, CONTAINER_LIMIT),
       rank(wanted, containers.areas, (item) => item.text, CONTAINER_LIMIT),
+      rank(wanted, noteRows, (item) => item.text, CONTAINER_LIMIT),
       rank(wanted, goTo, (item) => item.text, CONTAINER_LIMIT),
       rank(wanted, [...create, ...fromTemplates, ...more, ...review], (item) => item.text, CONTAINER_LIMIT),
     ].filter((pool) => pool.length > 0);
@@ -260,7 +266,7 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
         run: () => bar.capture(wanted),
       } satisfies BarItem,
     ];
-  }, [act, change, convertToProject, focus, focusDo, index, navigate, newTask, page, query, repeatable, route, setDraft, setOpenCard, sidebar, features, targets, templateDo, templates, templatesOn, today]);
+  }, [notes, act, change, convertToProject, focus, focusDo, index, navigate, newTask, page, query, repeatable, route, setDraft, setOpenCard, sidebar, features, targets, templateDo, templates, templatesOn, today]);
 
   const highlighted = items.find((item) => item.id === active);
 
@@ -323,6 +329,13 @@ export const CommandBar = ({ initialTargets, sidebar }: { initialTargets: readon
         loop
         value={active}
         onValueChange={setActive}
+        onKeyDownCapture={(event) => {
+          if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey) || !highlighted?.note) return;
+          event.preventDefault();
+          event.stopPropagation();
+          openBeside(highlighted.note);
+          bar.close();
+        }}
         onKeyDown={(event) => {
           if (event.key === "Backspace" && query === "" && !back() && targets.length > 0) setTargets([]);
           if (event.key === "Tab" && page === "root" && highlighted?.task) {

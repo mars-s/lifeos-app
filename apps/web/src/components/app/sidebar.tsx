@@ -4,7 +4,7 @@ import { DndContext, MouseSensor, closestCenter, useSensor, useSensors, type Col
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Archive, CalendarDots, CheckSquare, GearSix, Kanban, Plus, Shapes, Stack, Star, Trash, Tray, type Icon } from "@phosphor-icons/react";
+import { Archive, CalendarDots, CheckSquare, GearSix, Kanban, Notebook, Plus, Shapes, Stack, Star, Trash, Tray, type Icon } from "@phosphor-icons/react";
 import { generateKeyBetween } from "fractional-indexing";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -28,6 +28,7 @@ import {
   type SidebarArea,
 } from "./container-actions";
 import { Folding } from "./fold";
+import { NotesSyncDot } from "../notes/sync-indicator";
 import { RouteLink } from "./list-page";
 import { sameRoute, type ListKind, type Route, type Via } from "./route";
 import { useNeedsAttention } from "./settings/attention";
@@ -46,6 +47,8 @@ export const LIST_META = {
 export const PLANNER_META = { label: "Planner", icon: Kanban } as const;
 
 export const SETTINGS_META = { label: "Settings", icon: GearSix } as const;
+
+export const NOTES_META = { label: "Notes", icon: Notebook } as const;
 
 const rowClass = (indent: boolean) =>
   cn(
@@ -129,7 +132,7 @@ const NavItem = ({
 }) => {
   const { route, renaming, setRenaming } = useShell();
   const reduce = useReducedMotion();
-  const active = sameRoute(route, to);
+  const active = to.kind === "notes" ? route.kind === "notes" : sameRoute(route, to);
   const editing = rename !== undefined && renaming?.id === rename.target.id;
   const glyph = (
     <span className={cn("relative grid size-4 shrink-0 place-items-center", active ? "text-brand" : "text-muted-foreground")}>
@@ -516,6 +519,9 @@ export const Sidebar = ({ view, via, notice }: { view: SidebarView | undefined; 
         <NavItem to={{ kind: shell.route.kind === "upcoming" ? "upcoming" : "planner" }} {...PLANNER_META} via={via} />
         <NavItem to={{ kind: "anytime" }} {...LIST_META.anytime} via={via} />
         <NavItem to={{ kind: "someday" }} {...LIST_META.someday} via={via} />
+      </div>
+      <div>
+        <NavItem to={{ kind: "notes" }} {...NOTES_META} trailing={<NotesSyncDot />} via={via} />
       </div>
       <div>
         <NavItem to={{ kind: "logbook" }} {...LIST_META.logbook} via={via} />

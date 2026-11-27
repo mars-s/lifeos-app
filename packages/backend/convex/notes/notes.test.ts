@@ -103,3 +103,19 @@ test("changedSince returns every projection newer than a device's last sync", as
   await project("one", "One again");
   expect((await t.query(api.notes.notes.changedSince, { since: two.updatedAt - 1 })).map((n) => n.title)).toContain("One again");
 });
+
+test("chips read live titles and ticks, and [[ suggests open Tasks, Projects and Areas", async () => {
+  const { t } = await setup();
+  const areaId = await areaNamed(t, "Personal");
+  const { taskId } = unwrap(await t.mutation(api.planner.tasks.create, { title: "Book the ferry" }));
+  unwrap(await t.mutation(api.planner.tasks.complete, { taskId }));
+  const chips = await t.query(api.notes.notes.entities, { ids: [taskId, areaId, "nonsense"] });
+  expect(chips).toEqual([
+    expect.objectContaining({ id: taskId, table: "tasks", title: "Book the ferry", done: true }),
+    expect.objectContaining({ id: areaId, table: "areas", title: "Personal" }),
+  ]);
+  unwrap(await t.mutation(api.planner.tasks.create, { title: "Pack for the ferry" }));
+  const offered = await t.query(api.notes.notes.suggest, { query: "ferry" });
+  expect(offered.tasks.map((task) => task.title)).toEqual(["Pack for the ferry"]);
+  expect((await t.query(api.notes.notes.suggest, { query: "pers" })).areas.map((a) => a.title)).toEqual(["Personal"]);
+});

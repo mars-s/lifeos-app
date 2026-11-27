@@ -10,6 +10,7 @@ export type Route =
   | { kind: "settings"; feature?: FeatureId }
   | { kind: "area"; id: Id<"areas"> }
   | { kind: "project"; id: Id<"projects"> }
+  | { kind: "notes"; id?: string; beside?: boolean }
   | { kind: "missing" };
 
 export type Via = "pointer" | "keyboard";
@@ -20,6 +21,7 @@ export type PlannerTab = (typeof PLANNER_TABS)[number];
 const isList = (segment: string): segment is ListKind => LISTS.some((list) => list === segment);
 
 export const routeHref = (route: Route) => {
+  if (route.kind === "notes") return route.id ? `/notes?id=${encodeURIComponent(route.id)}` : "/notes";
   if (route.kind === "area" || route.kind === "project") return `/${route.kind}?id=${route.id}`;
   if (route.kind === "settings" && route.feature) return `/settings/features/${route.feature}`;
   return route.kind === "missing" ? "/today" : `/${route.kind}`;
@@ -36,11 +38,13 @@ export const parseRoute = (href: string) => {
   const feature = /^settings\/features\/([^/]+)$/.exec(segment)?.[1];
   if (feature && isFeatureId(feature)) return { kind: "settings", feature } satisfies Route;
   if (segment === "templates") return { kind: "settings", feature: "templates" } satisfies Route;
+  if (segment === "notes") return (id ? { kind: "notes", id } : { kind: "notes" }) satisfies Route;
   if (segment === "area" && id) return { kind: "area", id: id as Id<"areas"> } satisfies Route;
   if (segment === "project" && id) return { kind: "project", id: id as Id<"projects"> } satisfies Route;
   return { kind: "missing" } satisfies Route;
 };
 
-export const screenKey = (route: Route) => routeHref(route.kind === "upcoming" ? { kind: "planner" } : route);
+export const screenKey = (route: Route) =>
+  routeHref(route.kind === "upcoming" ? { kind: "planner" } : route.kind === "notes" ? { kind: "notes" } : route);
 
 export const sameRoute = (a: Route, b: Route) => routeHref(a) === routeHref(b) && a.kind === b.kind;

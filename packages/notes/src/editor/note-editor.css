@@ -1,0 +1,461 @@
+.note-editor {
+  --note-column: 700px;
+  --note-gutter: 48px;
+  --note-body-size: 1rem;
+  --note-body-line: 1.625rem;
+  --note-title-size: 1.75rem;
+  --note-title-line: 2.125rem;
+  height: 100%;
+}
+
+.note-editor[data-size="compact"] {
+  --note-gutter: 24px;
+  --note-body-size: 0.9375rem;
+  --note-body-line: 1.5rem;
+  --note-title-size: 1.5rem;
+  --note-title-line: 1.75rem;
+}
+
+.note-editor .cm-editor {
+  height: 100%;
+  background: transparent;
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+
+.note-editor .cm-editor.cm-focused {
+  outline: none;
+}
+
+.note-editor .cm-scroller {
+  font-family: inherit;
+  line-height: var(--note-body-line);
+  overflow-x: hidden;
+}
+
+.note-editor .cm-content {
+  box-sizing: border-box;
+  max-width: calc(var(--note-column) + var(--note-gutter) * 2);
+  margin: 0 auto;
+  padding: 32px var(--note-gutter) 160px;
+  font-size: var(--note-body-size);
+  caret-color: var(--brand);
+  overflow-wrap: anywhere;
+}
+
+.note-editor .cm-line {
+  position: relative;
+  padding: 0;
+}
+
+.note-editor .cm-cursor {
+  border-left: 2px solid var(--brand);
+}
+
+.note-editor .cm-selectionBackground,
+.note-editor .cm-focused .cm-selectionBackground,
+.note-editor .cm-content ::selection {
+  background: color-mix(in oklab, var(--brand) 22%, transparent) !important;
+}
+
+.note-editor .cm-active::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: -20px;
+  width: 2px;
+  border-radius: 1px;
+  background: color-mix(in oklab, var(--brand) 55%, transparent);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.note-editor .cm-focused .cm-active::before {
+  opacity: 1;
+}
+
+.note-editor .cm-note-title {
+  font-size: var(--note-title-size);
+  line-height: var(--note-title-line);
+  font-weight: 600;
+  letter-spacing: -0.022em;
+  padding-bottom: 12px;
+}
+
+.note-editor .cm-h1 {
+  font-size: 1.375rem;
+  line-height: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.018em;
+  padding-top: 24px;
+  padding-bottom: 4px;
+}
+
+.note-editor .cm-h2 {
+  font-size: 1.125rem;
+  line-height: 1.625rem;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  padding-top: 20px;
+  padding-bottom: 2px;
+}
+
+.note-editor .cm-h3 {
+  font-weight: 600;
+  padding-top: 16px;
+}
+
+.note-editor .cm-note-title.cm-h1,
+.note-editor .cm-note-title.cm-h2,
+.note-editor .cm-note-title.cm-h3 {
+  font-size: var(--note-title-size);
+  line-height: var(--note-title-line);
+  letter-spacing: -0.022em;
+  padding-top: 0;
+}
+
+.note-editor .cm-margin-mark {
+  position: absolute;
+  right: calc(100% + 8px);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--faint-foreground);
+  opacity: 0;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.note-editor .cm-margin-mark.is-shown {
+  opacity: 1;
+}
+
+.note-editor .cm-inline-mark {
+  font-family: var(--font-mono);
+  font-size: 0.8125em;
+  color: var(--faint-foreground);
+}
+
+.note-editor .cm-strong {
+  font-weight: 600;
+}
+
+.note-editor .cm-em {
+  font-style: italic;
+}
+
+.note-editor .cm-strike {
+  text-decoration: line-through;
+  color: var(--muted-foreground);
+}
+
+.note-editor .cm-code {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  padding: 1px 4px;
+  border-radius: 5px;
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+}
+
+.note-editor .cm-link {
+  color: var(--brand);
+}
+
+.note-editor .cm-codeblock {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.375rem;
+  background: color-mix(in oklab, var(--foreground) 5%, transparent);
+  padding: 0 12px;
+}
+
+.note-editor .cm-quote {
+  color: var(--muted-foreground);
+  padding-left: 14px;
+  box-shadow: inset 2px 0 0 color-mix(in oklab, var(--foreground) 14%, transparent);
+}
+
+.note-editor .cm-bullet {
+  display: inline-block;
+  width: 18px;
+  margin-right: 0;
+  vertical-align: middle;
+  text-align: center;
+}
+
+.note-editor .cm-bullet::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--muted-foreground);
+  transform: translateY(-2px);
+}
+
+.note-editor .cm-todo {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin: 0 10px 0 1px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1.5px var(--faint-foreground);
+  vertical-align: -3px;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    scale var(--dur-press) var(--ease-out);
+}
+
+.note-editor .cm-todo:active {
+  scale: 0.9;
+}
+
+.note-editor .cm-todo.is-done {
+  background: var(--positive);
+  box-shadow: none;
+}
+
+.note-editor .cm-todo.is-done::after {
+  content: "";
+  width: 7px;
+  height: 4px;
+  border-left: 1.5px solid var(--background);
+  border-bottom: 1.5px solid var(--background);
+  transform: translateY(-1px) rotate(-45deg);
+}
+
+.note-editor .cm-todo-done {
+  color: var(--muted-foreground);
+}
+
+.note-editor .cm-rule {
+  display: inline-block;
+  width: 100%;
+  height: 1px;
+  vertical-align: middle;
+  background: color-mix(in oklab, var(--foreground) 12%, transparent);
+}
+
+.note-editor .cm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  max-width: 100%;
+  margin: 0 2px;
+  padding: 0 2px 0 3px;
+  border-radius: 999px;
+  vertical-align: middle;
+  translate: 0 -1px;
+  background-image: var(--button-secondary);
+  font-size: 0.8125rem;
+  line-height: 1;
+  font-weight: 500;
+}
+
+.note-editor .cm-chip.is-unknown .cm-chip-label {
+  color: var(--muted-foreground);
+}
+
+.note-editor .cm-chip.is-trashed .cm-chip-label {
+  text-decoration: line-through;
+  color: var(--muted-foreground);
+}
+
+.note-editor .cm-chip-label {
+  height: 24px;
+  min-width: 0;
+  padding: 0 8px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--foreground);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: scale var(--dur-press) var(--ease-out);
+}
+
+.note-editor .cm-chip-label:active {
+  scale: 0.97;
+}
+
+.note-editor .cm-chip-label.is-done {
+  text-decoration: line-through;
+  color: var(--muted-foreground);
+}
+
+.note-editor .cm-chip-project .cm-chip-label,
+.note-editor .cm-chip-area .cm-chip-label {
+  padding-right: 10px;
+}
+
+.note-editor .cm-chip-box {
+  width: 16px;
+  height: 16px;
+  margin-left: 1px;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1.5px var(--faint-foreground);
+  background: var(--surface-inset);
+  cursor: pointer;
+  display: inline-grid;
+  place-items: center;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    scale var(--dur-press) var(--ease-out);
+}
+
+.note-editor .cm-chip-box:active {
+  scale: 0.9;
+}
+
+.note-editor .cm-chip-box.is-done {
+  background: var(--brand);
+  box-shadow: none;
+}
+
+.note-editor .cm-chip-box.is-done::after {
+  content: "";
+  width: 7px;
+  height: 4px;
+  border-left: 1.5px solid var(--brand-foreground);
+  border-bottom: 1.5px solid var(--brand-foreground);
+  transform: translateY(-1px) rotate(-45deg);
+}
+
+.note-editor .cm-chip-dot {
+  width: 8px;
+  height: 8px;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: var(--chip-colour, var(--faint-foreground));
+}
+
+.note-editor .cm-chip-pie {
+  width: 14px;
+  height: 14px;
+  margin-left: 3px;
+  border-radius: 999px;
+  background: conic-gradient(var(--chip-colour, var(--muted-foreground)) var(--chip-progress, 0deg), transparent 0);
+  box-shadow: inset 0 0 0 1.5px var(--chip-colour, var(--muted-foreground));
+}
+
+.note-editor .cm-wikilink,
+.note-editor .cm-wikilink-raw {
+  color: var(--brand);
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in oklab, var(--brand) 40%, transparent);
+}
+
+.note-editor .cm-wikilink {
+  cursor: pointer;
+  font: inherit;
+  border-radius: 4px;
+}
+
+.note-editor .cm-wikilink:hover {
+  text-decoration-line: underline;
+}
+
+.note-editor .cm-wikilink.is-missing,
+.note-editor .cm-wikilink-raw.is-missing {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+}
+
+.note-editor .cm-tag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.note-editor .cm-merged {
+  animation: note-merged 1.8s var(--ease-out) forwards;
+}
+
+@keyframes note-merged {
+  from {
+    background: color-mix(in oklab, var(--brand) 20%, transparent);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+.note-editor .cm-placeholder {
+  color: var(--faint-foreground);
+}
+
+.note-editor .cm-tooltip.cm-tooltip-autocomplete {
+  border: none;
+  border-radius: 16px;
+  padding: 6px;
+  background: color-mix(in oklab, var(--popover) 75%, transparent);
+  backdrop-filter: blur(24px) saturate(1.5);
+  box-shadow: var(--shadow-float);
+  font-family: var(--font-sans);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .note-editor .cm-tooltip.cm-tooltip-autocomplete {
+    background: var(--popover);
+    backdrop-filter: none;
+  }
+}
+
+.note-editor .cm-tooltip-autocomplete > ul {
+  max-height: 18rem;
+  min-width: 18rem;
+  font-family: var(--font-sans);
+}
+
+.note-editor .cm-tooltip-autocomplete > ul > li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px !important;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  color: var(--foreground);
+}
+
+.note-editor .cm-tooltip-autocomplete > ul > li[aria-selected] {
+  background: color-mix(in oklab, var(--foreground) 8%, transparent);
+  color: var(--foreground);
+}
+
+.note-editor .cm-completionDetail {
+  margin-left: auto;
+  font-style: normal;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.note-editor .cm-completionIcon {
+  display: none;
+}
+
+@media (max-width: 671px) {
+  .note-editor {
+    --note-gutter: 20px;
+  }
+  .note-editor .cm-active::before {
+    left: -12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .note-editor .cm-active::before,
+  .note-editor .cm-todo,
+  .note-editor .cm-chip-box {
+    transition: none;
+  }
+}

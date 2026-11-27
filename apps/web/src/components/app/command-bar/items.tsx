@@ -47,7 +47,7 @@ import type { ActiveFocus } from "../focus";
 import { LISTS, type Route } from "../route";
 import type { repeatActions } from "../repeat-actions";
 import type { MoveTarget, SelectionActions } from "../selection-actions";
-import { LIST_META, PLANNER_META, SETTINGS_META } from "../sidebar";
+import { LIST_META, NOTES_META, PLANNER_META, SETTINGS_META } from "../sidebar";
 import { WhenGlyph } from "./capture-chips";
 import type { Recent } from "./recents";
 
@@ -67,6 +67,7 @@ export type BarItem = {
   task?: PlannerTask;
   recent?: Recent;
   figure?: boolean;
+  note?: string;
 };
 
 export type TaskHit = { task: PlannerTask; home: Route; title: string; text: string };
@@ -513,4 +514,34 @@ export const containerItems = (sidebar: SidebarView | undefined, go: (route: Rou
         }) satisfies BarItem,
     ),
   };
+};
+
+export const noteItems = (notes: readonly { docId: string; title: string; excerpt: string; day?: string }[], today: string, go: (route: Route) => void) => {
+  const todayId = `day-${today}`;
+  const todayRow = {
+    id: `note:${todayId}`,
+    group: "Notes",
+    label: "Today's note",
+    text: "today's note journal daily note notebook",
+    leading: <NOTES_META.icon weight="fill" aria-hidden="true" className={`${ICON} text-muted-foreground`} />,
+    detail: "Cmd+Enter opens it beside",
+    run: () => go({ kind: "notes", id: todayId }),
+    note: todayId,
+  } satisfies BarItem;
+  const rows = notes
+    .filter((note) => !note.day)
+    .map(
+      (note) =>
+        ({
+          id: `note:${note.docId}`,
+          group: "Notes",
+          label: note.title,
+          text: `${note.title} ${note.excerpt} note`.toLowerCase(),
+          leading: <NOTES_META.icon weight="regular" aria-hidden="true" className={`${ICON} text-muted-foreground`} />,
+          detail: note.excerpt.slice(0, 48),
+          run: () => go({ kind: "notes", id: note.docId }),
+          note: note.docId,
+        }) satisfies BarItem,
+    );
+  return [todayRow, ...rows];
 };

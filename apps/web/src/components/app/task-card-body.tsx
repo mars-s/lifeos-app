@@ -8,6 +8,7 @@ import type { IsoDate } from "@lifeos/backend/date";
 import type { PlannerTask } from "@lifeos/backend/types";
 import { AiMark, AiMarkWorking } from "@/components/lifeos/ai-orb";
 import { AreaDot } from "@/components/lifeos/area";
+import { TaskNotes } from "../notes/note-beside";
 import { StepsPreview, useBreakIntoSteps } from "./break-into-steps";
 import { ChecklistEditor } from "@/components/lifeos/checklist-editor";
 import { DeadlinePicker, WhenPicker } from "@/components/lifeos/date-pickers";
@@ -200,6 +201,7 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
   return (
     <div data-arrow-scope className="space-y-3 pt-1 pr-3 pb-3 pl-[2.625rem]">
       <TitleLinks title={task.title} />
+      {saved && <TaskNotes taskId={task._id} />}
       <NotesField notes={task.notes} onSave={actions.setNotes} />
       <AnimatePresence initial={false}>
         {hasChecklist && (

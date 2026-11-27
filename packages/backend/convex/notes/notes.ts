@@ -153,3 +153,73 @@ export const restore = changeMutation({
     return ok({ changed: true });
   },
 });
+
+const SUGGEST_LIMIT = 8;
+
+const entityOf = async (ctx: QueryCtx, id: string) => {
+  const taskId = ctx.db.normalizeId("tasks", id);
+  if (taskId) {
+    const task = await ctx.db.get("tasks", taskId);
+    if (!task) return null;
+    return {
+      id,
+      table: "tasks" as const,
+      title: task.title,
+      done: task.status.kind === "completed",
+      trashed: task.trashedAt !== undefined,
+    };
+  }
+  const projectId = ctx.db.normalizeId("projects", id);
+  if (projectId) {
+    const project = await ctx.db.get("projects", projectId);
+    if (!project) return null;
+    const area = project.areaId ? await ctx.db.get("areas", project.areaId) : null;
+    const progress = project.progress && project.progress.total > 0 ? project.progress.done / project.progress.total : 0;
+    return { id, table: "projects" as const, title: project.title, progress, colour: area?.colour, trashed: project.trashedAt !== undefined };
+  }
+  const areaId = ctx.db.normalizeId("areas", id);
+  if (areaId) {
+    const area = await ctx.db.get("areas", areaId);
+    if (!area) return null;
+    return { id, table: "areas" as const, title: area.title, colour: area.colour, trashed: area.trashedAt !== undefined };
+  }
+  return null;
+};
+
+export const entities = ownerQuery({
+  args: { ids: v.array(v.string()) },
+  handler: async (ctx, { ids }) =>
+    (await Promise.all([...new Set(ids)].slice(0, LINK_LIMIT).map((id) => entityOf(ctx, id)))).filter(
+      (entity) => entity !== null,
+    ),
+});
+
+export const suggest = ownerQuery({
+  args: { query: v.string() },
+  handler: async (ctx, { query }) => {
+    const words = query.trim();
+    const lower = words.toLowerCase();
+    const tasks =
+      words.length === 0
+        ? []
+        : (
+            await ctx.db
+              .query("tasks")
+              .withSearchIndex("search_title", (q) => q.search("title", words).eq("status.kind", "open"))
+              .take(SUGGEST_LIMIT * 2)
+          )
+            .filter((task) => task.trashedAt === undefined)
+            .slice(0, SUGGEST_LIMIT)
+            .map((task) => ({ id: task._id as string, title: task.title }));
+    const fits = (title: string) => lower.length === 0 || title.toLowerCase().includes(lower);
+    const projects = (await ctx.db.query("projects").withIndex("by_trashed", (q) => q.eq("trashedAt", undefined)).take(500))
+      .filter((project) => project.status.kind === "open" && fits(project.title))
+      .slice(0, SUGGEST_LIMIT)
+      .map((project) => ({ id: project._id as string, title: project.title }));
+    const areas = (await ctx.db.query("areas").withIndex("by_trashed", (q) => q.eq("trashedAt", undefined)).take(200))
+      .filter((area) => fits(area.title))
+      .slice(0, SUGGEST_LIMIT)
+      .map((area) => ({ id: area._id as string, title: area.title }));
+    return { tasks, projects, areas };
+  },
+});

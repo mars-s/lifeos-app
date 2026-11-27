@@ -4,7 +4,9 @@
   "type": "module",
   "exports": {
     "./protocol": "./src/protocol.ts",
-    "./markdown": "./src/markdown.ts"
+    "./markdown": "./src/markdown.ts",
+    "./client": "./src/client.ts",
+    "./editor": "./src/editor/note-editor.tsx"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -13,10 +15,23 @@
   "dependencies": {
     "lib0": "0.2.120",
     "y-protocols": "1.0.7",
-    "yjs": "13.6.33"
+    "yjs": "13.6.33",
+    "@codemirror/autocomplete": "^6.20.4",
+    "@codemirror/commands": "^6.11.2",
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.44.2",
+    "@lezer/highlight": "^1.2.5",
+    "@lezer/markdown": "^1.8.2",
+    "y-codemirror.next": "0.3.6"
   },
   "devDependencies": {
     "typescript": "~6.0.3",
-    "vitest": "^5.1.1"
+    "vitest": "^5.1.1",
+    "@types/react": "^19.2.18"
+  },
+  "peerDependencies": {
+    "react": "*"
   }
 }
