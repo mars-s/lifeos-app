@@ -46,7 +46,10 @@ export const embedPending = internalAction({
     const [attempt] = await attemptsFor(ctx, chain);
     if (!attempt || rows.length === 0) return null;
     const vectors = await embedTexts(attempt, rows.map((row) => row.text));
-    if (vectors.isErr()) return null;
+    if (vectors.isErr()) {
+      console.warn("Embeddings failed", JSON.stringify(vectors.error));
+      return null;
+    }
     await ctx.runMutation(internal.ai.aiIndex.storeEmbeddings, {
       vectors: rows.map((row, index) => ({ rowId: row.rowId, hash: row.hash, embedding: vectors.value[index] ?? [] })),
     });

@@ -283,6 +283,7 @@ export const step = internalAction({
         return null;
       }
       failure = outcome.error;
+      console.warn(`${attempt.model} failed`, describeError(failure));
     }
     await ctx.runMutation(internal.ai.runs.settle, { jobId, outcome: { kind: "failed", error: describeError(failure) } });
     return null;
