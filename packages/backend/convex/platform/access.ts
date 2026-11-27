@@ -182,7 +182,7 @@ export type AgentCaller = Infer<typeof vAgentCaller>;
 
 export type AgentRunActor = Extract<Actor, { kind: "agentRun" }>;
 
-const requireOwnerConnection = (caller: AgentCaller) => {
+export const requireOwnerConnection = (caller: AgentCaller) => {
   if (caller.userId !== mcpOwnerUserId()) throw new ConvexError("This LifeOS belongs to someone else.");
 };
 

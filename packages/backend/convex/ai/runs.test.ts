@@ -50,7 +50,7 @@ const runStep = async (t: Backend, args: { jobId: Id<"jobs">; promptMessageId: s
   const running = t.action(internal.ai.runs.step, args).finally(() => {
     step.finished = true;
   });
-  while (!step.finished) await vi.advanceTimersByTimeAsync(60);
+  while (!step.finished) await vi.advanceTimersByTimeAsync(5);
   await running;
 };
 

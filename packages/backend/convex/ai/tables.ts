@@ -1,5 +1,6 @@
 import { defineTable } from "convex/server";
 import { v, type Infer } from "convex/values";
+import { EMBEDDING_DIMENSIONS } from "../../shared/ai";
 
 export const vAiError = v.union(
   v.object({ kind: v.literal("not_configured") }),
@@ -21,7 +22,32 @@ export const vStepsOutcome = v.union(
 export type AiError = Infer<typeof vAiError>;
 export type StepsOutcome = Infer<typeof vStepsOutcome>;
 
+export const vIndexedRef = v.union(
+  v.object({ table: v.literal("tasks"), id: v.id("tasks") }),
+  v.object({ table: v.literal("projects"), id: v.id("projects") }),
+  v.object({ table: v.literal("areas"), id: v.id("areas") }),
+);
+
+export const vIndexKind = v.union(v.literal("task"), v.literal("project"), v.literal("area"));
+
+export type IndexedRef = Infer<typeof vIndexedRef>;
+export type IndexKind = Infer<typeof vIndexKind>;
+
 export const aiTables = {
+  aiIndex: defineTable({
+    entity: vIndexedRef,
+    kind: vIndexKind,
+    text: v.string(),
+    areaId: v.optional(v.id("areas")),
+    hash: v.string(),
+    embedded: v.boolean(),
+    embedding: v.optional(v.array(v.float64())),
+    updatedAt: v.number(),
+  })
+    .index("by_entity", ["entity.id"])
+    .index("by_embedded", ["embedded"])
+    .searchIndex("by_text", { searchField: "text", filterFields: ["kind", "areaId"] })
+    .vectorIndex("by_embedding", { vectorField: "embedding", dimensions: EMBEDDING_DIMENSIONS, filterFields: ["kind", "areaId"] }),
   stepSuggestions: defineTable({
     taskId: v.id("tasks"),
     requestedAt: v.number(),

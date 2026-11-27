@@ -4,9 +4,11 @@ export const USER_AGENT = "LifeOS/1.0 (personal planner)";
 
 export type ProviderSecret = "openai" | "opencodeGo";
 
-export type Transport = "decisions" | "chat";
+export type Transport = "decisions" | "chat" | "embeddings";
 
-export type Answer = "choice" | "json" | "tools";
+export type Answer = "choice" | "json" | "tools" | "embeddings";
+
+export const EMBEDDING_DIMENSIONS = 512;
 
 type ProviderSpec = {
   readonly title: string;
@@ -102,6 +104,14 @@ export const MODELS = {
     answers: ["choice", "json", "tools"],
     price: { input: 1.4, output: 4.4 },
   },
+  "openai/text-embedding-3-small": {
+    provider: "openai",
+    model: "text-embedding-3-small",
+    title: "Text Embedding 3 Small",
+    transport: "embeddings",
+    answers: ["embeddings"],
+    price: { input: 0.02, output: 0 },
+  },
 } as const satisfies Record<string, ModelSpec>;
 
 export type ModelId = keyof typeof MODELS;
@@ -165,11 +175,22 @@ export const CAPABILITIES = {
     tokens: { input: 6000, output: 500 },
     per: "answers",
   },
+  searchIndex: {
+    title: "Search index",
+    summary: "Turns Tasks, Projects and Areas into vectors so Cmd+J finds what is related. Search by words works without it.",
+    asks: "embeddings",
+    defaultModel: "openai/text-embedding-3-small",
+    fallbackModel: "openai/text-embedding-3-small",
+    onByDefault: true,
+    switchedBy: "ai",
+    tokens: { input: 120, output: 0 },
+    per: "changes",
+  },
 } as const satisfies Record<string, CapabilitySpec>;
 
 export type CapabilityId = keyof typeof CAPABILITIES;
 export const CAPABILITY_IDS = Object.keys(CAPABILITIES) as CapabilityId[];
-export const vCapabilityId = v.union(v.literal("smartEstimates"), v.literal("breakIntoSteps"), v.literal("tripDetection"), v.literal("agent"));
+export const vCapabilityId = v.union(v.literal("smartEstimates"), v.literal("breakIntoSteps"), v.literal("tripDetection"), v.literal("agent"), v.literal("searchIndex"));
 
 export const vRoute = v.object({ on: v.boolean(), model: v.string() });
 export const vAiSettings = v.object({ routes: v.record(v.string(), vRoute), askFirst: v.optional(v.boolean()) });

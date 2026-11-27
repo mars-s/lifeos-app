@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { CAPABILITIES, MODEL_IDS, canAnswer, MODELS } from "../../shared/ai";
-import { attemptsFor } from "../ai/routing";
+import { attemptsFor } from "../ai/capabilities";
 import { askChoice } from "../ai/transport";
 import { bucketsFor, estimateAsk, parseDecision, type EstimateSignal } from "./smartEstimateModel";
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { CaretUpDown, Check, HandPalm, Key, MapPin, Hourglass, ListChecks } from "@phosphor-icons/react";
+import { CaretUpDown, Check, HandPalm, Key, MagnifyingGlass, MapPin, Hourglass, ListChecks } from "@phosphor-icons/react";
 import type { OptimisticLocalStore } from "convex/browser";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "@lifeos/backend/api";
@@ -18,7 +18,7 @@ import { SettingsGroup, SettingsRow } from "./rows";
 type Overview = FunctionReturnType<typeof api.ai.routing.overview>;
 type CapabilityState = Overview["capabilities"][number];
 
-const CAPABILITY_ICONS = { smartEstimates: Hourglass, breakIntoSteps: ListChecks, tripDetection: MapPin, agent: AiMark } satisfies Record<CapabilityId, Glyph>;
+const CAPABILITY_ICONS = { smartEstimates: Hourglass, breakIntoSteps: ListChecks, tripDetection: MapPin, agent: AiMark, searchIndex: MagnifyingGlass } satisfies Record<CapabilityId, Glyph>;
 
 const PROVIDER_HINTS = {
   openai: "Runs the Decisions API, the cheapest way to get Smart Estimates and trip detection.",

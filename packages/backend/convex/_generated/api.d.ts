@@ -10,11 +10,15 @@
 
 import type * as ai_adapter from "../ai/adapter.js";
 import type * as ai_agent from "../ai/agent.js";
+import type * as ai_aiIndex from "../ai/aiIndex.js";
+import type * as ai_embeddings from "../ai/embeddings.js";
 import type * as ai_migrations from "../ai/migrations.js";
 import type * as ai_models from "../ai/models.js";
 import type * as ai_policy from "../ai/policy.js";
+import type * as ai_proposals from "../ai/proposals.js";
 import type * as ai_routing from "../ai/routing.js";
 import type * as ai_runs from "../ai/runs.js";
+import type * as ai_search from "../ai/search.js";
 import type * as ai_steps from "../ai/steps.js";
 import type * as ai_tables from "../ai/tables.js";
 import type * as ai_transport from "../ai/transport.js";
@@ -96,11 +100,15 @@ import type {
 declare const fullApi: ApiFromModules<{
   "ai/adapter": typeof ai_adapter;
   "ai/agent": typeof ai_agent;
+  "ai/aiIndex": typeof ai_aiIndex;
+  "ai/embeddings": typeof ai_embeddings;
   "ai/migrations": typeof ai_migrations;
   "ai/models": typeof ai_models;
   "ai/policy": typeof ai_policy;
+  "ai/proposals": typeof ai_proposals;
   "ai/routing": typeof ai_routing;
   "ai/runs": typeof ai_runs;
+  "ai/search": typeof ai_search;
   "ai/steps": typeof ai_steps;
   "ai/tables": typeof ai_tables;
   "ai/transport": typeof ai_transport;

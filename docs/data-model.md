@@ -60,6 +60,30 @@ A link from any linkable thing to any other. Both ends use the Entity Reference 
 | `by_from` (`from.id`) | Outgoing links of a record |
 | `by_to` (`to.id`) | Backlinks: what points at this record (`platform/links:backlinks`) |
 
+### `aiIndex`
+
+One row per Task, Project and Area, for LifeOS AI's search (`convex/ai`). The recorder refreshes a row in the same transaction as every change (`ai/indexRows.ts`), so search by words is never stale and works with AI off. Vectors are made 30 seconds later by `ai/aiIndex:embedPending` with OpenAI `text-embedding-3-small` at 512 dimensions, only when AI is on and an OpenAI key is saved (the `searchIndex` Capability). `ai/aiIndex:backfill` indexes everything once.
+
+| Field | Type |
+| --- | --- |
+| `entity` | `{ table, id }` of a Task, Project or Area |
+| `kind` | `task`, `project` or `area` |
+| `text` | A 300-character snippet: title, notes, Checklist, Project and Area names |
+| `areaId` | The Area it sits in, for filtering |
+| `hash` | SHA-256 of the full text; a change with the same text writes nothing |
+| `embedded` | Whether `embedding` matches `hash` |
+| `embedding` | 512 floats, optional |
+| `updatedAt` | When the text last changed |
+
+| Index | Serves |
+| --- | --- |
+| `by_entity` (`entity.id`) | Refresh or delete one entity's row |
+| `by_embedded` | Find rows waiting for a vector |
+| `by_text` (search on `text`, filters `kind`, `areaId`) | Word search |
+| `by_embedding` (vector, 512, filters `kind`, `areaId`) | Meaning search |
+
+`ai/search:hybrid` runs both searches, merges them by reciprocal rank (`1 / (60 + rank)`), and drops anything trashed or deleted. It is the `find_related` tool, and Cmd+J on a Task puts its top five hits in the prompt as data.
+
 ### `jobs`
 
 One unit of background work.

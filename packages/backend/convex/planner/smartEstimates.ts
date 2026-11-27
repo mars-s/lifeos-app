@@ -5,7 +5,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { focusedMs, MINUTE_MS } from "../../shared/focus";
 import { ownerMutation, ownerQuery } from "../platform/access";
 import type { ModelId } from "../../shared/ai";
-import { attemptsFor, capabilityChain, capabilityReady } from "../ai/routing";
+import { attemptsFor, capabilityChain, capabilityReady } from "../ai/capabilities";
 import { askChoice } from "../ai/transport";
 import { featureUses } from "../platform/features";
 import { roundTripMinutes } from "../places/model";

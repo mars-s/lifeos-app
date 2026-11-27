@@ -1,0 +1,78 @@
+import { tool, type ToolDefinition } from "@convex-dev/mcp";
+import { v, type Infer } from "convex/values";
+import type { ModelId } from "../../shared/ai";
+import { internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
+import { internalAction, internalQuery } from "../_generated/server";
+import { MCP_SCOPES, requireOwnerConnection } from "../platform/access";
+import { attemptsFor, capabilityChain } from "./capabilities";
+import { embedTexts } from "./embeddings";
+import { describe } from "./indexRows";
+import { vIndexKind } from "./tables";
+
+const RRF_K = 60;
+const DEFAULT_LIMIT = 8;
+const MAX_LIMIT = 25;
+
+const vHit = v.object({ kind: vIndexKind, id: v.string(), title: v.string(), snippet: v.string() });
+
+export type Hit = Infer<typeof vHit>;
+
+export const byWords = internalQuery({
+  args: { query: v.string(), limit: v.number() },
+  handler: async (ctx, { query, limit }) => {
+    const rows = query.trim() === "" ? [] : await ctx.db.query("aiIndex").withSearchIndex("by_text", (q) => q.search("text", query)).take(limit);
+    return { ids: rows.map((row) => row._id), chain: await capabilityChain(ctx, "searchIndex") };
+  },
+});
+
+export const hydrate = internalQuery({
+  args: { ids: v.array(v.id("aiIndex")) },
+  handler: async (ctx, { ids }) => {
+    const hits = await Promise.all(
+      ids.map(async (id) => {
+        const row = await ctx.db.get("aiIndex", id);
+        const alive = row ? await describe(ctx, row.entity) : null;
+        return row && alive ? [{ kind: row.kind, id: row.entity.id as string, title: alive.text.split("\n")[0] ?? "", snippet: row.text }] : [];
+      }),
+    );
+    return hits.flat();
+  },
+});
+
+export const fuse = (lists: readonly (readonly string[])[]) => {
+  const scores = new Map<string, number>();
+  for (const list of lists) list.forEach((id, rank) => scores.set(id, (scores.get(id) ?? 0) + 1 / (RRF_K + rank + 1)));
+  return [...scores].toSorted((a, b) => b[1] - a[1]).map(([id]) => id);
+};
+
+export const hybrid = internalAction({
+  args: { query: v.string(), limit: v.optional(v.number()), exclude: v.optional(v.string()) },
+  returns: v.object({ hits: v.array(vHit) }),
+  handler: async (ctx, { query, limit = DEFAULT_LIMIT, exclude }) => {
+    const wanted = Math.min(Math.max(Math.trunc(limit), 1), MAX_LIMIT);
+    const words: { ids: Id<"aiIndex">[]; chain: ModelId[] } = await ctx.runQuery(internal.ai.search.byWords, { query, limit: wanted * 2 });
+    const [attempt] = await attemptsFor(ctx, words.chain);
+    const vector = attempt && query.trim() !== "" ? await embedTexts(attempt, [query]) : null;
+    const near = vector?.isOk() && vector.value[0] ? await ctx.vectorSearch("aiIndex", "by_embedding", { vector: vector.value[0], limit: wanted * 2 }) : [];
+    const ids = fuse([words.ids, near.map((hit) => hit._id)]) as Id<"aiIndex">[];
+    const hits: Hit[] = await ctx.runQuery(internal.ai.search.hydrate, { ids: ids.slice(0, wanted + 1) });
+    return { hits: hits.filter((hit) => hit.id !== exclude).slice(0, wanted) };
+  },
+});
+
+export const indexTools: Record<string, ToolDefinition> = {
+  find_related: tool({
+    title: "Find related",
+    description:
+      "Search everything in LifeOS by meaning and by words at once: Tasks, Projects and Areas, including ones that use different words for the same thing. Use it to find what relates to a Task or a question. Trashed things are left out.",
+    args: { query: v.string(), limit: v.optional(v.number()) },
+    returns: v.object({ hits: v.array(vHit) }),
+    annotations: { readOnlyHint: true },
+    scope: MCP_SCOPES.read,
+    handler: (ctx, args, caller) => {
+      requireOwnerConnection(caller);
+      return ctx.runAction(internal.ai.search.hybrid, args);
+    },
+  }),
+};

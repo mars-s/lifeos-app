@@ -3,6 +3,8 @@ import type { MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { nothingTouched, noteWrite, settle } from "../planner/rollups";
 import type { Actor, Change, RecordRef, UndoTarget } from "./tables";
+import { indexChanged } from "../ai/indexRows";
+import type { IndexedRef } from "../ai/tables";
 
 type RecordTable = RecordRef["table"];
 type Fields = Record<string, unknown>;
@@ -29,10 +31,19 @@ export const fromStored = (fields: Fields) =>
 
 const pick = (fields: Fields, keys: readonly string[]) => Object.fromEntries(keys.map((key) => [key, fields[key]]));
 
+const INDEXED = new Set(["tasks", "projects", "areas"]);
+
+const indexedRefs = (table: string, id: string, docs: (Fields | null)[]) => {
+  if (INDEXED.has(table)) return [{ table, id } as IndexedRef];
+  if (table !== "checklistItems") return [];
+  return docs.flatMap((doc) => (typeof doc?.taskId === "string" ? [{ table: "tasks", id: doc.taskId } as IndexedRef] : []));
+};
+
 export const startRecording = (ctx: MutationCtx, actor: Actor, action: string, undoes?: UndoTarget) => {
   let activityId: Id<"activity"> | null = null;
   let seq = 0;
   const touched = nothingTouched();
+  const stale: IndexedRef[] = [];
 
   const log = async (entity: RecordRef, change: Change) => {
     activityId ??= await ctx.db.insert("activity", { actor, action, at: Date.now(), ...(undoes ? { undoes } : {}) });
@@ -43,6 +54,7 @@ export const startRecording = (ctx: MutationCtx, actor: Actor, action: string, u
   const insert = async <T extends RecordTable>(table: T, doc: WithoutSystemFields<Doc<T>>) => {
     const id = await ctx.db.insert(table, doc);
     noteWrite(touched, table, id, null, doc);
+    stale.push(...indexedRefs(table, id, [doc]));
     await log({ table, id } as RecordRef, { kind: "insert", after: toStored(recordedFields(doc)) });
     return id;
   };
@@ -57,6 +69,7 @@ export const startRecording = (ctx: MutationCtx, actor: Actor, action: string, u
     const after = pick(fields, keys);
     await ctx.db.patch(id, after as never);
     noteWrite(touched, table, id, current, { ...current, ...after });
+    stale.push(...indexedRefs(table, id, [current]));
     await log(
       { table, id } as RecordRef,
       { kind: "patch", before: toStored(pick(current, keys)), after: toStored(after) },
@@ -69,12 +82,14 @@ export const startRecording = (ctx: MutationCtx, actor: Actor, action: string, u
     if (!current) return false;
     await ctx.db.delete(id);
     noteWrite(touched, table, id, current, null);
+    stale.push(...indexedRefs(table, id, [current]));
     await log({ table, id } as RecordRef, { kind: "delete", before: toStored(recordedFields(current)) });
     return true;
   };
 
   const finish = async () => {
     await settle(ctx, touched);
+    await indexChanged(ctx, stale);
     return activityId;
   };
 

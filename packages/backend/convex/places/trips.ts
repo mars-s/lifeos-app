@@ -6,7 +6,7 @@ import { internalAction, internalMutation, internalQuery, type MutationCtx, type
 import { TRIP_LOOK_LIMIT_MS, type TravelMode } from "../../shared/features";
 import { ownerMutation, ownerQuery } from "../platform/access";
 import { changeMutation } from "../platform/change";
-import { attemptsFor, capabilityChain } from "../ai/routing";
+import { attemptsFor, capabilityChain } from "../ai/capabilities";
 import { askChoice } from "../ai/transport";
 import { featureReady, featureState } from "../platform/features";
 import { sha256Hex } from "../platform/workers";

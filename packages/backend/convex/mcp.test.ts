@@ -79,6 +79,7 @@ describe("the server", () => {
     const listed = await rpc(t, reader, "tools/list", {});
     const names = (listed.body.result.tools as { name: string }[]).map((each) => each.name).toSorted();
     expect(names).toEqual([
+      "find_related",
       "get_day_plan",
       "get_note",
       "get_task",
@@ -110,6 +111,7 @@ const sampleArgs: Record<string, Record<string, unknown>> = {
   search: { query: "thesis" },
   get_task: { taskId: "nothing" },
   list_areas: {},
+  find_related: { query: "plan" },
   get_day_plan: {},
   list_repeats_and_templates: {},
   recent_activity: {},

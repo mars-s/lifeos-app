@@ -9,7 +9,7 @@ import { changeMutation } from "../platform/change";
 import { sha256Hex } from "../platform/workers";
 import { keyAfter, load, parseTitle, type PlannerError } from "../planner/model";
 import { canonicalJson, clock, trimNotes } from "../planner/smartEstimateModel";
-import { attemptsFor, capabilityChain, capabilityReady } from "./routing";
+import { attemptsFor, capabilityChain, capabilityReady } from "./capabilities";
 import { askJson, type JsonAsk } from "./transport";
 import { vStepsOutcome, type AiError, type StepsOutcome } from "./tables";
 

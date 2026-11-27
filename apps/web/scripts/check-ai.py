@@ -85,6 +85,7 @@ def main():
                 "Model for Smart Estimates: GPT-6 Luna, Decisions API on OpenAI",
                 "Model for Break into steps: DeepSeek V4.1 Flash on OpenCode Go",
                 "Model for LifeOS AI: GPT-6 Luna on OpenAI",
+                "Model for Search index: Text Embedding 3 Small on OpenAI",
             ],
         )
         expect("a cost line sits under each model", jobs.get_by_text("About US$0.09 per 1,000 Tasks.").count() >= 1, True)
