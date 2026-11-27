@@ -36,7 +36,7 @@ const subjectOf = async (ctx: QueryCtx, change: Doc<"activityChanges"> | null) =
   return typeof label === "string" ? label : undefined;
 };
 
-const describe = async (ctx: QueryCtx, entry: Doc<"activity">) => {
+export const describeActivity = async (ctx: QueryCtx, entry: Doc<"activity">) => {
   const [changes, undoneBy, run] = await Promise.all([
     ctx.db
       .query("activityChanges")
@@ -85,7 +85,7 @@ export const recentActivity = agentQuery({
           .paginate(paginationOpts)
       : await ctx.db.query("activity").order("desc").paginate(paginationOpts);
     return {
-      entries: await Promise.all(page.page.map((entry) => describe(ctx, entry))),
+      entries: await Promise.all(page.page.map((entry) => describeActivity(ctx, entry))),
       ...(page.isDone ? {} : { nextCursor: page.continueCursor }),
     };
   },

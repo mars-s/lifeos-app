@@ -15,6 +15,8 @@ import { ListPage, ListSkeleton, SectionHeading } from "../list-page";
 import { useShell } from "../shell-context";
 import { LIST_META } from "../sidebar";
 import { TaskItems } from "../task-item";
+import { Segmented } from "@/components/ui/segmented-control";
+import { RunList } from "../ai/run-list";
 
 const TIMELINE_DAYS = 56;
 const PAGE_SIZE = 40;
@@ -47,10 +49,23 @@ export const LogbookScreen = () => {
     : {};
   const { results, status, loadMore } = usePaginatedQuery(api.planner.lists.logbook, range, { initialNumItems: PAGE_SIZE });
   const loading = status === "LoadingFirstPage";
+  const [shown, setShown] = useState<"done" | "runs">("done");
 
   return (
     <ListPage title="Logbook" icon={LIST_META.logbook.icon}>
-      {timeline && timeline.closedAt.length === 0 && !loading && results.length === 0 && !brush ? (
+      <Segmented
+        label="Show"
+        className="mb-3"
+        value={shown}
+        onValueChange={setShown}
+        options={[
+          { value: "done", label: "Done" },
+          { value: "runs", label: "Runs" },
+        ]}
+      />
+      {shown === "runs" ? (
+        <RunList />
+      ) : timeline && timeline.closedAt.length === 0 && !loading && results.length === 0 && !brush ? (
         <EmptyState spot="logbook" title="Nothing logged yet" hint="Completed Tasks collect here, a day at a time." className="py-16" />
       ) : (
         <>

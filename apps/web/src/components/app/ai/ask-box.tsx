@@ -97,13 +97,14 @@ const Asking = ({ ask, field }: { ask: TaskAsk; field: React.RefObject<HTMLInput
   const needle = query.trim().toLowerCase();
   const matches = needle ? TASK_VERBS.filter((verb) => verb.label.toLowerCase().includes(needle)) : TASK_VERBS;
   const custom = needle !== "" && matches.length === 0;
-  const count = custom ? 1 : matches.length;
+  const count = custom ? 2 : matches.length;
   const active = Math.min(at, Math.max(0, count - 1));
   const off = !ask.online;
   const pick = (index: number) => {
     if (off) return;
     const verb = matches[index];
-    if (custom) ask.ask(null, query.trim());
+    if (custom && index === 1) ask.doIt(query.trim());
+    else if (custom) ask.ask(null, query.trim());
     else if (verb) ask.ask(verb.id, verb.request);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -145,11 +146,24 @@ const Asking = ({ ask, field }: { ask: TaskAsk; field: React.RefObject<HTMLInput
       </label>
       <ul id={listId} role="listbox" aria-label="What to do" className="px-0.5 pb-0.5">
         {custom ? (
-          <li id={`${listId}-0`} role="option" aria-selected="true" aria-disabled={off} className={cn(ROW, "bg-foreground/[0.06]", off && "opacity-45")} onClick={() => pick(0)}>
-            <AiOrb className="size-4" aria-hidden="true" />
-            <span className="min-w-0 flex-1 truncate">Ask “{query.trim()}”</span>
-            <Kbd>↵</Kbd>
-          </li>
+          <>
+            {[`Ask “${query.trim()}”`, `Do it: “${query.trim()}”`].map((label, index) => (
+              <li
+                key={label}
+                id={`${listId}-${index}`}
+                role="option"
+                aria-selected={!off && index === active}
+                aria-disabled={off}
+                onPointerMove={() => !off && index !== active && setAt(index)}
+                onClick={() => pick(index)}
+                className={cn(ROW, !off && index === active && "bg-foreground/[0.06]", off && "opacity-45")}
+              >
+                <AiOrb className="size-4" aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate">{label}</span>
+                {index === active && <Kbd>↵</Kbd>}
+              </li>
+            ))}
+          </>
         ) : (
           matches.map((verb, index) => {
             const Icon = VERB_ICONS[verb.id];

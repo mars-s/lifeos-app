@@ -11,6 +11,7 @@ import type { PlannerTask } from "@lifeos/backend/types";
 import { haptic } from "@/lib/haptics";
 import { patchTask, useChange } from "../changes";
 import { askToConfirm } from "../confirm";
+import { openRun } from "./open-run";
 import { useQuietView } from "../hooks";
 
 export type VerbId = "steps" | "estimate" | "time" | "notes";
@@ -130,6 +131,11 @@ export const useTaskAsk = (task: PlannerTask, today: string) => {
       .catch(() => close());
   };
 
+  const doIt = (request: string) => {
+    close();
+    void start({ request, mode: "run", taskId: task._id }).then((result) => result.ok && openRun(result.value.jobId));
+  };
+
   const actions = taskActions(change, task, today, askToConfirm);
 
   const keep = (kept: Proposal) => {
@@ -158,7 +164,7 @@ export const useTaskAsk = (task: PlannerTask, today: string) => {
     });
   };
 
-  return { phase, open: openBox, close, ask, keep, online, available };
+  return { phase, open: openBox, close, ask, doIt, keep, online, available };
 };
 
 export type TaskAsk = ReturnType<typeof useTaskAsk>;

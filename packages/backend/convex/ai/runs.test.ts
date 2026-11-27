@@ -191,6 +191,44 @@ describe("a run", () => {
   });
 });
 
+describe("runs you can see", () => {
+  test("the strip shows the latest run, its receipt lists each change, and dismissing hides it", async () => {
+    const t = await newAiBackend();
+    queue({ calls: [{ name: "create_task", input: { title: "Call Mum" } }, { name: "create_task", input: { title: "Call Dad" } }] }, { text: "Two calls added." });
+    const jobId = await startRun(t, "Remind me to call my parents");
+    expect(await t.query(api.ai.runs.live, {})).toMatchObject({ jobId, status: "done", changes: 2, undone: false });
+    expect((await t.query(api.ai.runs.receipt, { jobId })).map((entry) => entry.subject).toSorted()).toEqual(["Call Dad", "Call Mum"]);
+    expect((await t.query(api.ai.runs.recent, {})).map((run) => run.jobId)).toEqual([jobId]);
+
+    unwrap(await t.mutation(api.platform.undo.undoRun, { jobId }));
+    expect(await t.query(api.ai.runs.live, {})).toMatchObject({ undone: true });
+    await t.mutation(api.ai.runs.dismiss, { jobId });
+    expect(await t.query(api.ai.runs.live, {})).toBeNull();
+  });
+
+  test("Cmd+J asks never show as runs", async () => {
+    const t = await newAiBackend();
+    queue({ text: "Fine." });
+    await startRun(t, "Anything?", "ask");
+    expect(await t.query(api.ai.runs.recent, {})).toEqual([]);
+  });
+
+  test("a stopped run can make no more changes, and telling it something carries on in the same thread", async () => {
+    const t = await newAiBackend();
+    queue({ calls: [{ name: "set_task_status", input: { taskId: "nope", status: "trashed" } }] });
+    const jobId = await startRun(t, "Bin something");
+    expect(await t.query(api.ai.runs.get, { jobId })).toMatchObject({ status: "needsYou" });
+    await t.mutation(api.ai.runs.stop, { jobId });
+    expect(await t.query(api.ai.runs.get, { jobId })).toMatchObject({ status: "failed", error: "stopped" });
+
+    queue({ text: "Keeping Friday morning free." });
+    unwrap(await t.mutation(api.ai.runs.tell, { jobId, text: "Keep Friday morning free" }));
+    await settle(t);
+    expect(await t.query(api.ai.runs.get, { jobId })).toMatchObject({ status: "done" });
+    expect(requests.at(-1)?.prompt).toContain("Keep Friday morning free");
+  });
+});
+
 describe("memory", () => {
   test("a run remembers what Avi said, as its own change with one Undo, and the memory shapes the next answer", async () => {
     const t = await newAiBackend();

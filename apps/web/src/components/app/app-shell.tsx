@@ -16,6 +16,7 @@ import { CommandBarHost } from "./command-bar/host";
 import { ConfirmHost } from "./confirm";
 import { drafts } from "./drafts";
 import { FocusPill, FocusProvider } from "./focus";
+import { RunStrip } from "./ai/run-strip";
 import { FocusSignals } from "./focus-signals";
 import { useLocalDate, useViewState, valueOf } from "./hooks";
 import { AppMenu } from "./menus";
@@ -270,6 +271,9 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
           <PanelBoundary panel="bar" fallback={() => null}>
             <FocusPill />
             <FocusSignals />
+          </PanelBoundary>
+          <PanelBoundary panel="bar" fallback={() => null}>
+            <RunStrip />
           </PanelBoundary>
         </div>
       </div>

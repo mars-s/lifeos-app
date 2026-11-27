@@ -59,7 +59,7 @@ export const vRunMode = v.union(v.literal("ask"), v.literal("run"));
 
 export const vJob = v.object({
   kind: vJobKind,
-  payload: v.object({ request: v.string(), mode: v.optional(vRunMode), threadId: v.optional(v.string()), taskId: v.optional(v.id("tasks")) }),
+  payload: v.object({ request: v.string(), mode: v.optional(vRunMode), threadId: v.optional(v.string()), taskId: v.optional(v.id("tasks")), dismissed: v.optional(v.boolean()) }),
 });
 
 export const vJobStatus = v.union(
@@ -117,7 +117,8 @@ export const platformTables = {
     .index("by_idempotency_key", ["idempotencyKey"])
     .index("by_kind_status_available", ["job.kind", "status.kind", "status.availableAt"])
     .index("by_kind_status_lease", ["job.kind", "status.kind", "status.leaseUntil"])
-    .index("by_thread", ["job.payload.threadId"]),
+    .index("by_thread", ["job.payload.threadId"])
+    .index("by_mode", ["job.payload.mode"]),
   features: defineTable(vFeatureRow).index("by_feature", ["feature"]),
   secrets: defineTable({
     name: vSecretName,
