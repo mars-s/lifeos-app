@@ -1,12 +1,14 @@
 import { DurableObject } from "cloudflare:workers";
 import * as Y from "yjs";
 import {
-  MessageKind,
   NOTES_PROTOCOL,
   NOTE_TEXT,
   answerSync,
+  decodePresence,
   encodeCatchUpReply,
-  readKind,
+  encodePresence,
+  presenceFrame,
+  readPresence,
   syncStep1,
   syncUpdate,
 } from "@lifeos/notes/protocol";
@@ -15,6 +17,10 @@ import { projectionOf, sendProjection } from "./projection.ts";
 
 export const COMPACT_AFTER_ROWS = 200;
 export const QUIET_MS = 10_000;
+export const SAVE_MS = 1000;
+const MAX_PRESENT = 16;
+
+type Present = Record<string, number>;
 
 const fromStorage = Symbol("storage");
 
@@ -23,6 +29,8 @@ export class Note extends DurableObject<Env> {
   private rows = 0;
   private lastEdit = 0;
   private alarmSet = false;
+  private unsaved: Uint8Array[] = [];
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -39,7 +47,8 @@ export class Note extends DurableObject<Env> {
     }
     this.doc.on("update", (update: Uint8Array, origin: unknown) => {
       if (origin === fromStorage) return;
-      this.persist(update);
+      this.unsaved.push(update);
+      this.saveSoon();
       this.broadcast(syncUpdate(update), origin);
       this.noteEdit();
     });
@@ -48,6 +57,24 @@ export class Note extends DurableObject<Env> {
   private get quietMs() {
     const configured = Number(this.env.QUIET_MS);
     return Number.isFinite(configured) && configured > 0 ? configured : QUIET_MS;
+  }
+
+  private get saveMs() {
+    const configured = Number(this.env.SAVE_MS);
+    return Number.isFinite(configured) && configured > 0 ? configured : SAVE_MS;
+  }
+
+  private saveSoon() {
+    this.saveTimer ??= setTimeout(() => this.save(), this.saveMs);
+  }
+
+  save() {
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    if (this.unsaved.length === 0) return;
+    const merged = this.unsaved.length === 1 ? this.unsaved[0]! : Y.mergeUpdates(this.unsaved);
+    this.unsaved = [];
+    this.persist(merged);
   }
 
   private noteEdit() {
@@ -109,7 +136,9 @@ export class Note extends DurableObject<Env> {
   override async webSocketMessage(socket: WebSocket, message: ArrayBuffer | string) {
     if (typeof message === "string") return;
     const bytes = new Uint8Array(message);
-    if (readKind(bytes) === MessageKind.awareness) {
+    const presence = readPresence(bytes);
+    if (presence) {
+      this.track(socket, presence);
       this.broadcast(bytes, socket);
       return;
     }
@@ -117,7 +146,34 @@ export class Note extends DurableObject<Env> {
     if (reply) socket.send(reply);
   }
 
+  private track(socket: WebSocket, update: Uint8Array) {
+    const present: Present = { ...(socket.deserializeAttachment() as Present | null) };
+    try {
+      for (const entry of decodePresence(update)) {
+        if (entry.state === "null") delete present[entry.clientID];
+        else present[entry.clientID] = entry.clock;
+      }
+    } catch {
+      return;
+    }
+    if (Object.keys(present).length <= MAX_PRESENT) socket.serializeAttachment(present);
+  }
+
+  private depart(socket: WebSocket) {
+    const present = (socket.deserializeAttachment() as Present | null) ?? {};
+    const entries = Object.entries(present).map(([clientID, clock]) => ({ clientID: Number(clientID), clock, state: "null" }));
+    socket.serializeAttachment(null);
+    if (entries.length > 0) this.broadcast(presenceFrame(encodePresence(entries)), socket);
+  }
+
+  override async webSocketError(socket: WebSocket) {
+    this.save();
+    this.depart(socket);
+  }
+
   override async webSocketClose(socket: WebSocket, code: number) {
+    this.save();
+    this.depart(socket);
     try {
       socket.close(code === 1005 ? 1000 : code, "closing");
     } catch {
@@ -135,6 +191,9 @@ export class Note extends DurableObject<Env> {
 
   async erase() {
     for (const socket of this.ctx.getWebSockets()) socket.close(4404, "note deleted");
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    this.unsaved = [];
     await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();
     this.alarmSet = false;
@@ -143,6 +202,6 @@ export class Note extends DurableObject<Env> {
   }
 
   inspect() {
-    return { text: this.doc.getText(NOTE_TEXT).toString(), rows: this.rows, sockets: this.ctx.getWebSockets().length };
+    return { text: this.doc.getText(NOTE_TEXT).toString(), rows: this.rows, unsaved: this.unsaved.length, sockets: this.ctx.getWebSockets().length };
   }
 }

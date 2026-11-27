@@ -16,6 +16,7 @@ export type EditorHandle = DOMImperativeFactory & {
 export type EditorBridge = {
   initial: string;
   incoming: { seq: number; update: string } | null;
+  peers: { seq: number; update: string; ids: number[] } | null;
   events: TaskEvent[];
   chips: ChipInfo[];
   titles: string[];
@@ -28,6 +29,7 @@ export type EditorBridge = {
   autoFocus: boolean;
   onUpdate: (update: string) => Promise<void>;
   onAck: (seq: number) => Promise<void>;
+  onPresence: (update: string) => Promise<void>;
   suggest: (query: string) => Promise<LinkOption[]>;
   makeTask: (title: string, ticket: number) => Promise<void>;
   toggleTask: (id: string, done: boolean) => Promise<void>;

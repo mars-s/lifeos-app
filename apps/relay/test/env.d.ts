@@ -5,5 +5,6 @@ declare namespace Cloudflare {
     TEST_PRIVATE_JWK: string;
     CORE_WORKER_TOKEN: string;
     QUIET_MS: string;
+    SAVE_MS: string;
   }
 }

@@ -14,6 +14,9 @@ const rowsOf = (noteId: string) =>
     state.storage.sql.exec<{ n: number }>("SELECT count(*) AS n FROM updates").one().n,
   );
 
+const saved = (noteId: string, timeout = 1000) =>
+  vi.waitFor(async () => expect(await rowsOf(noteId)).toBeGreaterThan(0), { timeout, interval: 10 });
+
 describe("live sync", () => {
   it("accepts a Convex Auth token and answers with the notes protocol only", async () => {
     const peer = new TestPeer("accept", await mint());
@@ -104,6 +107,7 @@ describe("storage", () => {
     mac.type("Survives a restart.");
     await settle();
     mac.disconnect();
+    await saved("evict");
     await evictDurableObject(stub("evict"));
     const fresh = new TestPeer("evict", token);
     await fresh.connect();
@@ -114,17 +118,21 @@ describe("storage", () => {
 
   it("compacts to one snapshot and keeps every keystroke", async () => {
     const token = await mint();
-    const mac = new TestPeer("compact", token);
-    await mac.connect();
-    mac.type("x".repeat(500));
-    await settle();
-    mac.disconnect();
+    const note = stub("compact");
+    const writer = new Y.Doc();
+    const text = writer.getText(NOTE_TEXT);
+    for (let index = 0; index < COMPACT_AFTER_ROWS + 50; index++) {
+      const before = Y.encodeStateVector(writer);
+      text.insert(text.length, "x");
+      await note.catchUp(Y.encodeStateVector(writer), Y.encodeStateAsUpdate(writer, before));
+      await note.save();
+    }
     expect(await rowsOf("compact")).toBeLessThan(COMPACT_AFTER_ROWS);
     await evictDurableObject(stub("compact"));
     const fresh = new TestPeer("compact", token);
     await fresh.connect();
     await settle();
-    expect(fresh.value()).toBe("x".repeat(500));
+    expect(fresh.value()).toBe("x".repeat(COMPACT_AFTER_ROWS + 50));
     fresh.disconnect();
   });
 });
@@ -137,6 +145,76 @@ const catchUp = (noteId: string, token: string | null, body: Uint8Array) =>
   });
 
 const status = async (protocols: string[]) => (await upgrade("auth", protocols)).status;
+
+describe("live typing", () => {
+  it("shows every keystroke to the other device at once and saves them together", async () => {
+    const token = await mint();
+    const mac = new TestPeer("burst", token);
+    const iphone = new TestPeer("burst", token);
+    await mac.connect();
+    await iphone.connect();
+    await settle();
+    mac.type("Each keystroke goes out as its own update.");
+    await settle();
+    expect(iphone.value()).toBe("Each keystroke goes out as its own update.");
+    expect(await rowsOf("burst")).toBe(0);
+    await saved("burst", Number(env.SAVE_MS) * 3);
+    expect(await rowsOf("burst")).toBe(1);
+    mac.disconnect();
+    iphone.disconnect();
+    await evictDurableObject(stub("burst"));
+    const fresh = new TestPeer("burst", token);
+    await fresh.connect();
+    await settle();
+    expect(fresh.value()).toBe("Each keystroke goes out as its own update.");
+    fresh.disconnect();
+  });
+
+  it("saves what is waiting as soon as a device leaves", async () => {
+    const token = await mint();
+    const mac = new TestPeer("leaving", token);
+    await mac.connect();
+    mac.type("Saved on the way out.");
+    await settle();
+    expect(await rowsOf("leaving")).toBe(0);
+    mac.disconnect();
+    await saved("leaving", Number(env.SAVE_MS) / 2);
+  });
+});
+
+describe("cursors", () => {
+  it("passes a cursor to the others and takes it away when that device leaves", async () => {
+    const token = await mint();
+    const mac = new TestPeer("presence", token);
+    const web = new TestPeer("presence", token);
+    await mac.connect();
+    await web.connect();
+    await settle();
+    mac.share([{ clientID: 42, clock: 3, state: JSON.stringify({ user: { name: "Mac" } }) }]);
+    await settle();
+    expect(web.heard).toEqual([{ clientID: 42, clock: 3, state: JSON.stringify({ user: { name: "Mac" } }) }]);
+    mac.disconnect();
+    await vi.waitFor(() => expect(web.heard.at(-1)).toEqual({ clientID: 42, clock: 3, state: "null" }), { timeout: 1000, interval: 10 });
+    expect(await rowsOf("presence")).toBe(0);
+    web.disconnect();
+  });
+
+  it("does not announce a device that already said goodbye", async () => {
+    const token = await mint();
+    const mac = new TestPeer("goodbye", token);
+    const web = new TestPeer("goodbye", token);
+    await mac.connect();
+    await web.connect();
+    await settle();
+    mac.share([{ clientID: 7, clock: 1, state: "{}" }]);
+    mac.share([{ clientID: 7, clock: 2, state: "null" }]);
+    await settle();
+    mac.disconnect();
+    await settle();
+    expect(web.heard.map((entry) => entry.clock)).toEqual([1, 2]);
+    web.disconnect();
+  });
+});
 
 describe("catch-up over HTTP", () => {
 

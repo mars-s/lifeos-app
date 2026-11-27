@@ -377,6 +377,7 @@ export const NotePage = ({
           <NoteEditor
             key={docId}
             doc={note.doc}
+            awareness={note.awareness}
             host={host}
             chips={chips}
             notesVersion={items.length}

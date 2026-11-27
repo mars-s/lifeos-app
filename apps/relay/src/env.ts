@@ -5,4 +5,5 @@ export type Env = {
   readonly CONVEX_CLOUD_URL: string;
   readonly CORE_WORKER_TOKEN?: string;
   readonly QUIET_MS?: string;
+  readonly SAVE_MS?: string;
 };

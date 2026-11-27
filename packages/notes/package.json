@@ -7,7 +7,8 @@
     "./markdown": "./src/markdown.ts",
     "./client": "./src/client.ts",
     "./editor": "./src/editor/note-editor.tsx",
-    "./catchup": "./src/catchup.ts"
+    "./catchup": "./src/catchup.ts",
+    "./presence": "./src/presence.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

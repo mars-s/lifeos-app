@@ -36,6 +36,37 @@ export const answerSync = (doc: Y.Doc, message: Uint8Array, origin: unknown) => 
 
 export const readKind = (message: Uint8Array) => decoding.readVarUint(decoding.createDecoder(message));
 
+export type PresenceEntry = { readonly clientID: number; readonly clock: number; readonly state: string };
+
+export const encodePresence = (entries: readonly PresenceEntry[]) => {
+  const encoder = encoding.createEncoder();
+  encoding.writeVarUint(encoder, entries.length);
+  for (const entry of entries) {
+    encoding.writeVarUint(encoder, entry.clientID);
+    encoding.writeVarUint(encoder, entry.clock);
+    encoding.writeVarString(encoder, entry.state);
+  }
+  return encoding.toUint8Array(encoder);
+};
+
+export const decodePresence = (update: Uint8Array) => {
+  const decoder = decoding.createDecoder(update);
+  const entries: PresenceEntry[] = [];
+  const count = decoding.readVarUint(decoder);
+  for (let index = 0; index < count; index++) {
+    entries.push({ clientID: decoding.readVarUint(decoder), clock: decoding.readVarUint(decoder), state: decoding.readVarString(decoder) });
+  }
+  return entries;
+};
+
+export const presenceFrame = (update: Uint8Array) => frame(MessageKind.awareness, (e) => encoding.writeVarUint8Array(e, update));
+
+export const readPresence = (message: Uint8Array) => {
+  const decoder = decoding.createDecoder(message);
+  if (decoding.readVarUint(decoder) !== MessageKind.awareness) return null;
+  return decoding.readVarUint8Array(decoder);
+};
+
 const pair = (first: Uint8Array, second: Uint8Array) => {
   const encoder = encoding.createEncoder();
   encoding.writeVarUint8Array(encoder, first);

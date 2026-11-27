@@ -7,6 +7,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type Ref } from 
 import * as Y from "yjs";
 import { NoteEditor, type ChipInfo, type NoteEditorHost } from "@lifeos/notes/editor";
 import { titleKey } from "@lifeos/notes/markdown";
+import { devicePresence, mirrorPeers, ownPresence, type PresenceChange } from "@lifeos/notes/presence";
 import { fromBase64, toBase64 } from "@/lib/notes/base64";
 import type { EditorBridge, EditorHandle } from "@/lib/notes/bridge";
 
@@ -32,16 +33,38 @@ const toggleLinePrefix = (view: EditorView, pattern: RegExp, prefix: string) => 
 };
 
 export default function EditorDom(props: Props) {
-  const { ref: handleRef, initial, incoming, events, chips, titles, titled, placeholder, label, theme, top, bottom, autoFocus } = props;
+  const { ref: handleRef, initial, incoming, peers, events, chips, titles, titled, placeholder, label, theme, top, bottom, autoFocus } = props;
   const [doc] = useState(() => {
     const created = new Y.Doc();
     Y.applyUpdate(created, fromBase64(initial), nativeOrigin);
     return created;
   });
+  const [awareness] = useState(() => devicePresence(doc, "iPhone"));
   const latest = useRef(props);
   useLayoutEffect(() => {
     latest.current = props;
   });
+
+  useEffect(() => {
+    const share = () => void latest.current.onPresence(toBase64(ownPresence(awareness)));
+    const onPresence = ({ added, updated, removed }: PresenceChange, origin: unknown) => {
+      if (origin !== "local") return;
+      if ([...added, ...updated, ...removed].includes(awareness.clientID)) share();
+    };
+    share();
+    awareness.on("update", onPresence);
+    return () => {
+      awareness.off("update", onPresence);
+      awareness.destroy();
+    };
+  }, [awareness]);
+
+  const seenPeers = useRef(0);
+  useEffect(() => {
+    if (!peers || peers.seq <= seenPeers.current) return;
+    seenPeers.current = peers.seq;
+    mirrorPeers(awareness, { update: fromBase64(peers.update), ids: peers.ids }, nativeOrigin);
+  }, [peers, awareness]);
 
   useEffect(() => {
     let queued: Uint8Array[] = [];
@@ -170,6 +193,7 @@ export default function EditorDom(props: Props) {
       <style>{css}</style>
       <NoteEditor
         doc={doc}
+        awareness={awareness}
         host={host}
         chips={chipMap}
         notesVersion={known.size}

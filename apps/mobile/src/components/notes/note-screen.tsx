@@ -126,6 +126,7 @@ export const NoteScreen = () => {
           <NoteEditorView
             key={note.docId}
             doc={note.doc}
+            sync={note.sync}
             chips={chips}
             titles={titles}
             titled={!day}

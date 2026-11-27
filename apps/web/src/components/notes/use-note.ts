@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuthToken } from "@convex-dev/auth/react";
+import { isTauri } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type * as Y from "yjs";
 import { NoteSync, RELAY_URL, type SyncStatus } from "@lifeos/notes/client";
@@ -22,6 +23,14 @@ export const relayToken = () => Promise.resolve(tokenStore.current);
 
 type Live = { sync: NoteSync; users: number };
 const live = new Map<string, Live>();
+const liveListeners = new Set<() => void>();
+const liveChanged = () => {
+  for (const listener of liveListeners) listener();
+};
+const subscribeLive = (listener: () => void) => {
+  liveListeners.add(listener);
+  return () => liveListeners.delete(listener);
+};
 const statusListeners = new Set<() => void>();
 let overall: SyncStatus = { kind: "connecting" };
 
@@ -59,9 +68,10 @@ const acquire = (docId: string, doc: Y.Doc) => {
     known.users++;
     return known.sync;
   }
-  const sync = new NoteSync(doc, docId, { token: relayToken, relayUrl });
+  const sync = new NoteSync(doc, docId, { token: relayToken, relayUrl, name: isTauri() ? "Mac" : "Web" });
   sync.subscribe(recompute);
   live.set(docId, { sync, users: 1 });
+  liveChanged();
   void sync.start();
   return sync;
 };
@@ -75,6 +85,7 @@ const release = (docId: string) => {
     if ((live.get(docId)?.users ?? 0) > 0) return;
     known.sync.stop();
     live.delete(docId);
+    liveChanged();
     recompute();
   }, 2000);
 };
@@ -92,6 +103,11 @@ export const useNote = (docId: string | null) => {
   const entry = useMemo(() => (docId ? openNote(docId) : null), [docId]);
   const [readyFor, setReadyFor] = useState<string | null>(null);
   const [status, setStatus] = useState<SyncStatus>({ kind: "connecting" });
+  const awareness = useSyncExternalStore(
+    subscribeLive,
+    () => (docId ? (live.get(docId)?.sync.awareness ?? null) : null),
+    () => null,
+  );
   const token = useRelayToken();
   const syncRef = useRef<NoteSync | null>(null);
 
@@ -114,5 +130,5 @@ export const useNote = (docId: string | null) => {
     if (token) syncRef.current?.reconnectNow();
   }, [token]);
 
-  return entry && docId ? { docId, doc: entry.doc, ready: readyFor === docId, status } : null;
+  return entry && docId ? { docId, doc: entry.doc, awareness, ready: readyFor === docId, status } : null;
 };

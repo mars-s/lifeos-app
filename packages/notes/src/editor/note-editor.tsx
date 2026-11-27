@@ -7,10 +7,12 @@ import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView, keymap, placeholder as placeholderText } from "@codemirror/view";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { yCollab, yUndoManagerKeymap } from "y-codemirror.next";
+import type { Awareness } from "@lifeos/notes/presence";
 import * as Y from "yjs";
 import { entityLinkPattern, formatEntityLink, noteLinkPattern, type EntityTable } from "@lifeos/notes/markdown";
 import { NOTE_TEXT } from "@lifeos/notes/protocol";
 import { chipField, hostFacet, notePreview, notesChanged, setChips, titledFacet, type ChipInfo, type EditorHost } from "./live-preview";
+import { peerCursors } from "./peers";
 import "./note-editor.css";
 
 export type LinkOption = { kind: "note"; title: string } | { kind: "entity"; table: EntityTable; id: string; title: string };
@@ -113,6 +115,7 @@ const makeTaskCommand = (ytext: Y.Text, host: () => NoteEditorHost) => (view: Ed
 
 export const NoteEditor = ({
   doc,
+  awareness,
   host,
   chips,
   notesVersion,
@@ -123,6 +126,7 @@ export const NoteEditor = ({
   label = "Note",
 }: {
   doc: Y.Doc;
+  awareness?: Awareness | null;
   host: NoteEditorHost;
   chips: ReadonlyMap<string, ChipInfo>;
   notesVersion: number;
@@ -166,6 +170,7 @@ export const NoteEditor = ({
           titledSlot.current.of(titledFacet.of(first.current.titled)),
           notePreview(),
           yCollab(ytext, null, { undoManager }),
+          awareness ? peerCursors(ytext, awareness) : [],
           autocompletion({ override: [linkSource(() => proxy)], icons: false, activateOnTyping: true }),
           keymap.of([{ key: "Mod-Enter", run: makeTaskCommand(ytext, () => proxy) }, { key: "Alt-Enter", run: actOnLine(() => proxy) }, ...yUndoManagerKeymap, indentWithTab, ...defaultKeymap]),
         ],
@@ -178,7 +183,7 @@ export const NoteEditor = ({
       undoManager.destroy();
       view.current = null;
     };
-  }, [doc]);
+  }, [doc, awareness]);
 
   useEffect(() => {
     view.current?.dispatch({ effects: titledSlot.current.reconfigure(titledFacet.of(titled)) });

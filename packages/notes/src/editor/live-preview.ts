@@ -1,5 +1,5 @@
 import { syntaxTree } from "@codemirror/language";
-import { type EditorState, type Extension, type Range, RangeSetBuilder, StateEffect, StateField, Facet } from "@codemirror/state";
+import { type EditorState, type Extension, type Range, RangeSetBuilder, StateEffect, StateField, Facet, type Transaction } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import { ySyncAnnotation } from "y-codemirror.next";
 import { entityLinkPattern, labelPattern, noteLinkPattern, type EntityTable } from "@lifeos/notes/markdown";
@@ -367,13 +367,21 @@ const previewPlugin = ViewPlugin.fromClass(
 
 const clearMerge = StateEffect.define<null>();
 const MERGE_MS = 1800;
+const MERGE_FROM_CHARS = 12;
+
+const isMerge = (tr: Transaction) => {
+  if (tr.annotation(ySyncAnnotation) === undefined || !tr.docChanged) return false;
+  let inserted = 0;
+  tr.changes.iterChanges((_fromA, _toA, _fromB, _toB, text) => (inserted += text.length));
+  return inserted >= MERGE_FROM_CHARS;
+};
 
 const mergeField = StateField.define<DecorationSet>({
   create: () => Decoration.none,
   update: (value, tr) => {
     if (tr.effects.some((e) => e.is(clearMerge))) return Decoration.none;
     let next = value.map(tr.changes);
-    if (tr.annotation(ySyncAnnotation) !== undefined && tr.docChanged) {
+    if (isMerge(tr)) {
       const builder = new RangeSetBuilder<Decoration>();
       tr.changes.iterChangedRanges((_fromA, _toA, fromB, toB) => {
         if (toB > fromB) builder.add(fromB, toB, Decoration.mark({ class: "cm-merged" }));
@@ -397,7 +405,7 @@ const mergeTimer = ViewPlugin.fromClass(
   class {
     private timer: ReturnType<typeof setTimeout> | null = null;
     update(update: ViewUpdate) {
-      if (!update.transactions.some((tr) => tr.annotation(ySyncAnnotation) !== undefined && tr.docChanged)) return;
+      if (!update.transactions.some(isMerge)) return;
       if (this.timer) clearTimeout(this.timer);
       this.timer = setTimeout(() => update.view.dispatch({ effects: clearMerge.of(null) }), MERGE_MS);
     }

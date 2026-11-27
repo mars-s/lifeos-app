@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type Ref } from "rea
 import * as Y from "yjs";
 import { api } from "@lifeos/backend/api";
 import type { Id } from "@lifeos/backend/dataModel";
+import { bridgedOrigin, type NoteSync } from "@lifeos/notes/client";
 import type { ChipInfo, LinkOption } from "@lifeos/notes/editor";
 import { nothing } from "@lifeos/backend/client/updaters";
 import { change } from "@/lib/change";
@@ -17,6 +18,7 @@ import EditorDom from "./editor-dom";
 
 export type NoteEditorProps = {
   doc: Y.Doc;
+  sync: NoteSync | null;
   chips: ChipInfo[];
   titles: string[];
   titled: boolean;
@@ -62,7 +64,7 @@ const useEditorTheme = () => {
 
 const FLUSH_MS = 16;
 
-export const NoteEditorView = ({ doc, chips, titles, titled, placeholder, label, top, bottom, autoFocus, folder, suggest, openTitle, editorRef, onFocus }: NoteEditorProps) => {
+export const NoteEditorView = ({ doc, sync, chips, titles, titled, placeholder, label, top, bottom, autoFocus, folder, suggest, openTitle, editorRef, onFocus }: NoteEditorProps) => {
   const router = useRouter();
   const theme = useEditorTheme();
   const initial = useMemo(() => toBase64(Y.encodeStateAsUpdate(doc)), [doc]);
@@ -101,6 +103,33 @@ export const NoteEditorView = ({ doc, chips, titles, titled, placeholder, label,
     outbox.current.splice(0, count);
     for (const key of sent.current.keys()) if (key <= acked) sent.current.delete(key);
   }, []);
+
+  const [peers, setPeers] = useState<{ seq: number; update: string; ids: number[] } | null>(null);
+  const peerSeq = useRef(0);
+  useEffect(() => {
+    if (!sync) return;
+    const forward = () => {
+      const snapshot = sync.peers();
+      peerSeq.current += 1;
+      setPeers({ seq: peerSeq.current, update: toBase64(snapshot.update), ids: [...snapshot.ids] });
+    };
+    const onPresence = (_change: unknown, origin: unknown) => {
+      if (origin !== bridgedOrigin) forward();
+    };
+    forward();
+    sync.awareness.on("update", onPresence);
+    return () => {
+      sync.awareness.off("update", onPresence);
+      sync.forgetShared();
+    };
+  }, [sync]);
+
+  const onPresence = useCallback(
+    async (update: string) => {
+      sync?.sharePresence(fromBase64(update));
+    },
+    [sync],
+  );
 
   const onUpdate = useCallback(
     async (update: string) => {
@@ -173,6 +202,7 @@ export const NoteEditorView = ({ doc, chips, titles, titled, placeholder, label,
       dom={dom}
       initial={initial}
       incoming={incoming}
+      peers={peers}
       events={events}
       chips={chips}
       titles={titles}
@@ -185,6 +215,7 @@ export const NoteEditorView = ({ doc, chips, titles, titled, placeholder, label,
       autoFocus={autoFocus}
       onUpdate={onUpdate}
       onAck={onAck}
+      onPresence={onPresence}
       suggest={suggest}
       makeTask={makeTask}
       toggleTask={toggleTask}

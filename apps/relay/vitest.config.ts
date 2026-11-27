@@ -48,6 +48,7 @@ export default defineConfig(async () => {
             TEST_PRIVATE_JWK: core.privateJwk,
             CORE_WORKER_TOKEN: "relay-test-token",
             QUIET_MS: "100",
+            SAVE_MS: "200",
           },
         },
       }),

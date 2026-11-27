@@ -1,7 +1,18 @@
 import { SELF, env } from "cloudflare:test";
 import { SignJWT, importJWK } from "jose";
 import * as Y from "yjs";
-import { NOTES_PROTOCOL, NOTE_TEXT, answerSync, syncStep1, syncUpdate } from "@lifeos/notes/protocol";
+import {
+  NOTES_PROTOCOL,
+  NOTE_TEXT,
+  answerSync,
+  decodePresence,
+  encodePresence,
+  presenceFrame,
+  readPresence,
+  syncStep1,
+  syncUpdate,
+  type PresenceEntry,
+} from "@lifeos/notes/protocol";
 
 export const BASE = "https://relay.test/notes/";
 
@@ -29,6 +40,7 @@ export const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
 export class TestPeer {
   readonly doc = new Y.Doc();
   readonly text = this.doc.getText(NOTE_TEXT);
+  readonly heard: PresenceEntry[] = [];
   private socket: WebSocket | null = null;
 
   constructor(
@@ -50,12 +62,21 @@ export class TestPeer {
     socket.addEventListener("message", (event) => {
       const data = event.data;
       if (typeof data === "string") return;
+      const presence = readPresence(new Uint8Array(data));
+      if (presence) {
+        this.heard.push(...decodePresence(presence));
+        return;
+      }
       const { reply } = answerSync(this.doc, new Uint8Array(data), "remote");
       if (reply && socket.readyState === WebSocket.OPEN) socket.send(reply);
     });
     socket.send(syncStep1(this.doc));
     this.socket = socket;
     return response.headers.get("Sec-WebSocket-Protocol");
+  }
+
+  share(entries: PresenceEntry[]) {
+    this.socket?.send(presenceFrame(encodePresence(entries)));
   }
 
   disconnect() {
