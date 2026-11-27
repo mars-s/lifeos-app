@@ -14,6 +14,7 @@ import { FocusSignals } from "@/components/focus-signals";
 import { OwnerGate } from "@/components/owner-gate";
 import { Toaster } from "@/components/ui/toast";
 import { addMissingArrayMethods } from "@/lib/array-methods";
+import { addMissingRandomValues } from "@/lib/random";
 import { undoLatest } from "@/lib/change";
 import { convex, secureStorage } from "@/lib/convex";
 import { FocusProvider } from "@/lib/focus";
@@ -22,9 +23,10 @@ import { AppTheme } from "@/lib/kit-theme";
 import { listenForShake } from "@/lib/shake";
 
 addMissingArrayMethods();
+addMissingRandomValues();
 void SplashScreen.preventAutoHideAsync();
 
-const OVERLAID = /^\/(task|tool|capture|search|lists\/settings|focus)/;
+const OVERLAID = /^\/(task|tool|capture|search|lists\/settings|focus|links|notes\/)/;
 
 const Screens = () => {
   const { colors, dark } = useKit();
@@ -44,6 +46,7 @@ const Screens = () => {
           <Stack.Screen name="task/[id]" options={{ ...sheet, sheetAllowedDetents: [0.72, 1], sheetGrabberVisible: true }} />
           <Stack.Screen name="tool/[tool]" options={{ ...sheet, sheetAllowedDetents: "fitToContents", sheetGrabberVisible: true }} />
           <Stack.Screen name="capture" options={{ ...sheet, sheetAllowedDetents: "fitToContents" }} />
+          <Stack.Screen name="links/[id]" options={{ ...sheet, contentStyle: { backgroundColor: "transparent" }, sheetAllowedDetents: [0.55, 1], sheetGrabberVisible: true }} />
           <Stack.Screen name="focus" options={{ ...sheet, sheetAllowedDetents: "fitToContents", sheetGrabberVisible: true }} />
         </Stack>
         {convex && !OVERLAID.test(pathname) ? <FocusPill /> : null}

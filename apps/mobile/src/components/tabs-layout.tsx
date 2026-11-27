@@ -27,6 +27,10 @@ export const TabsLayout = () => {
         <NativeTabs.Trigger.Icon sf={{ default: "square.stack", selected: "square.stack.fill" }} md="layers" />
         <NativeTabs.Trigger.Label>Lists</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="notes">
+        <NativeTabs.Trigger.Icon sf={{ default: "note.text", selected: "note.text" }} md="description" />
+        <NativeTabs.Trigger.Label>Notes</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="search" role="search">
         <NativeTabs.Trigger.Icon sf="magnifyingglass" md="search" />
         <NativeTabs.Trigger.Label>Search</NativeTabs.Trigger.Label>

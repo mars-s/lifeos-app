@@ -20,4 +20,6 @@ export const listHref = (kind: ListKind) => `/lists/${kind}` as Href;
 export const areaHref = (id: Id<"areas">) => ({ pathname: "/lists/area/[id]", params: { id } }) as Href;
 export const projectHref = (id: Id<"projects">) => ({ pathname: "/lists/project/[id]", params: { id } }) as Href;
 export const taskHref = (id: Id<"tasks">) => ({ pathname: "/task/[id]", params: { id } }) as Href;
-export const toolHref = (tool: Tool, taskId: Id<"tasks">) => ({ pathname: "/tool/[tool]", params: { tool, taskId } }) as Href;
+export const noteHref = (docId: string) => ({ pathname: "/notes/[id]", params: { id: docId } }) as Href;
+export const linksHref = (docId: string) => ({ pathname: "/links/[id]", params: { id: docId } }) as Href;
+export const toolHref =(tool: Tool, taskId: Id<"tasks">) => ({ pathname: "/tool/[tool]", params: { tool, taskId } }) as Href;
