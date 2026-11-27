@@ -90,6 +90,13 @@ describe("the index", () => {
     expect((await find(t, "old")).hits.map((hit) => hit.title)).toEqual(["Old Task"]);
   });
 
+  test("something with no words is left out, so the provider is never sent an empty string", async () => {
+    const t = await newBackend();
+    await t.run((ctx) => ctx.db.insert("areas", { title: "", colour: "slate", order: "a0" }));
+    await t.action(internal.ai.aiIndex.backfill, {});
+    expect(await rows(t)).toEqual([]);
+  });
+
   test("hits found both ways rank first", () => {
     expect(fuse([["a", "b", "c"], ["c", "d"]])).toEqual(["c", "a", "b", "d"]);
   });

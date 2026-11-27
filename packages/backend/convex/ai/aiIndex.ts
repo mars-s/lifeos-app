@@ -21,7 +21,7 @@ export const pending = internalQuery({
     const described = await Promise.all(rows.map(async (row) => ({ row, described: await describe(ctx, row.entity) })));
     return {
       chain: await capabilityChain(ctx, "searchIndex"),
-      rows: described.flatMap(({ row, described: found }) => (found ? [{ rowId: row._id, hash: row.hash, text: found.text }] : [])),
+      rows: described.flatMap(({ row, described: found }) => (found?.text.trim() ? [{ rowId: row._id, hash: row.hash, text: found.text }] : [])),
     };
   },
 });

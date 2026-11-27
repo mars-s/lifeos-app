@@ -75,7 +75,8 @@ const rowOf = (ctx: QueryCtx, id: string) =>
     .unique();
 
 const refresh = async (ctx: MutationCtx, ref: IndexedRef) => {
-  const [described, row] = await Promise.all([describe(ctx, ref), rowOf(ctx, ref.id)]);
+  const [found, row] = await Promise.all([describe(ctx, ref), rowOf(ctx, ref.id)]);
+  const described = found?.text.trim() ? found : null;
   if (!described) {
     if (row) await ctx.db.delete("aiIndex", row._id);
     return false;
