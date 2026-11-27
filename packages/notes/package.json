@@ -3,10 +3,12 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./protocol": "./src/protocol.ts"
+    "./protocol": "./src/protocol.ts",
+    "./markdown": "./src/markdown.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "lib0": "0.2.120",
@@ -14,6 +16,7 @@
     "yjs": "13.6.33"
   },
   "devDependencies": {
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "vitest": "^5.1.1"
   }
 }

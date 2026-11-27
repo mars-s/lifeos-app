@@ -73,7 +73,7 @@ const dependentsOf = async (ctx: MutationCtx, entity: RecordRef) => {
       .query("entityLinks")
       .withIndex("by_to", (q) => q.eq("to.id", entity.id))
       .take(DEPENDENT_SCAN_LIMIT)),
-  ];
+  ].filter(({ from }) => from.table !== "notes");
   if (entity.table !== "tasks") return links.map(({ _id }) => _id as string);
   const [items, blocks, sessions] = await Promise.all([
     ctx.db

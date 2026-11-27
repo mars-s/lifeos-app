@@ -20,11 +20,12 @@ export const mcp: McpServer = new McpServer(components.mcp, {
     "LifeOS is Avi's personal planner and the home of his Tasks, Areas, Projects and plans.",
     "Use search, list_tasks or list_areas to find ids before you change anything. Dates are YYYY-MM-DD and times are in Avi's time zone unless you pass timeZone.",
     "Every write is recorded as one Agent Run per connection (it ends after 10 idle minutes) and returns its runId and activityIds, so Avi can undo one change or the whole run. The undo tool does the same.",
+    "Notes are read only here: list_notes, search_notes and get_note read their searchable copy (title, excerpt, folder, Labels and links). The full text stays on Avi's devices.",
     "Apple Calendar owns External Commitments and Oura owns sleep: read them, never plan over them without asking.",
   ].join(" "),
   consentUrl: process.env.MCP_CONSENT_URL ?? `${siteUrl}/connect`,
   scopes: {
-    [MCP_SCOPES.read]: "See your Tasks, Projects, Areas, plans, calendar and sleep",
+    [MCP_SCOPES.read]: "See your Tasks, Projects, Areas, notes, plans, calendar and sleep",
     [MCP_SCOPES.write]: "Create and change Tasks and plans, and undo those changes",
   },
   tools: LIFEOS_TOOLS,

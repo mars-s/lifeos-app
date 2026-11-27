@@ -80,14 +80,17 @@ describe("the server", () => {
     const names = (listed.body.result.tools as { name: string }[]).map((each) => each.name).toSorted();
     expect(names).toEqual([
       "get_day_plan",
+      "get_note",
       "get_task",
       "list_areas",
+      "list_notes",
       "list_repeats_and_templates",
       "list_smart_blocks",
       "list_tasks",
       "preview_smart_block_fill",
       "recent_activity",
       "search",
+      "search_notes",
     ]);
     const { status } = await callTool(t, reader, "create_task", { title: "Sneaky" });
     expect(status).toBe(403);
@@ -129,6 +132,9 @@ const sampleArgs: Record<string, Record<string, unknown>> = {
   create_smart_block: { title: "Stolen", start: "16:00", end: "18:00" },
   preview_smart_block_fill: { blockId: "nothing" },
   accept_smart_block_fill: { blockId: "nothing" },
+  list_notes: {},
+  search_notes: { query: "thesis" },
+  get_note: { noteId: "nothing" },
 };
 
 describe("owner refusal", () => {
@@ -201,6 +207,26 @@ describe("reads", () => {
     expect(found.projects).toEqual([expect.objectContaining({ title: "Thesis", area: "University" })]);
     const areas = await ok<{ areas: { title: string }[] }>(t, key, "search", { query: "univ" });
     expect(areas.areas.map((area) => area.title)).toEqual(["University"]);
+  });
+
+  test("the notes tools read the searchable copy and its links", async () => {
+    const { t, key } = await setup();
+    const token = await registerWorker(t, "relay", ["notes"]);
+    const project = (docId: string, title: string, noteTitles: string[] = []) =>
+      t.mutation(api.notes.relay.project, { token, docId, title, excerpt: `${title} excerpt`, words: 2, labels: [], entities: [], noteTitles });
+    await project("dense", "Dense and sparse");
+    await project("outline", "Thesis outline", ["Dense and sparse"]);
+    const listed = await ok<{ notes: { noteId: string }[]; omitted: number }>(t, key, "list_notes", { limit: 1 });
+    expect(listed.notes.map((n) => n.noteId)).toEqual(["outline"]);
+    expect(listed.omitted).toBe(1);
+    const found = await ok<{ notes: { title: string }[] }>(t, key, "search_notes", { query: "thesis" });
+    expect(found.notes.map((n) => n.title)).toEqual(["Thesis outline"]);
+    const detail = await ok<{ linksOut: unknown[]; note: { title: string } }>(t, key, "get_note", { noteId: "outline" });
+    expect(detail.note.title).toBe("Thesis outline");
+    expect(detail.linksOut).toEqual([{ kind: "note", id: "dense", title: "Dense and sparse" }]);
+    const dense = await ok<{ linkedFrom: unknown[] }>(t, key, "get_note", { noteId: "dense" });
+    expect(dense.linkedFrom).toEqual([{ noteId: "outline", title: "Thesis outline" }]);
+    expect(await refused(t, key, "get_note", { noteId: "missing" })).toContain("list_notes");
   });
 
   test("list_areas lists Areas with their Projects and the Labels", async () => {

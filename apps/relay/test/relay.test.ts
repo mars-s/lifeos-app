@@ -1,8 +1,8 @@
 import { SELF, env, evictDurableObject, runInDurableObject } from "cloudflare:test";
 import { generateKeyPair } from "jose";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
-import { NOTES_PROTOCOL, NOTE_TEXT, decodeCatchUpReply, encodeCatchUpRequest } from "@lifeos/notes/protocol";
+import { NOTES_PROTOCOL, NOTE_META, NOTE_TEXT, decodeCatchUpReply, encodeCatchUpRequest } from "@lifeos/notes/protocol";
 import { COMPACT_AFTER_ROWS, type Note } from "../src/note.ts";
 import { BASE, TestPeer, mint, settle, upgrade } from "./client.ts";
 
@@ -212,5 +212,32 @@ describe("sign-in", () => {
     expect((await SELF.fetch(`${BASE}bad.id`)).status).toBe(404);
     expect((await SELF.fetch("https://relay.test/elsewhere")).status).toBe(404);
     expect((await SELF.fetch("https://relay.test/health")).status).toBe(200);
+  });
+});
+
+const projected = async () =>
+  ((await (await fetch(`${env.CONVEX_CLOUD_URL}/projections`)).json()) as { path: string; args: Record<string, unknown> }[]).filter(
+    (call) => call.args.docId === "projected",
+  );
+
+describe("projection", () => {
+  it("sends Core the note's searchable copy once it goes quiet", async () => {
+    const token = await mint();
+    const mac = new TestPeer("projected", token);
+    mac.doc.getMap(NOTE_META).set("folder", { table: "areas", id: "area123" });
+    mac.type("# Thesis outline\nRead [[task:abc123|Read papers]] and [[Dense and sparse]] for #reading.");
+    await mac.connect();
+    await vi.waitFor(async () => expect(await projected()).toHaveLength(1), { timeout: 3000, interval: 50 });
+    mac.disconnect();
+    const mine = await projected();
+    expect(mine[0]?.path).toBe("notes/relay:project");
+    expect(mine[0]?.args).toMatchObject({
+      token: "relay-test-token",
+      title: "Thesis outline",
+      folder: { table: "areas", id: "area123" },
+      labels: ["reading"],
+      noteTitles: ["Dense and sparse"],
+      entities: [{ table: "tasks", id: "abc123" }],
+    });
   });
 });

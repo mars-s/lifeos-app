@@ -11,14 +11,18 @@ import {
   syncUpdate,
 } from "@lifeos/notes/protocol";
 import type { Env } from "./env.ts";
+import { projectionOf, sendProjection } from "./projection.ts";
 
 export const COMPACT_AFTER_ROWS = 200;
+export const QUIET_MS = 10_000;
 
 const fromStorage = Symbol("storage");
 
 export class Note extends DurableObject<Env> {
   private doc = new Y.Doc({ gc: true });
   private rows = 0;
+  private lastEdit = 0;
+  private alarmSet = false;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -37,7 +41,37 @@ export class Note extends DurableObject<Env> {
       if (origin === fromStorage) return;
       this.persist(update);
       this.broadcast(syncUpdate(update), origin);
+      this.noteEdit();
     });
+  }
+
+  private get quietMs() {
+    const configured = Number(this.env.QUIET_MS);
+    return Number.isFinite(configured) && configured > 0 ? configured : QUIET_MS;
+  }
+
+  private noteEdit() {
+    this.lastEdit = Date.now();
+    if (this.alarmSet) return;
+    this.alarmSet = true;
+    void this.ctx.storage.setAlarm(this.lastEdit + this.quietMs);
+  }
+
+  override async alarm() {
+    const quietFor = Date.now() - this.lastEdit;
+    if (this.lastEdit > 0 && quietFor < this.quietMs) {
+      await this.ctx.storage.setAlarm(this.lastEdit + this.quietMs);
+      return;
+    }
+    this.alarmSet = false;
+    const docId = this.ctx.id.name;
+    const token = this.env.CORE_WORKER_TOKEN;
+    if (!docId || !token) return;
+    await sendProjection(this.env.CONVEX_CLOUD_URL, token, projectionOf(docId, this.doc));
+  }
+
+  projection() {
+    return this.ctx.id.name ? projectionOf(this.ctx.id.name, this.doc) : null;
   }
 
   private persist(update: Uint8Array) {
@@ -101,7 +135,9 @@ export class Note extends DurableObject<Env> {
 
   async erase() {
     for (const socket of this.ctx.getWebSockets()) socket.close(4404, "note deleted");
+    await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();
+    this.alarmSet = false;
     this.doc.destroy();
     this.load();
   }

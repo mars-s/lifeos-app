@@ -85,7 +85,7 @@ One unit of background work.
 | Field | Type |
 | --- | --- |
 | `name` | Unique, such as `things` |
-| `capabilities` | What this Worker may do: `agent` (a Job kind it may claim), `things` (send Things Imports) or `calendar` (send Apple Calendar windows) |
+| `capabilities` | What this Worker may do: `agent` (a Job kind it may claim), `things` (send Things Imports), `calendar` (send Apple Calendar windows) or `notes` (send note projections, held by the Notes Relay's Worker `relay`) |
 | `tokenHash` | SHA-256 hex of the Worker's token. The token itself lives only in that machine's keychain. |
 
 Indexes: `by_name` (register, and `platform/workers:grant`, which adds one capability to a named Worker without touching its token), `by_token_hash` (authenticate every Worker call).
@@ -383,6 +383,39 @@ Templates change through `planner/templates`. `saveFromTask` (`taskId`, `today`)
 
 `planner/seed.test-utils.ts` builds a realistic planner (five Areas, six Projects, Headings, Deadlines, a Logbook). The list tests use it, and a scratch local backend can run it for visual checks.
 
+## Notes module (`convex/notes`)
+
+The notes themselves (Yjs documents) live on every device and in the Notes Relay (`docs/architecture.md`, Notes: local-first). Core keeps only the searchable copy each note's relay object sends when the note goes quiet. Embeddings of note sections belong to the AI module's `aiIndex`, not to this table.
+
+### `notes`
+
+| Field | Type |
+| --- | --- |
+| `docId` | The Yjs document id, which is also the relay's Durable Object name. Clients make it. A daily note's is `day-YYYY-MM-DD`, so two devices that start the same day offline write into one document |
+| `title`, `titleKey` | The first line without its heading mark, and the same lowercased with spaces collapsed, for resolving `[[Note title]]` links |
+| `excerpt` | Up to 280 characters of the body as plain text |
+| `searchText` | Title, excerpt and Label names, for the search index |
+| `words` | Word count |
+| optional `areaId`, optional `projectId` | The folder from the note's `meta` map. A Project folder also sets its Area |
+| `labelIds` | Labels whose name matches a `#tag` in the text, ignoring case. A tag with no Label is skipped |
+| optional `day` | `YYYY-MM-DD` for a daily note |
+| `updatedAt` | When the relay last sent this copy. Devices catch up from it |
+| optional `trashedAt` | Set by `notes/notes:trash`, which records Activity, so undo brings the note back. A later projection keeps it |
+
+| Index | Serves |
+| --- | --- |
+| `by_doc` | The relay upserts by document, and `get` and `links` |
+| `by_updated` | `changedSince`: every copy newer than a device's last sync |
+| `by_area_updated`, `by_project_updated` | The Area and Project trees |
+| `by_day` | The daily note for a date |
+| `by_title_key` | Resolving `[[Note title]]` |
+| `by_trashed` | `list` (live notes) |
+| `search_text` (search on `searchText`, filter `areaId`) | `search`, the command bar and the MCP `search_notes` tool |
+
+`notes/relay:project` is a `workerMutation` that needs the `notes` capability. It writes the row and rebuilds the note's outgoing `entityLinks` from its text: `[[task:<id>]]`, `[[project:<id>]]` and `[[area:<id>]]` chips, and `[[Note title]]` links to notes that exist. It records no Activity: the row is a copy of the document, and the next projection rewrites it. For the same reason undo ignores links whose `from` is a note when it checks what depends on a record, so making a Task from a line can always be undone, and the next projection drops the link to a Task that is gone.
+
+Owner queries: `notes/notes:list`, `search`, `get`, `changedSince`, `links` (what a note links to, and the notes that link to it) and `forEntity` (the notes that link to a Task, Project or Area). MCP serves `list_notes`, `search_notes` and `get_note` from the same rows.
+
 ## Calendar module (`convex/calendar`)
 
 Apple Calendar, read by the Mac app and mirrored here as **External Commitments**. Read only: nothing in LifeOS writes to Apple Calendar yet. Apple Calendar owns these rows, so the mirror records no Activity and cannot be undone. Only Avi's settings (which calendars count, working hours) go through `changeMutation`.
@@ -563,10 +596,6 @@ Each slice adds these as new tables, or as variants of `vEntityRef` and `vJob`. 
 ### Rituals
 
 - **`dayPlans`** gains `capacityMinutes` and optional `shutdown { at, note }` with the Shutdown ritual, to freeze what a day's plan was. Until then a Day Plan is read live from the Tasks scheduled on that date and their `plan` keys, and the row holds only the Goal.
-
-### Notes projection
-
-- **`notes`**: `docId` (the Yjs document id, which is also the Notes Relay's Durable Object name), `title`, optional `areaId`, `excerpt`, `embedding`, `updatedAt`. Indexes: `by_doc` (the Notes Relay upserts by document), `by_area_updated`. Search index on `title` and `excerpt`. Vector index on `embedding`, filtered by `areaId`. The documents themselves stay on the devices and the relay.
 
 ### Saved Links
 

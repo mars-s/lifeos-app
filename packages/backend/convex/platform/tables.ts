@@ -11,6 +11,7 @@ export const vEntityRef = v.union(
   v.object({ table: v.literal("checklistItems"), id: v.id("checklistItems") }),
   v.object({ table: v.literal("workBlocks"), id: v.id("workBlocks") }),
   v.object({ table: v.literal("focusSessions"), id: v.id("focusSessions") }),
+  v.object({ table: v.literal("notes"), id: v.id("notes") }),
 );
 
 export const vRecordRef = v.union(
@@ -51,7 +52,7 @@ export const vSecretName = v.union(v.literal("openai"), v.literal("opencodeGo"))
 
 export const vJobKind = v.literal("agent");
 
-export const vCapability = v.union(v.literal("things"), v.literal("calendar"), vJobKind);
+export const vCapability = v.union(v.literal("things"), v.literal("calendar"), v.literal("notes"), vJobKind);
 
 export const vRunMode = v.union(v.literal("ask"), v.literal("run"));
 
