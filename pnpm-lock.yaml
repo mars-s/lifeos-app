@@ -194,6 +194,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@convex-dev/agent':
+        specifier: 0.7.11
+        version: 0.7.11(@ai-sdk/provider-utils@5.0.85(zod@4.6.6))(@ai-sdk/provider@4.0.39)(ai@7.0.183(zod@4.6.6))(convex-helpers@0.1.137(@standard-schema/spec@1.1.0)(convex@1.51.0(react@19.3.1))(hono@4.13.19)(prettier@3.10.1)(react@19.3.1)(typescript@6.0.3)(zod@4.6.6))(convex@1.51.0(react@19.3.1))(react@19.3.1)
       '@convex-dev/auth':
         specifier: 2.0.0
         version: 2.0.0(@standard-schema/spec@1.1.0)(convex@1.51.0(react@19.3.1))(hono@4.13.19)(prettier@3.10.1)(react@19.3.1)(typescript@6.0.3)(zod@4.6.6)
@@ -227,6 +230,9 @@ importers:
       '@tauri-apps/plugin-deep-link':
         specifier: ^2.6.3
         version: 2.6.3
+      ai:
+        specifier: 7.0.183
+        version: 7.0.183(zod@4.6.6)
       cmdk:
         specifier: ^1.1.1
         version: 1.1.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)

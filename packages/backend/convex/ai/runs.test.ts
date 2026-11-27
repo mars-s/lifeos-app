@@ -10,7 +10,7 @@ type Reply = { text?: string; calls?: { name: string; input: Record<string, unkn
 
 const server = setupServer();
 const replies: { url: string; reply: Reply }[] = [];
-const requests: { url: string; tools: string[] }[] = [];
+const requests: { url: string; tools: string[]; prompt: string }[] = [];
 
 const chunk = (delta: Record<string, unknown>, finish: string | null = null) =>
   `data: ${JSON.stringify({ id: "chatcmpl-test", object: "chat.completion.chunk", created: 0, model: "served", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
@@ -30,8 +30,8 @@ const sse = (reply: Exclude<Reply, { status: number }>) => {
 };
 
 const answer = async ({ request }: { request: Request }) => {
-  const body = (await request.json()) as { tools?: { function: { name: string } }[] };
-  requests.push({ url: request.url, tools: (body.tools ?? []).map((tool) => tool.function.name) });
+  const body = (await request.json()) as { tools?: { function: { name: string } }[]; messages?: { content: unknown }[] };
+  requests.push({ url: request.url, tools: (body.tools ?? []).map((tool) => tool.function.name), prompt: JSON.stringify(body.messages ?? []) });
   const reply = replies.splice(replies.findIndex((entry) => entry.url === request.url) >>> 0, 1)[0]?.reply;
   if (!reply) return HttpResponse.json({ error: { message: "No reply queued for this test" } }, { status: 500 });
   return "status" in reply ? HttpResponse.json({ error: { message: "refused" } }, { status: reply.status }) : sse(reply);
@@ -66,8 +66,8 @@ const settle = async (t: Backend) => {
   }
 };
 
-const startRun = async (t: Backend, request: string, mode: "ask" | "run" = "run") => {
-  const { jobId } = unwrap(await t.mutation(api.ai.runs.start, { request, mode }));
+const startRun = async (t: Backend, request: string, mode: "ask" | "run" = "run", taskId?: Id<"tasks">) => {
+  const { jobId } = unwrap(await t.mutation(api.ai.runs.start, { request, mode, ...(taskId ? { taskId } : {}) }));
   await settle(t);
   return jobId;
 };
@@ -150,6 +150,23 @@ describe("a run", () => {
     expect(requests[0]?.tools).toContain("get_task");
     expect(requests[0]?.tools).not.toContain("create_task");
     expect(requests[0]?.tools).not.toContain("undo");
+  });
+
+  test("Cmd+J on a Task reads the Task and drafts steps in pencil, and nothing is saved", async () => {
+    const t = await newAiBackend();
+    const taskId = await t.run((ctx) =>
+      ctx.db.insert("tasks", { title: "Plan the Japan trip", notes: "Ten days in April", when: { kind: "anytime" }, parent: { kind: "loose" }, labelIds: [], status: { kind: "open" }, order: "a0" }),
+    );
+    queue({ text: "Here are the steps.", calls: [{ name: "propose_steps", input: { steps: ["Pick the cities", "Book flights", "Book the rail pass"], why: "Flights first, they fill up." } }] }, { text: "Keep them if they look right." });
+    const jobId = await startRun(t, "Break this into steps", "ask", taskId);
+
+    expect(requests[0]?.prompt).toContain("Plan the Japan trip");
+    expect(requests[0]?.prompt).toContain("Ten days in April");
+    expect(requests[0]?.tools).toEqual(expect.arrayContaining(["propose_steps", "propose_estimate", "propose_time", "propose_notes"]));
+    const drafted = (await partsOf(t, jobId)).find((part) => part.type === "tool-propose_steps");
+    expect(drafted && "input" in drafted ? drafted.input : null).toMatchObject({ steps: ["Pick the cities", "Book flights", "Book the rail pass"] });
+    expect(await t.run(async (ctx) => (await ctx.db.query("activity").collect()).length)).toBe(0);
+    expect(await t.run(async (ctx) => (await ctx.db.query("checklistItems").collect()).length)).toBe(0);
   });
 
   test("does not start while AI is off, and an empty ask is refused", async () => {

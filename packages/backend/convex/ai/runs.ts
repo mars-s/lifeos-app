@@ -1,4 +1,4 @@
-import { createThread, listUIMessages, saveMessage, stepCountIs, syncStreams, vStreamArgs } from "@convex-dev/agent";
+import { createThread, listUIMessages, saveMessage, stepCountIs, syncStreams, vStreamArgs, type SyncStreamsReturnValue, type UIMessage } from "@convex-dev/agent";
 import type { ToolSet } from "ai";
 import { paginationOptsValidator } from "convex/server";
 import { v, type Infer } from "convex/values";
@@ -11,10 +11,13 @@ import { serialise } from "../../shared/result";
 import { MCP_SCOPES, mcpOwnerUserId, ownerMutation, ownerQuery, type AgentCaller } from "../platform/access";
 import { IN_APP_CONNECTION, IN_APP_WORKER_NAME, namedWorker } from "../platform/agentRuns";
 import { featureState } from "../platform/features";
+import { agentTimeZone } from "../planner/agentReads";
+import { trimNotes } from "../planner/smartEstimateModel";
 import { vRunMode, type RunMode } from "../platform/tables";
 import { LIFEOS_TOOLS } from "../tools";
 import { aiToolOf, isReadOnly } from "./adapter";
 import { AGENT_NAME, lifeosAgent } from "./agent";
+import { proposalTools } from "./proposals";
 import { languageModelFor } from "./models";
 import { asksFirst, QUIET_CHANGE_LIMIT } from "./policy";
 import { attemptsFor, capabilityChain, capabilityReady } from "./routing";
@@ -53,6 +56,11 @@ export const beginRun = async (ctx: MutationCtx, args: { request: string; mode: 
   return ok<{ jobId: Id<"jobs">; threadId: string }, RunError>({ jobId, threadId });
 };
 
+export const begin = internalMutation({
+  args: { request: v.string(), mode: vRunMode, taskId: v.optional(v.id("tasks")) },
+  handler: async (ctx, args) => serialise(await beginRun(ctx, args)),
+});
+
 export const start = ownerMutation({
   args: { request: v.string(), mode: vRunMode, taskId: v.optional(v.id("tasks")) },
   handler: async (ctx, args) => serialise(await beginRun(ctx, args)),
@@ -90,15 +98,43 @@ export const get = ownerQuery({
 export const messages = ownerQuery({
   args: { threadId: v.string(), paginationOpts: paginationOptsValidator, streamArgs: vStreamArgs },
   handler: async (ctx, args) => {
-    if (!(await runOfThread(ctx, args.threadId))) return { page: [], isDone: true, continueCursor: "" };
+    const quiet = { kind: "list", messages: [] } satisfies SyncStreamsReturnValue;
+    if (!(await runOfThread(ctx, args.threadId))) return { page: [] as UIMessage[], isDone: true, continueCursor: "", streams: quiet as SyncStreamsReturnValue };
     const [paginated, streams] = await Promise.all([listUIMessages(ctx, components.agent, args), syncStreams(ctx, components.agent, args)]);
-    return { ...paginated, streams };
+    return { ...paginated, streams: streams ?? quiet };
   },
 });
 
 export type StepPlan =
   | { kind: "skip" }
-  | { kind: "go"; threadId: string; mode: RunMode; chain: ModelId[]; askFirst: boolean; changes: number; context: string | null };
+  | { kind: "go"; threadId: string; mode: RunMode; chain: ModelId[]; askFirst: boolean; changes: number; timeZone: string; context: string };
+
+const CHECKLIST_LIMIT = 50;
+
+const todayIn = (timeZone: string) => new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+
+const line = (label: string, value: string | undefined | null) => (value ? [`${label}: ${value}`] : []);
+
+const taskContext = async (ctx: QueryCtx, taskId: Id<"tasks"> | undefined) => {
+  const task = taskId ? await ctx.db.get("tasks", taskId) : null;
+  if (!task) return [];
+  const checklist = await ctx.db
+    .query("checklistItems")
+    .withIndex("by_task_order", (q) => q.eq("taskId", task._id))
+    .take(CHECKLIST_LIMIT);
+  return [
+    "Avi pressed Cmd+J on this Task. Answer in one short sentence and, when the ask fits, call exactly one propose_ tool so the answer lands on the Task in pencil. Nothing you propose is saved until he keeps it.",
+    "<task>",
+    ...line("id", task._id),
+    ...line("Title", task.title),
+    ...line("Notes", trimNotes(task.notes)),
+    ...line("Checklist", checklist.map((item) => `${item.done ? "[x]" : "[ ]"} ${item.title}`).join("; ")),
+    ...line("Estimate", task.estimateMinutes === undefined ? null : `${task.estimateMinutes} minutes`),
+    ...line("When", task.when.kind === "scheduled" ? task.when.date : task.when.kind),
+    ...line("Deadline", task.deadline),
+    "</task>",
+  ];
+};
 
 const changesOf = async (ctx: QueryCtx, jobId: Id<"jobs">) =>
   (
@@ -114,7 +150,13 @@ export const planFor = internalQuery({
     const job = await ctx.db.get("jobs", jobId);
     const threadId = job?.job.payload.threadId;
     if (!job || !threadId || job.status.kind !== "claimed") return { kind: "skip" } satisfies StepPlan;
-    const [chain, ai, changes] = await Promise.all([capabilityChain(ctx, "agent"), featureState(ctx, "ai"), changesOf(ctx, jobId)]);
+    const [chain, ai, changes, timeZone, task] = await Promise.all([
+      capabilityChain(ctx, "agent"),
+      featureState(ctx, "ai"),
+      changesOf(ctx, jobId),
+      agentTimeZone(ctx, undefined),
+      taskContext(ctx, job.job.payload.taskId),
+    ]);
     return {
       kind: "go",
       threadId,
@@ -122,7 +164,8 @@ export const planFor = internalQuery({
       chain,
       askFirst: ai.settings.askFirst === true,
       changes,
-      context: null,
+      timeZone,
+      context: [`Today is ${todayIn(timeZone)} in ${timeZone}.`, ...task].join("\n"),
     } satisfies StepPlan;
   },
 });
@@ -151,13 +194,14 @@ export const settle = internalMutation({
   },
 });
 
-const toolsFor = (ctx: ActionCtx, jobId: Id<"jobs">, mode: RunMode) => {
+const toolsFor = (ctx: ActionCtx, jobId: Id<"jobs">, plan: GoPlan) => {
   const caller = inAppCaller(jobId);
-  return Object.fromEntries(
+  const lifeos = Object.fromEntries(
     Object.entries(LIFEOS_TOOLS)
-      .filter(([name, definition]) => !RUN_ONLY_TOOLS.has(name) && (mode === "run" || isReadOnly(definition)))
+      .filter(([name, definition]) => !RUN_ONLY_TOOLS.has(name) && (plan.mode === "run" || isReadOnly(definition)))
       .map(([name, definition]) => [name, aiToolOf(definition, ctx, caller)]),
   ) satisfies ToolSet;
+  return plan.mode === "ask" ? { ...lifeos, ...proposalTools(plan.timeZone) } : lifeos;
 };
 
 const approvalPolicy = (plan: GoPlan) => {
@@ -185,10 +229,10 @@ const tryModel = async (ctx: ActionCtx, plan: GoPlan, attempt: Attempt, tools: T
       {
         promptMessageId,
         tools,
+        system: plan.context,
         stopWhen: stepCountIs(STEPS[plan.mode]),
         onError: ({ error }) => remember(error),
         ...(plan.mode === "run" ? { toolApproval: approvalPolicy(plan) } : {}),
-        ...(plan.context ? { system: plan.context } : {}),
       },
       { saveStreamDeltas: { throttleMs: 50 } },
     );
@@ -216,7 +260,7 @@ export const step = internalAction({
       await ctx.runMutation(internal.ai.runs.settle, { jobId, outcome: { kind: "failed", error: "not_configured" } });
       return null;
     }
-    const tools = toolsFor(ctx, jobId, plan.mode);
+    const tools = toolsFor(ctx, jobId, plan);
     let failure: unknown = null;
     for (const attempt of attempts) {
       const outcome = await tryModel(ctx, plan, attempt, tools, promptMessageId);

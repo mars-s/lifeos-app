@@ -30,6 +30,8 @@ import { isOptimistic, useTaskActions } from "./task-actions";
 import { useFeatureOn } from "./settings/feature-state";
 import { useTemplateActions } from "./template-actions";
 import { TaskTrip } from "./trip";
+import { AskBox } from "./ai/ask-box";
+import { useTaskAsk } from "./ai/task-ask";
 
 type KnownKeys = ReadonlyMap<string, { key: string; order: string }>;
 
@@ -174,10 +176,26 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
   const composer = useRef<HTMLInputElement>(null);
   const hasChecklist = task.checklist.length > 0 || composing;
   const deadline = task.deadline ? deadlineMark(task.deadline, today) : undefined;
+  const ask = useTaskAsk(task, today);
+  const [askVia, setAskVia] = useState<"keys" | "pointer">("keys");
+  const canAsk = saved && ask.available;
+  const openAsk = ask.open;
 
   useEffect(() => {
     if (composing) composer.current?.focus({ preventScroll: true });
   }, [composing]);
+
+  useEffect(() => {
+    if (!canAsk) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== "j") return;
+      event.preventDefault();
+      setAskVia("keys");
+      openAsk();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [canAsk, openAsk]);
 
   return (
     <div data-arrow-scope className="space-y-3 pt-1 pr-3 pb-3 pl-[2.625rem]">
@@ -242,6 +260,18 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
           ))}
         </AnimatePresence>
         <span className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-0.5">
+          {canAsk && (
+            <ToolButton
+              icon={AiMark}
+              label="Ask AI"
+              aria-keyshortcuts="Meta+J"
+              aria-expanded={ask.phase.kind !== "idle"}
+              onClick={() => {
+                setAskVia("pointer");
+                ask.open();
+              }}
+            />
+          )}
           <FocusTool task={task} />
           <LabelPicker
             labels={labels.map((label) => ({ id: label._id, name: label.name, colour: label.colour }))}
@@ -300,6 +330,7 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
           )}
         </span>
       </div>
+      <AskBox ask={ask} via={askVia} />
     </div>
   );
 };
