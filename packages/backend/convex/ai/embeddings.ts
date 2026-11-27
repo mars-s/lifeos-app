@@ -16,7 +16,10 @@ export const embedTexts = async (attempt: Attempt, texts: readonly string[]) => 
   if (!response) return err<number[][], AiError>({ kind: "unavailable" });
   if (response.status === 401 || response.status === 403) return err<number[][], AiError>({ kind: "unauthorised" });
   if (response.status === 429) return err<number[][], AiError>({ kind: "rate_limited" });
-  if (!response.ok) return err<number[][], AiError>({ kind: "unavailable", status: response.status });
+  if (!response.ok) {
+    console.warn("Embeddings refused", response.status, (await response.text().catch(() => "")).slice(0, 300));
+    return err<number[][], AiError>({ kind: "unavailable", status: response.status });
+  }
   const body: unknown = await response.json().catch(() => null);
   if (!isVectors(body) || body.data.length !== texts.length) return err<number[][], AiError>({ kind: "invalid_response" });
   return ok<number[][], AiError>(body.data.toSorted((a, b) => a.index - b.index).map((entry) => entry.embedding));
