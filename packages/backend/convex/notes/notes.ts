@@ -40,7 +40,7 @@ export const list = ownerQuery({
         .withIndex("by_trashed", (q) => q.eq("trashedAt", undefined))
         .take(LIST_LIMIT)
     )
-      .toSorted((a, b) => b.updatedAt - a.updatedAt)
+      .toSorted((a, b) => b.updatedAt - a.updatedAt || b._creationTime - a._creationTime)
       .map(noteRow),
 });
 

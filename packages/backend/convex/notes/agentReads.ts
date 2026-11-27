@@ -57,7 +57,7 @@ export const listNotes = agentQuery({
         .query("notes")
         .withIndex("by_trashed", (q) => q.eq("trashedAt", undefined))
         .take(1000)
-    ).toSorted((a, b) => b.updatedAt - a.updatedAt);
+    ).toSorted((a, b) => b.updatedAt - a.updatedAt || b._creationTime - a._creationTime);
     const shown = live.slice(0, clamp(limit));
     return {
       notes: await Promise.all(shown.map((note) => summarise(ctx, noteRow(note)))),
