@@ -26,6 +26,7 @@ export const vRecordRef = v.union(
   v.object({ table: v.literal("recurrenceRules"), id: v.id("recurrenceRules") }),
   v.object({ table: v.literal("smartBlocks"), id: v.id("smartBlocks") }),
   v.object({ table: v.literal("focusPlan"), id: v.id("focusPlan") }),
+  v.object({ table: v.literal("memories"), id: v.id("memories") }),
 );
 
 export const vActor = v.union(

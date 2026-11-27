@@ -1,7 +1,9 @@
 "use client";
 
 import { ArrowClockwise, CalendarPlus, Hourglass, ListChecks, NotePencil } from "@phosphor-icons/react";
+import { useMutation } from "convex/react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { api } from "@lifeos/backend/api";
 import { MODELS, isModelId } from "@lifeos/backend/ai";
 import { formatMinutes } from "@lifeos/backend/estimate";
 import { AiOrb } from "@/components/lifeos/ai-orb";
@@ -10,7 +12,7 @@ import { Kbd } from "@/components/ui/key-hint";
 import { MorphText } from "@/components/ui/morph-text";
 import type { Glyph } from "@/lib/glyph";
 import { cn } from "@/lib/utils";
-import { TASK_VERBS, type AskPhase, type Proposal, type TaskAsk, type VerbId } from "./task-ask";
+import { TASK_VERBS, type AskPhase, type Proposal, type Remembered, type TaskAsk, type VerbId } from "./task-ask";
 
 export const AI_RING = "[--ring:color-mix(in_oklab,var(--foreground)_50%,transparent)]";
 
@@ -57,6 +59,29 @@ export const PencilDraft = ({ proposal }: { proposal: Proposal }) => (
     {proposal.why && <p className="text-micro text-pretty text-faint-foreground">{proposal.why}</p>}
   </div>
 );
+
+const RememberedRow = ({ memory }: { memory: Remembered }) => {
+  const undo = useMutation(api.platform.undo.undo);
+  const [undone, setUndone] = useState(false);
+  return (
+    <p className="flex min-h-8 items-center gap-2 rounded-lg px-2.5 text-micro text-muted-foreground">
+      <span className="shrink-0 font-medium text-foreground/70">{undone ? "Not remembered" : "Remembered"}</span>
+      <span className={cn("min-w-0 flex-1 truncate", undone && "line-through opacity-60")}>{memory.text}</span>
+      {!undone && (
+        <Button
+          variant="quiet"
+          className="h-7 px-2.5"
+          onClick={() => {
+            setUndone(true);
+            void undo({ activityId: memory.activityId }).then((result) => !result.ok && setUndone(false));
+          }}
+        >
+          Undo
+        </Button>
+      )}
+    </p>
+  );
+};
 
 const ModelTag = ({ model }: { model: string | null }) =>
   model ? (
@@ -186,6 +211,9 @@ const Proposed = ({ phase, ask, field }: { phase: Extract<AskPhase, { kind: "pro
           <PencilDraft proposal={proposal} />
         </div>
       )}
+      {phase.remembered.map((memory) => (
+        <RememberedRow key={memory.activityId} memory={memory} />
+      ))}
       <div className="flex flex-wrap items-center gap-1 p-0.5">
         {proposal ? (
           <Button variant="primary" onClick={() => ask.keep(proposal)} className="gap-2">

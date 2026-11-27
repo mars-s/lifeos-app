@@ -19,6 +19,7 @@ import { LIFEOS_TOOLS } from "../tools";
 import { aiToolOf, isReadOnly } from "./adapter";
 import { AGENT_NAME, lifeosAgent } from "./agent";
 import { proposalTools } from "./proposals";
+import { memoriesFor, memoryBlock, rememberTool } from "./memory";
 import { languageModelFor } from "./models";
 import { asksFirst, QUIET_CHANGE_LIMIT } from "./policy";
 import { attemptsFor, capabilityChain, capabilityReady } from "./capabilities";
@@ -108,7 +109,7 @@ export const messages = ownerQuery({
 
 export type StepPlan =
   | { kind: "skip" }
-  | { kind: "go"; threadId: string; mode: RunMode; chain: ModelId[]; askFirst: boolean; changes: number; timeZone: string; context: string; about: { taskId: string; query: string } | null };
+  | { kind: "go"; threadId: string; mode: RunMode; chain: ModelId[]; askFirst: boolean; changes: number; timeZone: string; memoryOn: boolean; context: string; about: { taskId: string; query: string } | null };
 
 const CHECKLIST_LIMIT = 50;
 
@@ -159,12 +160,13 @@ export const planFor = internalQuery({
     const job = await ctx.db.get("jobs", jobId);
     const threadId = job?.job.payload.threadId;
     if (!job || !threadId || job.status.kind !== "claimed") return { kind: "skip" } satisfies StepPlan;
-    const [chain, ai, changes, timeZone, task] = await Promise.all([
+    const [chain, ai, changes, timeZone, task, memories] = await Promise.all([
       capabilityChain(ctx, "agent"),
       featureState(ctx, "ai"),
       changesOf(ctx, jobId),
       agentTimeZone(ctx, undefined),
       taskContext(ctx, job.job.payload.taskId),
+      memoriesFor(ctx, job.job.payload.request),
     ]);
     return {
       kind: "go",
@@ -175,7 +177,8 @@ export const planFor = internalQuery({
       changes,
       timeZone,
       about: aboutTask(job.job.payload.taskId, task),
-      context: [`Today is ${todayIn(timeZone)} in ${timeZone}.`, ...task].join("\n"),
+      memoryOn: ai.settings.memory !== false,
+      context: [`Today is ${todayIn(timeZone)} in ${timeZone}.`, ...task, ...memoryBlock(memories)].join("\n"),
     } satisfies StepPlan;
   },
 });
@@ -211,7 +214,8 @@ const toolsFor = (ctx: ActionCtx, jobId: Id<"jobs">, plan: GoPlan) => {
       .filter(([name, definition]) => !RUN_ONLY_TOOLS.has(name) && (plan.mode === "run" || isReadOnly(definition)))
       .map(([name, definition]) => [name, aiToolOf(definition, ctx, caller)]),
   ) satisfies ToolSet;
-  return plan.mode === "ask" ? { ...lifeos, ...proposalTools(plan.timeZone) } : lifeos;
+  const memory: ToolSet = plan.memoryOn ? { remember: rememberTool(ctx, jobId) } : {};
+  return plan.mode === "ask" ? { ...lifeos, ...proposalTools(plan.timeZone), ...memory } : { ...lifeos, ...memory };
 };
 
 const approvalPolicy = (plan: GoPlan) => {

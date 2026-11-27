@@ -13,6 +13,7 @@ import { useChange } from "../changes";
 import { useQuietView } from "../hooks";
 import { useFeatures } from "./feature-state";
 import { ProviderKey } from "./provider-keys";
+import { MemorySettings } from "./memory-settings";
 import { SettingsGroup, SettingsRow } from "./rows";
 
 type Overview = FunctionReturnType<typeof api.ai.routing.overview>;
@@ -194,6 +195,7 @@ export const AiSettings = () => {
           <AskFirstRow askFirst={overview.askFirst} />
         </SettingsGroup>
       )}
+      <MemorySettings />
     </>
   );
 };

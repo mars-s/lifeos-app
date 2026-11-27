@@ -33,7 +33,16 @@ export const vIndexKind = v.union(v.literal("task"), v.literal("project"), v.lit
 export type IndexedRef = Infer<typeof vIndexedRef>;
 export type IndexKind = Infer<typeof vIndexKind>;
 
+export const vMemoryKind = v.union(v.literal("preference"), v.literal("routine"), v.literal("person"), v.literal("place"), v.literal("goal"));
+
+export const vMemorySource = v.union(v.object({ kind: v.literal("avi") }), v.object({ kind: v.literal("run"), jobId: v.id("jobs") }));
+
+export type MemoryKind = Infer<typeof vMemoryKind>;
+
 export const aiTables = {
+  memories: defineTable({ text: v.string(), kind: vMemoryKind, source: vMemorySource, pinned: v.boolean(), createdAt: v.number() })
+    .index("by_pinned", ["pinned"])
+    .searchIndex("by_text", { searchField: "text" }),
   aiIndex: defineTable({
     entity: vIndexedRef,
     kind: vIndexKind,

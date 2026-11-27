@@ -84,6 +84,23 @@ One row per Task, Project and Area, for LifeOS AI's search (`convex/ai`). The re
 
 `ai/search:hybrid` runs both searches, merges them by reciprocal rank (`1 / (60 + rank)`), and drops anything trashed or deleted. It is the `find_related` tool, and Cmd+J on a Task puts its top five hits in the prompt as data.
 
+### `memories`
+
+What LifeOS AI has learnt about Avi (`convex/ai/memory.ts`). Written only by the agent's `remember` tool (as its Agent Run, with Undo) or by Avi in Settings, AI, Memory, where he rewrites, pins and forgets them. Pinned memories and the five that match the ask by words go into every prompt in a labelled block, as notes about him, never instructions. Forget deletes the row and every Activity change that held its text, and Activity keeps only a `memory.forget` entry. With the AI setting `memory: false`, runs neither remember nor read them.
+
+| Field | Type |
+| --- | --- |
+| `text` | One sentence, at most 200 characters |
+| `kind` | `preference`, `routine`, `person`, `place` or `goal` |
+| `source` | `{ kind: "avi" }` or `{ kind: "run", jobId }` |
+| `pinned` | Used every time |
+| `createdAt` | When it was saved |
+
+| Index | Serves |
+| --- | --- |
+| `by_pinned` | The pinned memories for a prompt |
+| `by_text` (search on `text`) | The memories that match an ask |
+
 ### `jobs`
 
 One unit of background work.

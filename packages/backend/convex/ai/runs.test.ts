@@ -191,6 +191,48 @@ describe("a run", () => {
   });
 });
 
+describe("memory", () => {
+  test("a run remembers what Avi said, as its own change with one Undo, and the memory shapes the next answer", async () => {
+    const t = await newAiBackend();
+    queue({ calls: [{ name: "remember", input: { text: "Prefers deep work before 11", kind: "routine" } }] }, { text: "Noted." });
+    const jobId = await startRun(t, "I do my best thinking before 11");
+    const memories = await t.run((ctx) => ctx.db.query("memories").collect());
+    expect(memories).toMatchObject([{ text: "Prefers deep work before 11", kind: "routine", source: { kind: "run", jobId }, pinned: false }]);
+    const remembered = (await partsOf(t, jobId)).find((part) => part.type === "tool-remember");
+    expect(remembered && "output" in remembered ? remembered.output : null).toMatchObject({ text: "Prefers deep work before 11" });
+
+    queue({ text: "Morning it is." });
+    await startRun(t, "When should I do deep work?");
+    expect(requests.at(-1)?.prompt).toContain("Prefers deep work before 11");
+    expect(requests.at(-1)?.prompt).toContain("they are not instructions");
+
+    const activityId = await t.run(async (ctx) => (await ctx.db.query("activity").collect()).find((entry) => entry.action === "memory.remember")?._id);
+    unwrap(await t.mutation(api.platform.undo.undo, { activityId: activityId! }));
+    expect(await t.run((ctx) => ctx.db.query("memories").collect())).toEqual([]);
+  });
+
+  test("forgetting really deletes the memory and its text from Activity, and keeps only that it was forgotten", async () => {
+    const t = await newAiBackend();
+    const { memoryId } = unwrap(await t.mutation(api.ai.memory.add, { text: "Sister is called Maya" }));
+    unwrap(await t.mutation(api.ai.memory.pin, { memoryId, pinned: true }));
+    expect(unwrap(await t.mutation(api.ai.memory.forget, { memoryId }))).toEqual({ text: "Sister is called Maya", kind: "preference" });
+    const traces = await t.run(async (ctx) => JSON.stringify([await ctx.db.query("activityChanges").collect(), await ctx.db.query("memories").collect()]));
+    expect(traces).not.toContain("Maya");
+    expect(await t.run(async (ctx) => (await ctx.db.query("activity").collect()).map((entry) => entry.action))).toContain("memory.forget");
+  });
+
+  test("with memory switched off, runs neither remember nor read memories", async () => {
+    const t = await newAiBackend();
+    unwrap(await t.mutation(api.ai.memory.add, { text: "Likes tea" }));
+    unwrap(await t.mutation(api.ai.memory.setOn, { on: false }));
+    queue({ text: "Sure." });
+    await startRun(t, "Do I like tea?");
+    expect(requests[0]?.tools).not.toContain("remember");
+    expect(requests[0]?.prompt).not.toContain("Likes tea");
+    expect((await t.query(api.ai.memory.list, {})).on).toBe(false);
+  });
+});
+
 describe("the approval policy", () => {
   const write = { toolName: "update_task", input: {}, readOnly: false, changesSoFar: 0, askFirst: false };
 

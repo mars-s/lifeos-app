@@ -193,7 +193,7 @@ export const CAPABILITY_IDS = Object.keys(CAPABILITIES) as CapabilityId[];
 export const vCapabilityId = v.union(v.literal("smartEstimates"), v.literal("breakIntoSteps"), v.literal("tripDetection"), v.literal("agent"), v.literal("searchIndex"));
 
 export const vRoute = v.object({ on: v.boolean(), model: v.string() });
-export const vAiSettings = v.object({ routes: v.record(v.string(), vRoute), askFirst: v.optional(v.boolean()) });
+export const vAiSettings = v.object({ routes: v.record(v.string(), vRoute), askFirst: v.optional(v.boolean()), memory: v.optional(v.boolean()) });
 export type AiSettings = Infer<typeof vAiSettings>;
 export const DEFAULT_AI_SETTINGS: AiSettings = { routes: {} };
 

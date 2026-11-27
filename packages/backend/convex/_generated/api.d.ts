@@ -14,6 +14,7 @@ import type * as ai_aiIndex from "../ai/aiIndex.js";
 import type * as ai_capabilities from "../ai/capabilities.js";
 import type * as ai_embeddings from "../ai/embeddings.js";
 import type * as ai_indexRows from "../ai/indexRows.js";
+import type * as ai_memory from "../ai/memory.js";
 import type * as ai_migrations from "../ai/migrations.js";
 import type * as ai_models from "../ai/models.js";
 import type * as ai_policy from "../ai/policy.js";
@@ -106,6 +107,7 @@ declare const fullApi: ApiFromModules<{
   "ai/capabilities": typeof ai_capabilities;
   "ai/embeddings": typeof ai_embeddings;
   "ai/indexRows": typeof ai_indexRows;
+  "ai/memory": typeof ai_memory;
   "ai/migrations": typeof ai_migrations;
   "ai/models": typeof ai_models;
   "ai/policy": typeof ai_policy;

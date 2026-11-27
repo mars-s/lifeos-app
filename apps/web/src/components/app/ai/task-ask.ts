@@ -28,6 +28,8 @@ export type Proposal =
   | { kind: "time"; start: number; minutes: number; timeZone: string; date: string; why: string }
   | { kind: "notes"; text: string; why: string };
 
+export type Remembered = { text: string; activityId: Id<"activity"> };
+
 type Part = { type: string; input?: unknown; output?: unknown; text?: string };
 
 const record = (value: unknown) => (typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {});
@@ -52,7 +54,7 @@ export type AskPhase =
   | { kind: "asking" }
   | { kind: "reading"; verb: VerbId | null; request: string }
   | { kind: "writing"; verb: VerbId | null; request: string; words: string }
-  | { kind: "proposed"; verb: VerbId | null; request: string; words: string; proposal: Proposal | null; answeredBy: string | null }
+  | { kind: "proposed"; verb: VerbId | null; request: string; words: string; proposal: Proposal | null; answeredBy: string | null; remembered: Remembered[] }
   | { kind: "failed"; request: string };
 
 type Asked = { jobId: Id<"jobs">; threadId: string; verb: VerbId | null; request: string } | null;
@@ -92,13 +94,19 @@ export const useTaskAsk = (task: PlannerTask, today: string) => {
     .filter((said) => said !== "")
     .join(" ");
   const proposal = parts.map(proposalOf).findLast((found) => found !== null) ?? null;
+  const remembered = parts.flatMap((part) => {
+    const output = record(part.output);
+    return part.type === "tool-remember" && typeof output.text === "string" && typeof output.activityId === "string" && output.activityId !== ""
+      ? [{ text: output.text, activityId: output.activityId as Id<"activity"> } satisfies Remembered]
+      : [];
+  });
 
   const pending = sending ?? (asked && { verb: asked.verb, request: asked.request });
   const phaseOf = () => {
     if (!open) return { kind: "idle" } satisfies AskPhase;
     if (!pending) return { kind: "asking" } satisfies AskPhase;
     if (run?.status === "failed") return { kind: "failed", request: pending.request } satisfies AskPhase;
-    if (run?.status === "done") return { kind: "proposed", ...pending, words, proposal, answeredBy: run.answeredBy } satisfies AskPhase;
+    if (run?.status === "done") return { kind: "proposed", ...pending, words, proposal, answeredBy: run.answeredBy, remembered } satisfies AskPhase;
     return words ? ({ kind: "writing", ...pending, words } satisfies AskPhase) : ({ kind: "reading", ...pending } satisfies AskPhase);
   };
   const phase: AskPhase = phaseOf();
