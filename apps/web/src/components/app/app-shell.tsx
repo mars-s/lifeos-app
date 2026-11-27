@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/lifeos/states";
 import { undoLast } from "@/components/lifeos/undo";
 import { Toaster } from "@/components/ui/toast-stack";
 import { cn } from "@/lib/utils";
+import { NotesCatchUp } from "../notes/catch-up";
 import { NoteBeside } from "../notes/note-beside";
 import { CommandBarHost } from "./command-bar/host";
 import { ConfirmHost } from "./confirm";
@@ -283,6 +284,7 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
       </PanelBoundary>
       <PanelBoundary panel="bar" fallback={() => null}>
         <NoteBeside sidebar={sidebar} />
+        <NotesCatchUp />
       </PanelBoundary>
       <PanelBoundary panel="bar" fallback={() => null}>
         <Onboarding />

@@ -22,8 +22,7 @@ const route = (pathname: string) => {
 
 const noteFor = (env: Env, noteId: string) => env.NOTE.get(env.NOTE.idFromName(noteId));
 
-export default {
-  async fetch(request: Request, env: Env) {
+const handle = async (request: Request, env: Env) => {
     const { pathname } = new URL(request.url);
     if (request.method === "OPTIONS") return reply(null, 204);
     if (pathname === "/health") return reply("ok", 200);
@@ -44,7 +43,8 @@ export default {
       const body = new Uint8Array(await request.arrayBuffer());
       const parsed = (() => {
         try {
-          return decodeCatchUpRequest(body);
+          const decoded = decodeCatchUpRequest(body);
+          return decoded.stateVector.byteLength > 0 ? decoded : null;
         } catch {
           return null;
         }
@@ -60,5 +60,14 @@ export default {
     }
 
     return reply("method not allowed", 405);
+};
+
+export default {
+  async fetch(request: Request, env: Env) {
+    try {
+      return await handle(request, env);
+    } catch {
+      return reply("the relay could not do that", 500);
+    }
   },
 } satisfies ExportedHandler<Env>;

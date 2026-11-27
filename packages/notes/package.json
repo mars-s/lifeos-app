@@ -6,7 +6,8 @@
     "./protocol": "./src/protocol.ts",
     "./markdown": "./src/markdown.ts",
     "./client": "./src/client.ts",
-    "./editor": "./src/editor/note-editor.tsx"
+    "./editor": "./src/editor/note-editor.tsx",
+    "./catchup": "./src/catchup.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

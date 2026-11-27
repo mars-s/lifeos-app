@@ -2,6 +2,7 @@ import { NativeTabs } from "expo-router/native-tabs";
 import { api } from "@lifeos/backend/api";
 import { convex } from "@/lib/convex";
 import { useKit } from "@/lib/kit";
+import { useNotesCatchUp } from "@/lib/notes/catch-up";
 import { useLocalDate, useViewState, valueOf } from "@/lib/views";
 
 export const useCounts = () => {
@@ -12,6 +13,7 @@ export const useCounts = () => {
 export const TabsLayout = () => {
   const { colors, dark } = useKit();
   const counts = useCounts();
+  useNotesCatchUp();
   return (
     <NativeTabs minimizeBehavior="onScrollDown" tintColor={colors.accent} badgeBackgroundColor={dark ? colors.input : colors.mutedForeground}>
       <NativeTabs.Trigger name="(today)">

@@ -1,10 +1,42 @@
+import { SQLiteStorage } from "expo-sqlite/kv-store";
 import { useSyncExternalStore } from "react";
 import * as Y from "yjs";
 import { projectNote, type FolderRef } from "@lifeos/notes/markdown";
 import { NOTE_META, NOTE_TEXT } from "@lifeos/notes/protocol";
+import { remoteOrigin } from "@lifeos/notes/client";
 import { appendUpdate, forgetIndexRow, loadIndex, loadUpdates, saveIndexRow, type LocalNote } from "./store";
 
 const INDEX_DELAY_MS = 400;
+const marksStore = new SQLiteStorage("lifeos-notes");
+const TOUCHED_KEY = "touched";
+
+const readTouched = () => {
+  try {
+    return JSON.parse(marksStore.getItemSync(TOUCHED_KEY) ?? "{}") as Record<string, number>;
+  } catch {
+    return {};
+  }
+};
+
+const touched = readTouched();
+
+const touch = (docId: string) => {
+  touched[docId] = Date.now();
+  void marksStore.setItem(TOUCHED_KEY, JSON.stringify(touched));
+};
+
+export const editedSince = (since: number) => Object.keys(touched).filter((docId) => (touched[docId] ?? 0) > since);
+
+export const readMarks = () => {
+  try {
+    const parsed = JSON.parse(marksStore.getItemSync("marks") ?? "null") as { core: number; local: number } | null;
+    return parsed ?? { core: 0, local: 0 };
+  } catch {
+    return { core: 0, local: 0 };
+  }
+};
+
+export const saveMarks = (marks: { core: number; local: number }) => void marksStore.setItem("marks", JSON.stringify(marks));
 const loadOrigin = Symbol("load");
 
 export const domOrigin = Symbol("dom");
@@ -56,7 +88,7 @@ export const folderOf = (doc: Y.Doc) => {
   return folder && typeof folder === "object" && "table" in folder && "id" in folder ? (folder as FolderRef) : undefined;
 };
 
-const remember = (docId: string, doc: Y.Doc) => {
+export const remember = (docId: string, doc: Y.Doc) => {
   const text = textOf(doc).toString();
   const day = metaOf(doc).get("day");
   if (text.trim().length === 0 && typeof day !== "string") return;
@@ -87,6 +119,7 @@ export const openNote = (docId: string) => {
   let timer: ReturnType<typeof setTimeout> | null = null;
   doc.on("update", (update: Uint8Array, origin: unknown) => {
     if (origin === loadOrigin) return;
+    if (origin !== remoteOrigin) touch(docId);
     void appendUpdate(docId, update, () => Y.encodeStateAsUpdate(doc));
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => remember(docId, doc), INDEX_DELAY_MS);
@@ -109,4 +142,28 @@ export const forgetLocal = (docId: string) => {
   index = rest;
   publish();
   void forgetIndexRow(docId);
+};
+
+export const withNote = async (docId: string, use: (doc: Y.Doc) => Promise<void>) => {
+  const known = opened.get(docId);
+  if (known) {
+    await known.ready;
+    return use(known.doc);
+  }
+  const doc = new Y.Doc();
+  const rows = await loadUpdates(docId);
+  doc.transact(() => {
+    for (const row of rows) Y.applyUpdate(doc, row);
+  }, loadOrigin);
+  const writes: Promise<unknown>[] = [];
+  doc.on("update", (update: Uint8Array, origin: unknown) => {
+    if (origin !== loadOrigin) writes.push(appendUpdate(docId, update, () => Y.encodeStateAsUpdate(doc)));
+  });
+  try {
+    await use(doc);
+    if (writes.length > 0) remember(docId, doc);
+    await Promise.all(writes);
+  } finally {
+    doc.destroy();
+  }
 };

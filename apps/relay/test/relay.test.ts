@@ -3,6 +3,7 @@ import { generateKeyPair } from "jose";
 import { describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
 import { NOTES_PROTOCOL, NOTE_META, NOTE_TEXT, decodeCatchUpReply, encodeCatchUpRequest } from "@lifeos/notes/protocol";
+import { catchUpAll } from "@lifeos/notes/catchup";
 import { COMPACT_AFTER_ROWS, type Note } from "../src/note.ts";
 import { BASE, TestPeer, mint, settle, upgrade } from "./client.ts";
 
@@ -239,5 +240,53 @@ describe("projection", () => {
       noteTitles: ["Dense and sparse"],
       entities: [{ table: "tasks", id: "abc123" }],
     });
+  });
+});
+
+describe("full copy on every device", () => {
+  it("catches up every note that changed in Core and pushes what this device edited", async () => {
+    const token = await mint();
+    const mac = new TestPeer("full-a", token);
+    await mac.connect();
+    mac.type("Written on the Mac while the phone slept.");
+    await settle();
+    mac.disconnect();
+
+    const phoneDocs = new Map<string, Y.Doc>([
+      ["full-a", new Y.Doc()],
+      ["full-b", new Y.Doc()],
+    ]);
+    phoneDocs.get("full-b")?.getText(NOTE_TEXT).insert(0, "Written on the phone offline.");
+    const result = await catchUpAll({
+      marks: { core: 100, local: 200 },
+      changedInCore: async (since) => [{ docId: "full-a", updatedAt: since + 50 }],
+      editedHere: () => ["full-b"],
+      withDoc: async (docId, use) => use(phoneDocs.get(docId)!),
+      token,
+      relayUrl: "https://relay.test",
+      fetch: (input, init) => SELF.fetch(input as string, init),
+      now: () => 999,
+    });
+    expect(result).toMatchObject({ marks: { core: 150, local: 999 }, synced: 2, failed: [], more: false });
+    expect(phoneDocs.get("full-a")?.getText(NOTE_TEXT).toString()).toBe("Written on the Mac while the phone slept.");
+
+    const web = new TestPeer("full-b", token);
+    await web.connect();
+    await settle();
+    expect(web.value()).toBe("Written on the phone offline.");
+    web.disconnect();
+  });
+
+  it("keeps the old marks when a note fails, so the next launch tries again", async () => {
+    const result = await catchUpAll({
+      marks: { core: 10, local: 20 },
+      changedInCore: async () => [{ docId: "full-c", updatedAt: 40 }],
+      editedHere: () => [],
+      withDoc: async (_docId, use) => use(new Y.Doc()),
+      token: "not-a-token",
+      relayUrl: "https://relay.test",
+      fetch: (input, init) => SELF.fetch(input as string, init),
+    });
+    expect(result).toMatchObject({ marks: { core: 10, local: 20 }, synced: 0, failed: ["full-c"] });
   });
 });

@@ -4,8 +4,10 @@ import { IndexeddbPersistence } from "y-indexeddb";
 import * as Y from "yjs";
 import { NOTE_META, NOTE_TEXT } from "@lifeos/notes/protocol";
 import { projectNote, type FolderRef } from "@lifeos/notes/markdown";
+import { remoteOrigin } from "@lifeos/notes/client";
 
 const INDEX_KEY = "lifeos-notes-index";
+const TOUCHED_KEY = "lifeos-notes-touched";
 const INDEX_DELAY_MS = 400;
 
 export type LocalNote = {
@@ -56,6 +58,25 @@ export const forgetLocal = (docId: string) => {
   writeIndex();
 };
 
+const readTouched = () => {
+  try {
+    return JSON.parse(globalThis.localStorage?.getItem(TOUCHED_KEY) ?? "{}") as Record<string, number>;
+  } catch {
+    return {};
+  }
+};
+
+const touched: Record<string, number> = typeof window === "undefined" ? {} : readTouched();
+
+const touch = (docId: string) => {
+  touched[docId] = Date.now();
+  try {
+    globalThis.localStorage?.setItem(TOUCHED_KEY, JSON.stringify(touched));
+  } catch {
+    return;
+  }
+};
+
 export const dailyDocId = (date: string) => `day-${date}`;
 
 export const newDocId = () => {
@@ -71,7 +92,7 @@ const folderOf = (doc: Y.Doc) => {
   return folder && typeof folder === "object" && "table" in folder && "id" in folder ? (folder as FolderRef) : undefined;
 };
 
-const remember = (docId: string, doc: Y.Doc) => {
+export const remember = (docId: string, doc: Y.Doc) => {
   const text = textOf(doc).toString();
   const day = metaOf(doc).get("day");
   if (text.trim().length === 0 && typeof day !== "string") return;
@@ -98,7 +119,8 @@ export const openNote = (docId: string) => {
   const persistence = new IndexeddbPersistence(`lifeos-note-${docId}`, doc);
   const ready = persistence.whenSynced.then(() => undefined);
   let timer: ReturnType<typeof setTimeout> | null = null;
-  doc.on("update", () => {
+  doc.on("update", (_update: Uint8Array, origin: unknown) => {
+    if (origin !== remoteOrigin && origin !== persistence) touch(docId);
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => remember(docId, doc), INDEX_DELAY_MS);
   });
@@ -116,3 +138,24 @@ export const setFolder = (doc: Y.Doc, folder: FolderRef | null) =>
   doc.transact(() => (folder ? metaOf(doc).set("folder", folder) : metaOf(doc).delete("folder")));
 
 export const knownDocIds = () => Object.keys(index);
+
+export const editedSince = (since: number) => Object.keys(touched).filter((docId) => (touched[docId] ?? 0) > since);
+
+export const withNote = async (docId: string, use: (doc: Y.Doc) => Promise<void>) => {
+  const known = opened.get(docId);
+  if (known) {
+    await known.ready;
+    return use(known.doc);
+  }
+  const doc = new Y.Doc();
+  const persistence = new IndexeddbPersistence(`lifeos-note-${docId}`, doc);
+  try {
+    await persistence.whenSynced;
+    const before = Y.encodeStateVector(doc);
+    await use(doc);
+    if (Y.encodeStateAsUpdate(doc, before).byteLength > 2) remember(docId, doc);
+  } finally {
+    await persistence.destroy();
+    doc.destroy();
+  }
+};
