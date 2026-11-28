@@ -10,7 +10,7 @@ describe("the Result wire format", () => {
     expect(wireError(new InvalidDate({ input: "2026-02-30" }))).toStrictEqual({ kind: "invalid_date", input: "2026-02-30" });
   });
 
-  it("matches the bytes neverthrow's serialise produced", () => {
+  it("matches the bytes the apps have always decoded", () => {
     const refused = resultToWire(Result.fail(new InvalidDate({ input: "soon" })));
     const saved = resultToWire(Result.succeed({ taskId: "t1", activityId: null }));
     expect(JSON.stringify(refused)).toBe('{"ok":false,"error":{"kind":"invalid_date","input":"soon"}}');

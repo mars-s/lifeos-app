@@ -1,8 +1,19 @@
 # Effect migration plan
 
+**Done (29 Nov 2026).** All nine slices are on main. neverthrow is gone from the code, the lockfile and every `package.json`, and oxlint rejects it. `docs/effect.md` describes the finished state; this page and `docs/effect-briefs/` are kept as history.
+
 Issue #90. Decided by Avi on 28 Nov 2026: move the whole app to the latest Effect, remove neverthrow, and use Effect's dependency injection, Schema and Atom. One planner set the patterns (`docs/effect.md`); Opus and Sonnet agents implement the slices below from the briefs in `docs/effect-briefs/`.
 
-Status: the tooling, the rules, the reference code and the briefs are on main. No slice has started.
+## After Avi reinstalls the iPhone and Mac apps
+
+The builds installed during the migration still decode Results with neverthrow's `deserialise`. They keep working because the JSON never changed, and nothing below may change until new builds replace them on both devices:
+
+- The wire JSON itself is permanent (`shared/result.test.ts` pins its bytes). It is not tied to the old builds.
+- `wireToResult` drops a `_tag` that leaked onto the wire. Keep it while any build that could have cached a leaked refusal is installed; it costs nothing.
+- The iPhone prefs adapter in `apps/mobile/src/lib/runtime.ts` reads a bare string (what the old build stored for the Today face and the kept home page) as JSON. It can go once the new build has rewritten both values.
+- The public function names, paths and validators stay frozen for good, not only until the reinstall.
+
+Status before the slices ran: the tooling, the rules, the reference code and the briefs were on main.
 
 ## What is already on main
 

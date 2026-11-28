@@ -564,7 +564,7 @@ One row per Connect in flight: `state`, the PKCE `verifier`, `expiresAt` (10 min
 ### How Oura lands
 
 - **Connect.** `health/oura:connect` (an `ownerMutation`) writes a state row and returns Oura's authorise URL with the `daily` scope, the state and an S256 PKCE challenge. Oura sends Avi back to `https://<deployment>.convex.site/oura/callback`, which takes the state, trades the code (with the verifier) for tokens, stores them and queues a sync. Connect and Sync now are `ownerMutation`s, not `changeMutation`s: they touch credentials, not Avi's data, and Activity must never hold a token.
-- **Sync.** `health/oura:sync` (an internal action) runs from the cron at quarter past every fourth hour, after a connect, and from **Sync now** (`health/oura:syncNow`). It refreshes the token when it has under five minutes left, then reads `sleep`, `daily_sleep` and `sleep_time` from 16 days back to tomorrow and upserts one `healthDays` row per day. An expected failure (not set up, not connected, token refused, Oura refused access, rate limit, Oura down, a body it cannot read) is a `neverthrow` error stored on `ouraConnection.sync`. Rows already there stay.
+- **Sync.** `health/oura:sync` (an internal action) runs from the cron at quarter past every fourth hour, after a connect, and from **Sync now** (`health/oura:syncNow`). It refreshes the token when it has under five minutes left, then reads `sleep`, `daily_sleep` and `sleep_time` from 16 days back to tomorrow and upserts one `healthDays` row per day. An expected failure (not set up, not connected, token refused, Oura refused access, rate limit, Oura down, a body it cannot read) is a tagged error (`health/errors.ts`) stored on `ouraConnection.sync` by its wire form. Rows already there stay.
 
 ### The Sleep Window
 
@@ -669,10 +669,10 @@ One search across modules: a search index on `title` for `tasks` and `projects`,
 
 ## How a change flows
 
-1. A public mutation built with `changeMutation` (`platform/change.ts`) resolves the actor. With no `agentRun` argument the actor is Avi. With `agentRun: { token, jobId }` it must be a claimed `agent` Job held by that Worker.
-   An MCP write tool runs the very same change through `changeAs` (`platform/change.ts`), inside an internal mutation built with `agentMutation`, with its connection's run as the actor. `changeMutation` keeps each mutation's spec, so the two paths cannot drift.
-2. The handler validates its input and returns a `Result`. It writes only through the recorder (`platform/activity.ts`), which records each insert, patch and delete in `activityChanges` under one `activity` row.
-3. The mutation returns `serialise(result)` with the `activityId`, so the client can offer undo.
+1. A public mutation built with `changeMutation` (`platform/effect.ts`) resolves the actor. With no `agentRun` argument the actor is Avi. With `agentRun: { token, jobId }` it must be a claimed `agent` Job held by that Worker.
+   An MCP write tool runs the very same change through `changeAs` (`platform/effect.ts`), inside an internal mutation built with `agentMutation`, with its connection's run as the actor. `changeMutation` keeps each mutation's spec, so the two paths cannot drift.
+2. The handler validates its input and returns an `Effect` that fails with a tagged error. It writes only through the recorder (`platform/activity.ts`), which records each insert, patch and delete in `activityChanges` under one `activity` row.
+3. The mutation returns `resultToWire(result)` (`shared/result.ts`) with the `activityId`, so the client can offer undo.
 
 Undo (`platform/undo:undo` and `undoRun`) checks that every touched record still holds the values the action left. If a later action changed them, it refuses with `changed_since` and writes nothing. Undoing a create is refused the same way while the record has Checklist Items, Work Blocks, Focus Sessions or links that the undo would not also remove or point back elsewhere (Convert to Project moves them onto a Task it creates, and its undo moves them back). Otherwise undo writes the inverse as a new Activity row. A record the undone actions both created and deleted is skipped. Undo refuses to undo an undo or a Things Import. `undoRun` refuses with `run_active` while the run's Job is claimed and its lease holds, and an Agent Run can act only while its lease holds.
 

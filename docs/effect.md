@@ -1,6 +1,6 @@
 # Effect in LifeOS
 
-LifeOS uses [Effect](https://effect.website) 4 for expected failures, dependency injection, boundary decoding and client state. It replaces neverthrow. The move is in progress: `docs/effect-migration.md` has the plan and `docs/effect-briefs/` has one brief per slice.
+LifeOS uses [Effect](https://effect.website) 4 for expected failures, dependency injection, boundary decoding and client state. It is the only error model in the repo. `docs/effect-migration.md` records how the app moved over.
 
 ## Read first
 
@@ -10,18 +10,16 @@ LifeOS uses [Effect](https://effect.website) 4 for expected failures, dependency
 
 | Pattern | Reference file | Test |
 | --- | --- | --- |
-| Result transport | `packages/backend/shared/effect/wire.ts` | `wire.test.ts` |
-| Tagged errors | `packages/backend/convex/planner/errors.ts`, `packages/backend/shared/effect/errors.ts` | `errors.test.ts` |
+| Result transport | `packages/backend/shared/result.ts` | `result.test.ts` |
+| Tagged errors | `packages/backend/convex/planner/errors.ts`, `packages/backend/shared/errors.ts` | `errors.test.ts` |
 | Convex builders, services and edges | `packages/backend/convex/platform/effect.ts` | `effect.test.ts` |
 | A real module on the builders | `packages/backend/convex/platform/undo.ts`, `jobs.ts`, `links.ts` | `wire.test.ts`, `undo.test.ts` |
 | Service over Convex and HTTP, live and test Layers | `packages/backend/convex/platform/secrets.ts` | `secrets.layer.test.ts` |
-| Service, live and test Layers, Schema boundary | `packages/backend/shared/effect/patterns/oura.ts` | `oura.test.ts` |
+| Service, live and test Layers, Schema boundary | `packages/backend/convex/health/oura.ts` | `oura.layer.test.ts` |
 | Client `Backend` service | `packages/backend/shared/client/backend.ts` | `backend.test.ts` |
-| Atoms | `packages/backend/shared/effect/patterns/atoms.ts` | `atoms.test.ts` |
-| Atoms from React | `apps/web/src/lib/effect/atoms.pattern.tsx` | `atoms.pattern.test.tsx` |
-| Atoms from React Native | `apps/mobile/src/lib/effect/atoms.pattern.tsx` | typecheck |
-
-Files under `patterns/` and files named `*.pattern.*` are references. The Convex sketch is now `convex/platform/effect.ts`; the last slice deletes the rest once real code shows the same thing.
+| Atoms, registry and runtime on the web | `apps/web/src/lib/atoms.ts`, `apps/web/src/lib/runtime.ts` | `runtime.test.ts` |
+| Atoms from React | `apps/web/src/components/app/selection.ts`, `apps/web/src/components/app/oura.ts` | `selection.test.ts` |
+| Atoms from React Native | `apps/mobile/src/lib/atoms.ts`, `apps/mobile/src/lib/runtime.ts` | typecheck |
 
 ## Packages
 
@@ -66,7 +64,7 @@ export class InvalidBlock extends Schema.TaggedError<InvalidBlock>()("InvalidBlo
 - `kind` is the snake_case word the apps, the database and the MCP tools already read. `Schema.tag` fills it in, so you write `new InvalidBlock({ reason: "overlap" })`.
 - The fields are the wire fields, with the same names and types as today.
 - A field may not be called `name`, `message`, `stack` or `cause`: `Error` owns those. When the wire needs one of those names, give the class a `wire()` method. `NameTaken` in `planner/errors.ts` is the one case today.
-- Each module keeps its errors in `<module>/errors.ts` with a union type (`PlannerFailure`). Its test asserts `SameWire<PlannerFailure, PlannerError>` against the old plain union, so a changed kind or field fails typecheck.
+- Each module keeps its errors in `<module>/errors.ts` with a union type (`PlannerFailure`). Its test asserts `SameWire<PlannerFailure, PlannerError>`, where `PlannerError` is the wire union written out as a literal type in the test, so a changed kind or field fails typecheck. When code outside the module needs the wire type, derive it (`export type UndoError = Wire<UndoFailure>`); do not write it out twice.
 - Recover with `Effect.catchTag("InvalidBlock", ...)` or `Effect.catchTags`. Convert a foreign error at the boundary with `Effect.mapError`.
 
 ## Services and Layers
@@ -95,18 +93,18 @@ export class Oura extends Context.Service<
 | Convex ctx for unrecorded writes | `Writes` | same | `ownerMutation`, `workerMutation`, internal mutations | same |
 | Convex action ctx | `Acts` | same | action builders | same |
 | Change recorder | `Recorder` | same | `changeMutation` | same, with the real recorder |
+| Mutation ctx inside a change, for unrecorded side effects | `Unrecorded` | same | `changeMutation`, `runChange` | same |
 | Who is acting | `CurrentActor`, `CurrentWorker` | same | builders | `Effect.provideService` |
 | Clock | `Clock` from `effect` | built in | default | `TestClock` in `it.effect` |
 | AI router and providers | `AiRouter`, `AiProvider` | `convex/ai/` | AI SDK providers | scripted model |
 | Secrets | `Secrets` | `convex/platform/secrets.ts` | secrets table | fixed map |
 | Oura | `Oura`, `OuraToken` | `convex/health/` | `FetchHttpClient` | canned nights |
 | Places | `Places` | `convex/places/` | OSM providers | canned places and trips |
-| Notes Relay token | `RelayToken` | `convex/notes/relay.ts` | signs with the relay secret | fixed token |
 | Things source | `ThingsSource` | `apps/things-sync/src/things.ts` | reads the Things database | fixture rows |
 | Convex from a client | `Backend` | `shared/client/` | the app's Convex client | scripted answers |
 | Saved preferences | `KeyValueStore` from `effect/persistence` | per app | `localStorage`, `expo-sqlite/kv-store` | `layerMemory` |
 
-A change handler may ask for `Reads`, `Recorder` and `CurrentActor`, and not for `Writes`. So the type system now enforces the old rule: a public change can only write through the recorder.
+A change handler may ask for `Reads`, `Recorder`, `Unrecorded` and `CurrentActor`, and not for `Writes`. It writes records through the recorder (`recording`). A helper that must schedule a Job or write a row Activity does not track (a tombstone, an AI request) takes the mutation ctx through `changing((ctx, record) => ...)`, which asks for `Recorder` and `Unrecorded`, so such writes are always visible at the call site.
 
 ## Convex functions
 
@@ -124,13 +122,16 @@ export const rename = changeMutation({
 });
 ```
 
-- Import the builders from `convex/platform/effect.ts`. Each handler takes the args (agent mutations also get `run` and `caller`) and returns an Effect with no error channel, except `changeMutation`. What each may ask for: `ownerQuery`, `agentQuery`, `internalQuery`: `Reads`. `changeMutation`: `Reads | Recorder | CurrentActor`. `ownerMutation`: `Reads | Writes | CurrentActor`. `workerMutation`: `Reads | Writes | CurrentWorker`. `agentMutation`, `internalMutation`: `Reads | Writes`. `ownerAction`, `internalAction`: `Acts`. `workerAction`: `Acts | CurrentWorker`. The internal builders keep an optional `returns` validator.
+- Import the builders from `convex/platform/effect.ts`. Each handler takes the args (agent mutations also get `run` and `caller`) and returns an Effect with no error channel, except `changeMutation`. What each may ask for: `ownerQuery`, `agentQuery`, `internalQuery`: `Reads`. `changeMutation`: `Reads | Recorder | Unrecorded | CurrentActor`. `ownerMutation`: `Reads | Writes | CurrentActor`. `workerMutation`: `Reads | Writes | CurrentWorker`. `agentMutation`, `internalMutation`: `Reads | Writes`. `ownerAction`, `internalAction`: `Acts`. `workerAction`: `Acts | CurrentWorker`. The internal builders keep an optional `returns` validator.
 - `reading((ctx) => ...)`, `writing(...)`, `acting(...)` and `recording((record) => ...)` turn a Convex promise into an Effect. A rejection there is a defect: Convex errors such as `ConvexError` leave the function unchanged.
 - `changeMutation` records Activity, adds `activityId` to the value and refuses a change that failed after it wrote, exactly as before.
 - A query or an unrecorded mutation that returns a Result wraps its program in `asWire(...)`.
 - Queries and mutations run on a synchronous scheduler, because Convex forbids timers there. Do not use `Effect.sleep`, `Effect.timeout`, `Schedule` or `Effect.forkDetach` in a query or a mutation. They are fine in actions.
 - One Convex function is one fibre and one transaction. Do not fork inside a mutation.
-- Never change an `args` or `returns` validator, a file path under `convex/` or an exported function name while the migration runs: installed apps call them by name.
+- Never change an `args` or `returns` validator, a file path under `convex/` or an exported function name of a public function: installed apps call them by name.
+- An agent tool runs a registered change with `changeAs(actor, registered, args)` and reads a registered query with `readAsOwner(registered, args)`. A refusal comes back as plain wire data (`{ kind, ... }`), so match it on `kind`.
+- `runChange(ctx, actor, action, effect)` runs a change in process: one Activity for `actor`, `activityId` added to the value, and the refused-after-write rule.
+- `runIn(t, effect)` in `convex/backend.test-utils.ts` runs an Effect inside `t.run` with `Reads` and `Writes`. A failure rejects with the error itself.
 
 ## Schema and the Convex schema
 
@@ -162,10 +163,10 @@ A class instance does not survive Convex's JSON transport, so a refusal crosses 
 { ok: false, error: { kind: "invalid_block", reason: "overlap" } }
 ```
 
-This format is permanent. It is what `serialise` produced, so every installed app reads it without change.
+This format is permanent: every installed iPhone and Mac build decodes it, and `shared/result.test.ts` pins its exact bytes.
 
 - Server: `changeMutation` encodes for you. Elsewhere use `asWire(effect)` or `resultToWire(result)`. `wireError` drops `_tag` and keeps `kind` and the fields.
-- Client: `wireToEffect(wire)` puts the refusal back in the error channel as plain `{ kind, ... }` data. Error classes stay on the server. `wireToResult` gives a `Result` and drops a `_tag` if one ever leaked.
+- Client: `wireToEffect(wire)` from `@lifeos/backend/result` puts the refusal back in the error channel as plain `{ kind, ... }` data. Error classes stay on the server. `wireToResult` gives a `Result` and drops a `_tag` if one ever leaked.
 - `Wire<E>` is the wire type of an error union. Function return types are inferred from it, so the apps see the same types as before.
 
 ## Client state: Atom
@@ -189,29 +190,17 @@ export const SelectRow = ({ taskKey, title }: { taskKey: string; title: string }
 
 ## Tests
 
-- Convex behaviour: convex-test and plain `vitest`, calling public functions through `api`, as before. These tests are the wire contract. Do not weaken an assertion on a returned value to make a migration pass.
+- Convex behaviour: convex-test and plain `vitest`, calling public functions through `api`, as before. These tests are the wire contract. Do not weaken an assertion on a returned value to make a change pass.
 - Effect logic and services: `@effect/vitest`. `it.effect` gives a `TestClock`; `layer(SomeService.layerTest(...))("name", (scoped) => { scoped.effect(...) })` shares one Layer across a block; `it.live` uses the real clock.
 - Assert a refusal through the wire (`expect(yield* asWire(program)).toStrictEqual({ ok: false, error: { kind: ... } })`) or with `Effect.flip`.
 - Each live Layer for an HTTP service has one test that swaps `HttpClient.HttpClient` for canned responses. Existing MSW tests keep working, because the live Layer still calls `fetch`.
-
-## During the migration
-
-Old and new code live side by side until the final slice. These pieces join them; the final slice deletes them.
-
-- **Twins.** A frozen export that returns a neverthrow `Result` keeps its name and signature. Its logic moves to an Effect named with `Fx` in the same file (`undoActivity` and `undoActivityFx`), and the old name becomes one line over the twin.
-- **`legacyRead(ctx, effect)`, `legacyWrite(ctx, effect)` and `legacyChange(ctx, record, effect)`** in `convex/platform/effect.ts` run a twin for an old caller. They provide `Reads`, `Reads | Writes` or `Reads | Recorder`, and return a neverthrow `Result` whose error is the plain wire error (`wireError`, so no `_tag`).
-- **The bridge** in `shared/effect/bridge.ts`: `toNeverthrow(result)` turns an Effect `Result` into a neverthrow one with the wire error, for pure twins (`parseIsoDate` in `shared/date.ts`). `fromNeverthrow(result)` goes the other way. `effectFromNeverthrow(() => old(...))` calls another slice's old function from Effect code when its twin is not on main yet; the thunk may return a `Result`, a promise of one or a `ResultAsync`, and a throw stays a defect.
-- **`changeAs` and `readAsOwner`** accept functions from either builder. Agent tools in Effect code use `changeAsFx(actor, registered, args)` and `readAsOwnerFx(registered, args)`.
-- **`runChange(ctx, actor, action, effect)`** runs a change in process, as an Effect: one Activity for `actor`, `activityId` added to the value, and the refused-after-write rule.
-- **`runIn(t, effect)`** in `convex/backend.test-utils.ts` runs an Effect inside `t.run` with `Reads` and `Writes`. A failure rejects with the error itself.
-- **Shared parsers** live in `shared/effect/date.ts`, `estimate.ts` and `recurrence.ts` with the same names. Import those in new code.
 
 ## Where `Effect.run*` is allowed
 
 Effects are run only at an edge:
 
 - `packages/backend/convex/platform/effect.ts`: the builders and `runAtEdge`;
-- `apps/web/src/lib/runtime.ts` and `apps/mobile/src/lib/runtime.ts`: one `ManagedRuntime` per app;
+- `apps/web/src/lib/runtime.ts`: the web app's one `ManagedRuntime`; on the iPhone, effects run through the atom runtimes in `apps/mobile/src/lib/atoms.ts`;
 - `apps/things-sync/src/main.ts` and `apps/relay/src/index.ts`: the process or Worker entry;
 - tests, through `@effect/vitest` or `runIn`.
 

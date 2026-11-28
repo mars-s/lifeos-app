@@ -8,7 +8,7 @@ https://curious-pigeon-412.ap-southeast-2.convex.site/mcp
 
 ## Tools
 
-Each tool reads or writes through the same code as the app. Reads call the app's own owner queries (`readAsOwner` in `platform/access.ts`). Writes call the app's own change mutations (`changeAs` in `platform/change.ts`), so every write records Activity and can be undone. Nothing is ever written to Things 3.
+Each tool reads or writes through the same code as the app. Reads call the app's own owner queries (`readAsOwner` in `platform/effect.ts`). Writes call the app's own change mutations (`changeAs` in `platform/effect.ts`), so every write records Activity and can be undone. Nothing is ever written to Things 3.
 
 Ids come from the read tools. Dates are `YYYY-MM-DD`. Times are in Avi's time zone (the zone of his latest Work Block, else `Australia/Melbourne`) unless a tool is given `timeZone`. Results are small, declared objects (`returns`), so nothing undeclared reaches the agent.
 
