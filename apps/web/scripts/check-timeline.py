@@ -93,6 +93,10 @@ with sync_playwright() as playwright:
             page.get_by_role("radio", name=re.compile("^(Week|3 days)$")).click()
             page.wait_for_timeout(900)
             shoot(page, f"timeline-app-week-{width}{suffix}.png")
+            if theme == "light":
+                heads = page.locator(f"{PANE} [data-week-head]").count()
+                expect(f"the week at {width} px has a header per day", heads, 7 if width >= 900 else 3)
+                expect(f"the week at {width} px carries a small curve per day", page.locator(f"{PANE} [data-week-head] svg").count(), heads)
             context.close()
 
     context, page = signed_in(browser, 1440, 900, "light", "08:00")

@@ -7,7 +7,8 @@ import { useEffect, useMemo } from "react";
 import { addDays, type IsoDate } from "@lifeos/backend/date";
 import type { PlannerTask } from "@lifeos/backend/types";
 import { Timebox, type TimeboxDay, type TimeboxGhost, type TimeboxPrediction, type TimeboxPreview, type TimeboxTrip } from "@/components/lifeos/timebox";
-import { HatchSwatch } from "@/components/lifeos/timeline-dots";
+import { EnergySpark } from "@/components/lifeos/energy-curve";
+import { HatchSwatch, LoadDots } from "@/components/lifeos/timeline-dots";
 import { Button, IconButton } from "@/components/ui/action-button";
 import { KeyCombo } from "@/components/ui/key-hint";
 import { MorphText } from "@/components/ui/morph-text";
@@ -172,6 +173,41 @@ export const TimeboxPane = ({
   const reached = showsToday && now !== null ? minuteOfDay(now) : lastShown < today ? 24 * 60 : 0;
   const railDate = mode === "day" ? anchor : showsToday ? today : null;
   const railCurve = railDate ? railCurveOf(energyDays.get(railDate)) : null;
+  const heads =
+    mode === "week"
+      ? dates.map((date, index) => {
+          const dayBlocks = data.blocks.filter((block) => block.day === index);
+          const dayPredictions = predictions.filter((prediction) => prediction.day === index);
+          const busy = data.commitments
+            .filter((commitment) => commitment.day === index && !commitment.quiet)
+            .reduce((sum, commitment) => sum + Math.max(0, Math.min(commitment.end, workingHours.endMinute) - Math.max(commitment.start, workingHours.startMinute)), 0);
+          const capacity = Math.max(0, workingHours.endMinute - workingHours.startMinute - busy);
+          const past = date < today;
+          const load = {
+            done: dayBlocks.reduce((sum, block) => (block.done || past ? sum + block.minutes : sum), 0),
+            kept: dayBlocks.reduce((sum, block) => (block.done || past ? sum : sum + block.minutes), 0),
+            predicted: dayPredictions.reduce((sum, prediction) => sum + prediction.minutes, 0),
+          };
+          const planned = load.done + load.kept + load.predicted;
+          const empty = planned === 0 && !data.commitments.some((commitment) => commitment.day === index);
+          const curve = railCurveOf(energyDays.get(date));
+          return (
+            <div key={date} className="pb-1.5" data-week-head={date}>
+              <LoadDots load={load} capacity={capacity} unit={30} dot={4} className="h-1 flex-nowrap justify-center" />
+              <p className="mt-1 truncate text-center text-micro text-muted-foreground">
+                {empty ? (
+                  "Nothing planned"
+                ) : (
+                  <>
+                    <span className="font-mono text-foreground">{formatSpan(Math.max(0, capacity - planned))}</span> left
+                  </>
+                )}
+              </p>
+              {curve && <EnergySpark curve={curve} mode={energyModeOf(date, today, energyDays.get(date))} now={now === null ? 0 : minuteOfDay(now)} className="mt-1" />}
+            </div>
+          );
+        })
+      : undefined;
   const energy = railDate && railCurve ? { curve: railCurve, mode: energyModeOf(railDate, today, energyDays.get(railDate)) } : null;
   const sameMonth = first.slice(0, 7) === last.slice(0, 7);
   const [label, shortLabel] =
@@ -254,6 +290,7 @@ export const TimeboxPane = ({
         predictions={spread || smart.draft ? [] : predictions}
         energy={energy}
         reached={reached}
+        heads={heads}
         onKeep={(id, day, start) => {
           const found = predictionOf.get(id);
           const date = dates[day];
