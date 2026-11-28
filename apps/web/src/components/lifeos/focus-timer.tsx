@@ -3,7 +3,8 @@
 import { Check, Coffee, Pause, Play, SkipForward, Stop, Trash, type Icon } from "@phosphor-icons/react";
 import { useEffect, useEffectEvent, useState, type ReactNode } from "react";
 import type { FocusView as FocusPillView } from "@lifeos/backend/client/focus";
-import { parseEstimateText } from "@lifeos/backend/estimate";
+import { Result } from "effect";
+import { parseEstimateText } from "@lifeos/backend/effect/estimate";
 import { MAX_FOCUS_MINUTES, type FocusPlanChoice } from "@lifeos/backend/focus";
 import { MorphText } from "@/components/ui/morph-text";
 import { Popover, PopoverClose } from "@/components/ui/popover-panel";
@@ -225,13 +226,13 @@ const LengthInput = ({ label, value, custom, onChange }: { label: string; value:
       return true;
     }
     const parsed = parseEstimateText(draft.trim());
-    if (parsed.isErr() || parsed.value > MAX_FOCUS_MINUTES) {
+    if (Result.isFailure(parsed) || parsed.success > MAX_FOCUS_MINUTES) {
       setRefused(true);
       haptic("error");
       return false;
     }
     reset();
-    if (parsed.value !== value) onChange(parsed.value);
+    if (parsed.success !== value) onChange(parsed.success);
     return true;
   };
   return (
@@ -415,13 +416,13 @@ const HistoryChip = ({
   const commit = () => {
     if (draft === null) return true;
     const parsed = parseEstimateText(draft.trim());
-    if (parsed.isErr()) {
+    if (Result.isFailure(parsed)) {
       setRefused(true);
       haptic("error");
       return false;
     }
     setDraft(null);
-    if (parsed.value !== entry.minutes) onEdit(parsed.value);
+    if (parsed.success !== entry.minutes) onEdit(parsed.success);
     return true;
   };
   return (

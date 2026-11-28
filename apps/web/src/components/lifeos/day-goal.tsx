@@ -1,7 +1,8 @@
 "use client";
 
 import { useId, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { parseEstimateText } from "@lifeos/backend/estimate";
+import { Result } from "effect";
+import { parseEstimateText } from "@lifeos/backend/effect/estimate";
 import { RollingNumber } from "@/components/ui/rolling-number";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
@@ -200,14 +201,14 @@ export const GoalEditor = ({
         onSubmit={(event) => {
           event.preventDefault();
           const parsed = parseEstimateText(typed);
-          if (parsed.isErr() || parsed.value > MAX_SPAN) {
+          if (Result.isFailure(parsed) || parsed.success > MAX_SPAN) {
             setRefused(true);
             haptic("error");
             return;
           }
           setTyped("");
           setRefused(false);
-          choose(parsed.value);
+          choose(parsed.success);
         }}
       >
         <label className="sr-only" htmlFor={typedId}>

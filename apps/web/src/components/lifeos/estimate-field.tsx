@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { parseEstimateText } from "@lifeos/backend/estimate";
+import { Result } from "effect";
+import { parseEstimateText } from "@lifeos/backend/effect/estimate";
 import { Tooltip } from "@/components/ui/tooltip-hint";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
@@ -99,13 +100,13 @@ export const EstimateField = ({
       return;
     }
     const parsed = parseEstimateText(text);
-    if (parsed.isErr()) {
+    if (Result.isFailure(parsed)) {
       setRefused(true);
       haptic("error");
       return;
     }
     setDraft(null);
-    if (parsed.value !== minutes) onChange(parsed.value);
+    if (parsed.success !== minutes) onChange(parsed.success);
   };
 
   return (

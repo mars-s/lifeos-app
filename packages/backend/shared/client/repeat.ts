@@ -1,11 +1,11 @@
+import { Result } from "effect";
 import { addDays, laterOf, type IsoDate } from "../date";
+import { parseEnd, parseSchedule } from "../effect/recurrence";
 import {
   MAX_EVERY,
   MAX_REPEAT_COUNT,
   describeSchedule,
   firstOnOrAfter,
-  parseEnd,
-  parseSchedule,
   type AfterCompletion,
   type MonthDay,
   type RepeatEnd,
@@ -157,7 +157,7 @@ export const clampEvery = (draft: RepeatDraft) => ({
   every: Math.min(draft.every, MAX_EVERY[draft.unit]),
 });
 
-export const isValidDraft = (draft: RepeatDraft) => parseSchedule(scheduleFrom(draft)).isOk() && parseEnd(draft.end).isOk();
+export const isValidDraft = (draft: RepeatDraft) => Result.isSuccess(parseSchedule(scheduleFrom(draft))) && Result.isSuccess(parseEnd(draft.end));
 
 export const firstDate = (schedule: Schedule, base: IsoDate) => firstOnOrAfter(schedule, base, base);
 
