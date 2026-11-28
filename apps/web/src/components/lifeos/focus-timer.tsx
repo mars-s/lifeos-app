@@ -507,9 +507,9 @@ export const FocusHistory = ({
   onRemove: (id: string) => void;
   className?: string;
 }) => (
-  <div className={cn("grid grid-cols-[3.75rem_minmax(0,1fr)] items-start gap-x-1.5 @max-xs:grid-cols-1", className)}>
-    <span className="text-small leading-7 text-muted-foreground @max-xs:leading-5">Today</span>
+  <div className={className}>
     <div className="flex min-h-7 flex-wrap items-center gap-1 @md:gap-1.5">
+    {entries.length > 0 && <span className="mr-1 text-small text-muted-foreground">Today</span>}
     <ul aria-label="Focus Sessions today" className="contents">
       {entries.map((entry) => (
         <li key={entry.id} className="contents">

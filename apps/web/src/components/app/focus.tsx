@@ -16,6 +16,7 @@ import {
   FocusTimerPill,
   PillButton,
 } from "@/components/lifeos/focus-timer";
+import { FactRow } from "@/components/lifeos/fact-row";
 import { formatCountdown, formatMinutes } from "@/components/lifeos/format";
 import { MenuRow, ToolButton } from "@/components/lifeos/tool-button";
 import { Popover, PopoverClose } from "@/components/ui/popover-panel";
@@ -296,9 +297,8 @@ export const FocusSection = ({ task, today }: { task: PlannerTask; today: string
           transition={reduce ? instant : springLayout}
           className="overflow-hidden"
         >
-          <div className="space-y-2 pb-px">
-            <div role="group" aria-label="Actual Time" className="grid grid-cols-[3.75rem_minmax(0,1fr)] items-start gap-x-1.5 @max-xs:grid-cols-1">
-              <span aria-hidden="true" className="text-small leading-7 text-muted-foreground @max-xs:leading-5">Actual</span>
+          <FactRow icon={Timer} label="Actual Time" className="pb-px">
+            <div role="group" aria-label="Actual Time">
               <div className="flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1 @md:gap-x-1.5">
               <ActualMeter actual={minutes} estimate={estimate} colour={task.area ? areaVar(task.area.colour) : undefined} className="mr-1" />
               <RollingNumber value={formatMinutes(minutes)} className={cn("font-mono text-small", over > 0 && "text-negative")} />
@@ -326,7 +326,7 @@ export const FocusSection = ({ task, today }: { task: PlannerTask; today: string
               onEdit={(id, length) => actions.editSession(task, id, length)}
               onRemove={(id) => actions.removeSession(task, id)}
             />
-          </div>
+          </FactRow>
         </motion.div>
       )}
     </AnimatePresence>

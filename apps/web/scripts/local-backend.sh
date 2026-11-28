@@ -304,6 +304,26 @@ export const stepsThinking = internalMutation({
   },
 });
 
+export const fillCard = internalMutation({
+  args: { title: v.string(), notes: v.string(), plannedDaysAgo: v.optional(v.number()) },
+  handler: async (ctx, { title, notes, plannedDaysAgo }) => {
+    const task = (await ctx.db.query("tasks").collect()).find((row) => row.title === title);
+    if (!task) throw new Error(`No Task called ${title}`);
+    await ctx.db.patch("tasks", task._id, { notes });
+    if (plannedDaysAgo === undefined) return task._id;
+    const timeZone = "Australia/Sydney";
+    await ctx.db.insert("workBlocks", {
+      taskId: task._id,
+      start: zonedMoment(addDays(localIsoDate(new Date()), -plannedDaysAgo), 15 * 60 + 5, timeZone),
+      minutes: 40,
+      timeZone,
+      done: false,
+    });
+    await settle(ctx, { tasks: new Set([task._id]), projects: new Set() });
+    return task._id;
+  },
+});
+
 export const signIn = internalMutation({
   args: {},
   handler: async (ctx) =>

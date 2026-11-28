@@ -45,7 +45,7 @@ export default function TripMap({ trip, onPick }: { trip: Trip; onPick: (place: 
     >
       <MapMarker longitude={trip.from.lon} latitude={trip.from.lat}>
         <MarkerContent>
-          <span aria-label="Home" className="block size-2.5 rounded-full bg-foreground ring-2 ring-popover" />
+          <span aria-label="Home" className="block size-2.5 rounded-full border-2 border-foreground bg-popover ring-2 ring-popover" />
         </MarkerContent>
       </MapMarker>
       {trip.places.map((place) => {
@@ -54,7 +54,7 @@ export default function TripMap({ trip, onPick }: { trip: Trip; onPick: (place: 
           <MapMarker key={place.key} longitude={place.position.lon} latitude={place.position.lat}>
             <MarkerContent>
               {chosen ? (
-                <span aria-label={placeLabel(place)} className="block size-3.5 rounded-full bg-brand shadow-float ring-[3px] ring-popover" />
+                <span aria-label={placeLabel(place)} className="block size-3.5 rounded-full bg-foreground shadow-float ring-[3px] ring-popover" />
               ) : (
                 <button
                   type="button"
@@ -62,7 +62,7 @@ export default function TripMap({ trip, onPick }: { trip: Trip; onPick: (place: 
                   onClick={() => onPick(place)}
                   className={cn(
                     "relative block size-2 rounded-full bg-foreground/35 ring-2 ring-popover transition-[background-color,scale] duration-(--dur-fast) ease-out",
-                    "before:absolute before:-inset-2.5 hover:bg-brand/70 focus-visible:bg-brand focus-visible:ring-ring focus-visible:outline-none active:scale-[0.9]",
+                    "before:absolute before:-inset-2.5 hover:bg-foreground/70 focus-visible:bg-foreground focus-visible:ring-ring focus-visible:outline-none active:scale-[0.9]",
                   )}
                 />
               )}

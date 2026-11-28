@@ -1,6 +1,6 @@
 "use client";
 
-import { DotsThree, ListChecks, Stamp } from "@phosphor-icons/react";
+import { Clock, DotsThree, Hourglass, ListChecks, Stamp } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { api } from "@lifeos/backend/api";
@@ -17,7 +17,8 @@ import { baseDate } from "@lifeos/backend/client/repeat";
 import { RepeatPicker } from "@/components/lifeos/repeat-picker";
 import { ToolButton } from "@/components/lifeos/tool-button";
 import { Menu } from "@/components/ui/action-menu";
-import { WorkBlockList } from "@/components/lifeos/work-blocks";
+import { FactRow } from "@/components/lifeos/fact-row";
+import { WorkBlocks } from "@/components/lifeos/work-blocks";
 import { enter, exit, instant, spring, springLayout } from "@/lib/motion-tokens";
 import { deadlineMark, localDate, relativeDay, shortDay, whenLabel } from "./dates";
 import { FocusSection, FocusTool } from "./focus";
@@ -75,7 +76,7 @@ const Chip = ({ colour, children, ref }: { colour: PlannerTask["labels"][number]
   );
 };
 
-const draftField = "block w-full bg-transparent outline-none placeholder:text-faint-foreground";
+const draftField = "block w-full bg-transparent caret-foreground outline-none placeholder:text-faint-foreground";
 
 export const TitleField = ({ task, today, onCreated }: { task: PlannerTask; today: string; onCreated?: () => void }) => {
   const { rename } = useTaskActions(task, today);
@@ -199,69 +200,86 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
   }, [canAsk, openAsk]);
 
   return (
-    <div data-arrow-scope className="space-y-3 pt-1 pr-3 pb-3 pl-[2.625rem]">
-      <TitleLinks title={task.title} />
-      {saved && <TaskNotes taskId={task._id} />}
-      <NotesField notes={task.notes} onSave={actions.setNotes} />
-      <AnimatePresence initial={false}>
-        {hasChecklist && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={reduce ? instant : springLayout}
-            className="-ml-2 overflow-hidden"
-          >
-            <ChecklistEditor
-              items={items}
-              composerRef={composer}
-              onAdd={actions.addItem}
-              onEdit={actions.editItem}
-              onTick={actions.tickItem}
-              onMove={actions.moveItem}
-              onRemove={actions.removeItem}
-              onComposerBlur={() => setComposing(false)}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
-      <StepsPreview steps={steps} />
-      {task.workBlocks.length > 0 && (
-        <WorkBlockList
-          colour={task.area?.colour}
-          blocks={task.workBlocks.map((block) => {
-            const start = new Date(block.start);
-            const day = localDate(block.start);
-            return {
-              id: block._id,
-              day: relativeDay(day, today) ?? shortDay(day),
-              startMinute: start.getHours() * 60 + start.getMinutes(),
-              minutes: block.minutes,
-              done: block.done,
-            };
-          })}
-        />
-      )}
-      <TaskTrip task={task} />
-      <TaskEstimateField task={task} onChange={(minutes) => void actions.setEstimate(minutes)} onSteps={breakIntoSteps}
-        onProject={saved && task.status.kind === "open" ? () => convertToProject(task, "pointer") : undefined}
-      />
-      <FocusSection task={task} today={today} />
-      <div className="-ml-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1.5">
-        <WhenPicker when={task.when} label={whenLabel(task.when, today)} today={today} onChange={actions.setWhen} />
-        <AnimatePresence initial={false} mode="popLayout">
-          {task.area && (
-            <Chip key={task.project?._id ?? task.area._id} colour={task.area.colour}>
-              {task.project?.title ?? task.area.title}
-            </Chip>
+    <div data-arrow-scope className="space-y-3 px-3 pt-1 pb-3">
+      <div className="space-y-3 pl-[1.875rem]">
+        <TitleLinks title={task.title} />
+        {saved && <TaskNotes taskId={task._id} />}
+        <NotesField notes={task.notes} onSave={actions.setNotes} />
+        <AnimatePresence initial={false}>
+          {hasChecklist && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={reduce ? instant : springLayout}
+              className="-ml-2 overflow-hidden"
+            >
+              <ChecklistEditor
+                items={items}
+                composerRef={composer}
+                onAdd={actions.addItem}
+                onEdit={actions.editItem}
+                onTick={actions.tickItem}
+                onMove={actions.moveItem}
+                onRemove={actions.removeItem}
+                onComposerBlur={() => setComposing(false)}
+              />
+            </motion.div>
           )}
-          {task.labels.map((label) => (
-            <Chip key={label._id} colour={label.colour}>
-              {label.name}
-            </Chip>
-          ))}
         </AnimatePresence>
-        <span className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-0.5">
+        <StepsPreview steps={steps} />
+      </div>
+      <TaskTrip task={task} />
+      <div className="space-y-1">
+        {task.workBlocks.length > 0 && (
+          <FactRow icon={Clock} label="Planned">
+            <WorkBlocks
+              colour={task.area?.colour}
+              blocks={task.workBlocks.map((block) => {
+                const start = new Date(block.start);
+                const day = localDate(block.start);
+                return {
+                  id: block._id,
+                  day: relativeDay(day, today) ?? shortDay(day),
+                  startMinute: start.getHours() * 60 + start.getMinutes(),
+                  minutes: block.minutes,
+                  done: block.done,
+                  passed: !block.done && day < today,
+                };
+              })}
+            />
+          </FactRow>
+        )}
+        <FactRow icon={Hourglass} label="Estimate">
+          <TaskEstimateField
+            task={task}
+            labelled={false}
+            onChange={(minutes) => void actions.setEstimate(minutes)}
+            onSteps={breakIntoSteps}
+            onProject={saved && task.status.kind === "open" ? () => convertToProject(task, "pointer") : undefined}
+          />
+        </FactRow>
+        <FocusSection task={task} today={today} />
+      </div>
+      <div className="-mx-[5px] flex flex-wrap items-center gap-x-1.5 gap-y-1.5">
+        <span data-card-when className="flex min-w-0 items-start gap-x-1.5">
+          <WhenPicker when={task.when} label={whenLabel(task.when, today)} today={today} onChange={actions.setWhen} className="[&>span]:pl-[13px]" />
+          <span className="flex min-h-7 min-w-0 flex-wrap items-center gap-1.5 empty:hidden">
+            <AnimatePresence initial={false} mode="popLayout">
+              {task.area && (
+                <Chip key={task.project?._id ?? task.area._id} colour={task.area.colour}>
+                  {task.project?.title ?? task.area.title}
+                </Chip>
+              )}
+              {task.labels.map((label) => (
+                <Chip key={label._id} colour={label.colour}>
+                  {label.name}
+                </Chip>
+              ))}
+            </AnimatePresence>
+          </span>
+        </span>
+        <span data-card-tools className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-0.5 @max-md:w-full @max-md:justify-between">
           {canAsk && (
             <ToolButton
               icon={AiMark}
@@ -332,7 +350,11 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
           )}
         </span>
       </div>
-      <AskBox ask={ask} via={askVia} />
+      {ask.phase.kind !== "idle" && (
+        <div className="pl-[1.875rem]">
+          <AskBox ask={ask} via={askVia} />
+        </div>
+      )}
     </div>
   );
 };

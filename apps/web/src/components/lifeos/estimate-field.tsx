@@ -61,7 +61,7 @@ const Ghosts = () => (
   </>
 );
 
-const Spark = () => <AiMark weight="bold" aria-hidden="true" className="pointer-events-none absolute -top-1 -right-1 size-2.5" />;
+const Spark = () => <AiMark weight="bold" aria-hidden="true" className="pointer-events-none mr-1.5 inline-block size-3 align-[-1.5px]" />;
 
 const chipsFor = (smart: SmartEstimate | undefined) =>
   smart?.kind === "guesses" ? smart.guesses : smart?.kind === "thinking" ? [] : ESTIMATE_CHIPS.map((minutes) => ({ minutes, probability: undefined }));
@@ -144,9 +144,9 @@ export const EstimateField = ({
               days !== undefined && "font-sans",
             )}
           >
+            {likely && <Spark />}
             {label}
             {probability !== undefined && <Odds probability={probability} selected={selected} />}
-            {likely && <Spark />}
           </button>
         );
         return guessed && odds ? (
@@ -188,7 +188,7 @@ export const EstimateField = ({
           }
         }}
         className={cn(
-          "h-7 w-14 rounded-md px-2 text-center @md:w-[4.25rem] font-mono text-small outline-offset-2 transition-[background-color,color] duration-(--dur-press) ease-out placeholder:font-sans placeholder:text-faint-foreground",
+          "h-7 w-14 rounded-md px-2 text-center @md:w-[4.25rem] font-mono text-small outline-offset-2 transition-[background-color,color] duration-(--dur-press) ease-out placeholder:font-sans placeholder:text-muted-foreground",
           custom && draft === null
             ? "bg-brand text-brand-foreground focus:bg-foreground/[0.06] focus:text-foreground"
             : "bg-foreground/[0.06] text-foreground hover:bg-foreground/[0.1] focus:bg-foreground/[0.06]",

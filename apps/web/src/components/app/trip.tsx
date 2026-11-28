@@ -11,6 +11,7 @@ import { TRIP_LOOK_LIMIT_MS, type TravelMode } from "@lifeos/backend/features";
 import type { PlannerTask, TripView } from "@lifeos/backend/types";
 import { AiMarkWorking } from "@/components/lifeos/ai-orb";
 import { GlimmBand } from "@/components/lifeos/glimm-band";
+import { FACT_GRID } from "@/components/lifeos/fact-row";
 import { ToolButton } from "@/components/lifeos/tool-button";
 import { Button } from "@/components/ui/action-button";
 import { instant, springLayout } from "@/lib/motion-tokens";
@@ -81,16 +82,16 @@ const Streets = ({ looking }: { looking: boolean }) => (
     {looking && (
       <>
         <circle cx="118" cy="97" r="4.5" className="fill-foreground/70 stroke-popover" strokeWidth="2" />
-        <circle cx="226" cy="60" r="7" strokeWidth="1.5" strokeDasharray="3 3" className="stroke-brand/70 motion-safe:animate-pending" />
+        <circle cx="226" cy="60" r="7" strokeWidth="1.5" strokeDasharray="3 3" className="stroke-foreground/50 motion-safe:animate-pending" />
       </>
     )}
   </svg>
 );
 
 const LookingRow = ({ query }: { query: string }) => (
-  <div className="flex items-start gap-2 motion-safe:animate-fade-in">
-    <AiMarkWorking weight="bold" className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-    <div className="min-w-0 flex-1">
+  <div className={`${FACT_GRID} motion-safe:animate-fade-in`}>
+    <AiMarkWorking data-fact-glyph weight="bold" className="mt-0.5 size-4 justify-self-center" aria-hidden="true" />
+    <div data-fact-text className="min-w-0">
       <p role="status" className="truncate text-small font-medium">
         Finding the nearest <span translate="no">{placeWords(query)}</span>…
       </p>
@@ -124,9 +125,9 @@ const TripDetails = ({ taskId, trip, onPick }: { taskId: Id<"tasks">; trip: Trip
 
   return (
     <>
-      <div className="flex items-start gap-2 motion-safe:animate-fade-in">
-        <MapPin weight="fill" className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-        <div className="min-w-0 flex-1">
+      <div className="grid grid-cols-[1.125rem_minmax(0,1fr)_auto] items-start gap-x-3 motion-safe:animate-fade-in">
+        <MapPin data-fact-glyph weight="fill" className="mt-0.5 size-4 justify-self-center text-muted-foreground" aria-hidden="true" />
+        <div data-fact-text className="min-w-0">
           <p className="truncate text-small font-medium" translate="no">
             {trip.chosen.name}
             {trip.chosen.suburb && <span className="font-normal text-muted-foreground"> {trip.chosen.suburb}</span>}
@@ -142,7 +143,7 @@ const TripDetails = ({ taskId, trip, onPick }: { taskId: Id<"tasks">; trip: Trip
             <ArrowSquareOut className="size-3.5" aria-hidden="true" />
           </a>
         </div>
-        <span className="-mt-1 -mr-1.5 flex shrink-0 items-center gap-0.5">
+        <span className="-mt-1 -mr-1.5 -ml-2 flex shrink-0 items-center gap-0.5">
           {others.length > 0 && (
             <ToolButton
               icon={CaretDown}
@@ -163,7 +164,7 @@ const TripDetails = ({ taskId, trip, onPick }: { taskId: Id<"tasks">; trip: Trip
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={reduce ? instant : springLayout}
-            className="overflow-hidden pl-4"
+            className="overflow-hidden pl-[1.375rem]"
           >
             {others.map((place) => (
               <li key={place.key}>
@@ -173,11 +174,11 @@ const TripDetails = ({ taskId, trip, onPick }: { taskId: Id<"tasks">; trip: Trip
                     setShowingOthers(false);
                     onPick(place);
                   }}
-                  className="flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left transition-[background-color,scale] duration-(--dur-press) ease-out outline-none hover:bg-foreground/[0.05] focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-[0.99]"
+                  className="flex w-full flex-wrap items-center gap-x-3 rounded-md px-2 py-1.5 text-left transition-[background-color,scale] duration-(--dur-press) ease-out outline-none hover:bg-foreground/[0.05] focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-[0.99]"
                 >
-                  <span className="min-w-0 flex-1 truncate text-small" translate="no">
-                    {place.name}
-                    {place.suburb && <span className="text-muted-foreground"> {place.suburb}</span>}
+                  <span className="min-w-24 flex-1 truncate text-small" translate="no">
+                    <span className={place.suburb ? "sr-only" : undefined}>{place.name} </span>
+                    {place.suburb}
                   </span>
                   <Figures place={place} mode={trip.mode} />
                 </button>
@@ -238,7 +239,7 @@ const lookAgain = (store: OptimisticLocalStore, { taskId }: { taskId: Id<"tasks"
     store.setQuery(api.places.trips.forTask, { taskId }, { kind: "looking", query: current.query, since: Date.now() });
 };
 
-const LINE = "ml-0.5 flex items-center gap-2 text-small text-muted-foreground";
+const LINE = `${FACT_GRID} items-center! text-small text-muted-foreground`;
 
 export const TaskTrip = ({ task }: { task: PlannerTask }) => {
   const live = task.status.kind === "open" && !isDraftTask(task._id);
@@ -265,19 +266,21 @@ export const TaskTrip = ({ task }: { task: PlannerTask }) => {
           {(view.kind === "trip" || view.kind === "looking") && <TripPanel taskId={task._id} view={view} />}
           {view.kind === "unfound" && (
             <p className={LINE}>
-              <MapPin className="size-4 shrink-0 text-faint-foreground" aria-hidden="true" />
-              No {view.query} within 15 km of home.
+              <MapPin data-fact-glyph className="size-4 justify-self-center text-faint-foreground" aria-hidden="true" />
+              <span data-fact-text>No {view.query} within 15 km of home.</span>
             </p>
           )}
           {view.kind === "failed" && (
             <div className={LINE}>
-              <MapPin className="size-4 shrink-0 text-faint-foreground" aria-hidden="true" />
-              <p role="status" className="min-w-0 flex-1 text-pretty">
-                Could not find the nearest <span translate="no">{placeWords(view.query)}</span> just now.
-              </p>
-              <Button variant="quiet" onClick={() => void request({ taskId: task._id }).catch(() => undefined)}>
-                Try again
-              </Button>
+              <MapPin data-fact-glyph className="size-4 justify-self-center text-faint-foreground" aria-hidden="true" />
+              <div data-fact-text className="flex min-w-0 flex-wrap items-center gap-x-2">
+                <p role="status" className="min-w-0 flex-1 text-pretty">
+                  Could not find the nearest <span translate="no">{placeWords(view.query)}</span> just now.
+                </p>
+                <Button variant="quiet" onClick={() => void request({ taskId: task._id }).catch(() => undefined)}>
+                  Try again
+                </Button>
+              </div>
             </div>
           )}
         </motion.div>

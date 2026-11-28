@@ -184,18 +184,20 @@ export const WhenPicker = ({
   label,
   today,
   onChange,
+  className,
 }: {
   when: WhenValue;
   label: string;
   today: string;
   onChange: (when: WhenValue) => void;
+  className?: string;
 }) => {
   const trigger = (
     <ToolButton
       icon={whenIcon(when, today)}
       label={`When: ${label}`}
       active
-      className={cn("pr-2.5", isToday(when, today) && "[&>svg]:text-brand")}
+      className={cn("pr-2.5", isToday(when, today) && "[&>svg]:text-brand", className)}
     >
       <MorphText className="pl-1.5 font-medium">{label}</MorphText>
     </ToolButton>
