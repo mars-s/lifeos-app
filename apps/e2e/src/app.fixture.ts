@@ -102,8 +102,15 @@ export class App {
     return this.main.locator("li", { hasText: title }).first();
   }
 
-  async openCard(title: string) {
+  async reveal(title: string) {
     const row = this.row(title);
+    await row.scrollIntoViewIfNeeded();
+    await expect(row.locator("[data-arrow-item]").first()).toBeVisible();
+    return row;
+  }
+
+  async openCard(title: string) {
+    const row = await this.reveal(title);
     await row.locator("[data-arrow-item]").first().dblclick();
     const card = this.main.locator("li[data-open-card]");
     await expect(card).toBeVisible();

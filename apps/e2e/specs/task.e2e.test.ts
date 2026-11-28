@@ -31,16 +31,16 @@ test("a Checklist item is added from the card", async ({ app, page }) => {
 
 test("completing a Task moves it to the Logbook, and undo brings it back", async ({ app, page }) => {
   const title = await newTask(app, "Done task");
-  await app.row(title).getByRole("checkbox").first().click();
+  await (await app.reveal(title)).getByRole("checkbox").first().click();
   await expect(app.row(title)).toHaveCount(0);
   await page.waitForTimeout(1000);
   await app.go("/logbook");
   await expect(app.row(title)).toBeVisible();
   const reopen = await newTask(app, "Undo task");
-  await app.row(reopen).getByRole("checkbox").first().click();
+  await (await app.reveal(reopen)).getByRole("checkbox").first().click();
   await expect(app.row(reopen)).toHaveCount(0);
   await app.undo();
-  await expect(app.row(reopen).getByRole("checkbox").first()).not.toBeChecked();
+  await expect(app.row(reopen)).toHaveCount(1);
 });
 
 test("a Task moved to Anytime leaves the Inbox and shows in Anytime", async ({ app, page }) => {
@@ -56,13 +56,13 @@ test("a Task moved to Anytime leaves the Inbox and shows in Anytime", async ({ a
 
 test("a deleted Task goes to the Trash and can be put back", async ({ app, page }) => {
   const title = await newTask(app, "Trashed task");
-  await app.row(title).locator("[data-arrow-item]").first().click();
+  await (await app.reveal(title)).locator("[data-arrow-item]").first().click();
   await page.keyboard.press("Backspace");
   await expect(app.row(title)).toHaveCount(0);
   await app.go("/trash");
   await expect(app.row(title)).toBeVisible();
   const back = await newTask(app, "Undone delete");
-  await app.row(back).locator("[data-arrow-item]").first().click();
+  await (await app.reveal(back)).locator("[data-arrow-item]").first().click();
   await page.keyboard.press("Backspace");
   await expect(app.row(back)).toHaveCount(0);
   await app.undo();

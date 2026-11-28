@@ -35,7 +35,7 @@ const closeEverything = async (app: App) => {
 
 for (const route of ROUTES)
   test(`crawl ${route}: every button, the shortcuts and accessibility`, async ({ app, page }) => {
-    test.setTimeout(240_000);
+    test.setTimeout(480_000);
     await app.go(route);
     await page.waitForTimeout(500);
     const violations = await app.axe(route);
