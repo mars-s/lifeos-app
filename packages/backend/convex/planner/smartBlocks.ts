@@ -1,19 +1,21 @@
 import { v } from "convex/values";
-import { Result, err, ok } from "neverthrow";
+import { Clock, Effect, Result } from "effect";
 import type { WithoutSystemFields } from "convex/server";
-import type { MutationCtx, QueryCtx } from "../_generated/server";
+import type { QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
-import type { Recorder } from "../platform/activity";
-import { ownerQuery } from "../platform/access";
-import { changeMutation } from "../platform/change";
+import { changeMutation, ownerQuery, Reads, reading, recording } from "../platform/effect";
 import { featureReady, featureState } from "../platform/features";
 import { capacityDays } from "../calendar/capacity";
 import { commitmentsBetween } from "../calendar/commitments";
 import { blocksTime, MINUTE_MS, parseTimeZone, zonedMoment } from "../calendar/model";
-import { addDays, parseIsoDate, type IsoDate } from "../../shared/date";
-import { parseSchedule } from "../../shared/recurrence";
-import { serialise } from "../../shared/result";
+import { addDays, type IsoDate } from "../../shared/date";
+import { effectFromNeverthrow, fromNeverthrow } from "../../shared/effect/bridge";
+import { parseIsoDate } from "../../shared/effect/date";
+import { InvalidSchedule } from "../../shared/effect/errors";
+import { parseSchedule } from "../../shared/effect/recurrence";
+import { asWire } from "../../shared/effect/wire";
 import { FOREVER, isWindow, occursOnDate, type FillSnapshot, type FillTask } from "../../shared/smartBlocks";
+import { FeatureOff, InvalidSmartBlock, NotFound } from "./errors";
 import { load, parseTitle, type PlannerError } from "./model";
 import { isLive } from "./rows";
 import { guessesFor } from "./smartEstimates";
@@ -31,22 +33,29 @@ const DEFAULT_COLOUR = "teal";
 
 type SmartBlock = Doc<"smartBlocks">;
 type SmartBlockFields = Partial<WithoutSystemFields<SmartBlock>>;
+type SmartBlockFault = (typeof InvalidSmartBlock.fields.reason)["Type"];
+type Series = Pick<SmartBlockFields, "repeat" | "until">;
 
-const refused = (reason: Extract<PlannerError, { kind: "invalid_smart_block" }>["reason"]) =>
-  ({ kind: "invalid_smart_block", reason }) satisfies PlannerError;
-
-const featureOff = { kind: "feature_off", feature: "smartBlocks" } satisfies PlannerError;
+const refused = (reason: SmartBlockFault) => new InvalidSmartBlock({ reason });
 
 const smartBlocksOn = (ctx: QueryCtx) => featureReady(ctx, "smartBlocks");
 
-const parseDay = (date: string) => parseIsoDate(date).mapErr<PlannerError>((error) => error);
+const parseZone = (timeZone: string) => {
+  const zone: Result.Result<string, unknown> = fromNeverthrow(parseTimeZone(timeZone));
+  return Result.mapError(zone, () => refused("time_zone"));
+};
 
-const parseZone = (timeZone: string) => parseTimeZone(timeZone).mapErr<PlannerError>(() => refused("time_zone"));
+const parseName = (title: string) => {
+  const named: Result.Result<string, PlannerError> = fromNeverthrow(parseTitle(title));
+  return named;
+};
 
-const parseWindow = (startMinute: number, endMinute: number) =>
-  isWindow(startMinute, endMinute)
-    ? ok<{ startMinute: number; endMinute: number }, PlannerError>({ startMinute, endMinute })
-    : err<{ startMinute: number; endMinute: number }, PlannerError>(refused("window"));
+const parseWindow = (startMinute: number, endMinute: number) => {
+  const parsed: Result.Result<{ startMinute: number; endMinute: number }, InvalidSmartBlock> = isWindow(startMinute, endMinute)
+    ? Result.succeed({ startMinute, endMinute })
+    : Result.fail(refused("window"));
+  return parsed;
+};
 
 const unique = <T>(values: readonly T[]) => [...new Set(values)];
 
@@ -60,16 +69,20 @@ const vRepeatInput = v.object({ schedule: vCalendarSchedule, until: v.optional(v
 
 type RepeatInput = { schedule: CalendarSchedule; until?: string | undefined };
 
+const seriesOf = (date: IsoDate, schedule: CalendarSchedule, end: string, skipped: readonly string[]) => {
+  const parsed: Result.Result<Series, InvalidSchedule> =
+    end < date ? Result.fail(new InvalidSchedule({ reason: "end" })) : Result.succeed({ repeat: { schedule, skipped: [...skipped] }, until: end });
+  return parsed;
+};
+
 const parseRepeat = (date: IsoDate, repeat: RepeatInput | null | undefined, skipped: readonly string[]) => {
-  if (!repeat) return ok<Pick<SmartBlockFields, "repeat" | "until">, PlannerError>({ repeat: undefined, until: date });
-  const until = repeat.until === undefined ? ok<string, PlannerError>(FOREVER) : parseDay(repeat.until).map(String);
-  return Result.combine([parseSchedule(repeat.schedule).mapErr<PlannerError>((error) => error), until]).andThen(([schedule, end]) =>
-    end < date
-      ? err<Pick<SmartBlockFields, "repeat" | "until">, PlannerError>({ kind: "invalid_schedule", reason: "end" })
-      : ok<Pick<SmartBlockFields, "repeat" | "until">, PlannerError>({
-          repeat: { schedule: schedule as CalendarSchedule, skipped: [...skipped] },
-          until: end,
-        }),
+  if (!repeat) {
+    const single: Result.Result<Series, never> = Result.succeed({ repeat: undefined, until: date });
+    return single;
+  }
+  const until = repeat.until === undefined ? Result.succeed(FOREVER) : Result.map(parseIsoDate(repeat.until), String);
+  return Result.flatMap(Result.all([parseSchedule(repeat.schedule), until]), ([schedule, end]) =>
+    seriesOf(date, schedule as CalendarSchedule, end, skipped),
   );
 };
 
@@ -78,17 +91,18 @@ export const windowOf = (block: Pick<SmartBlock, "startMinute" | "endMinute" | "
   end: zonedMoment(date, block.endMinute, block.timeZone),
 });
 
-const liveBlock = async (ctx: QueryCtx, blockId: Id<"smartBlocks">) =>
-  (await load(ctx, "smartBlocks", blockId)).andThen((block) =>
-    block.removedAt === undefined
-      ? ok<SmartBlock, PlannerError>(block)
-      : err<SmartBlock, PlannerError>({ kind: "not_found", table: "smartBlocks", id: blockId }),
-  );
+const liveBlock = Effect.fn("smartBlocks.liveBlock")(function* (blockId: Id<"smartBlocks">) {
+  const block = yield* Reads.use((ctx) => effectFromNeverthrow(() => load(ctx, "smartBlocks", blockId)));
+  if (block.removedAt !== undefined) return yield* new NotFound({ table: "smartBlocks", id: blockId });
+  return block;
+});
 
-const occurrenceOf = async (ctx: QueryCtx, blockId: Id<"smartBlocks">, date: string) =>
-  Result.combine([await liveBlock(ctx, blockId), parseDay(date)]).andThen(([block, day]) =>
-    occursOnDate(block, day) ? ok<{ block: SmartBlock; date: IsoDate }, PlannerError>({ block, date: day }) : err(refused("occurrence")),
-  );
+const occurrenceOf = Effect.fn("smartBlocks.occurrenceOf")(function* (blockId: Id<"smartBlocks">, date: string) {
+  const block = yield* liveBlock(blockId);
+  const day = yield* Effect.fromResult(parseIsoDate(date));
+  if (!occursOnDate(block, day)) return yield* refused("occurrence");
+  return { block, date: day };
+});
 
 export const areaPriority = async (ctx: QueryCtx) => {
   const [{ settings }, areas] = await Promise.all([
@@ -127,42 +141,47 @@ const filledOf = (fills: readonly Doc<"workBlocks">[]) => ({
   filledMinutes: fills.reduce((sum, fill) => sum + fill.minutes, 0),
 });
 
+const occurrenceRows = Effect.fn("smartBlocks.occurrenceRows")(function* (from: IsoDate, days: number, timeZone: string) {
+  if (!(yield* reading(smartBlocksOn))) return { on: false, occurrences: [] };
+  const occurrences = yield* reading((ctx) => occurrencesIn(ctx, from, days));
+  const first = zonedMoment(from, 0, timeZone) - MAX_BLOCK_MS;
+  const last = zonedMoment(addDays(from, days), 0, timeZone) + MAX_BLOCK_MS;
+  const fills = occurrences.length === 0 ? [] : (yield* reading((ctx) => linkedBlocks(ctx, first, last))).filter((block) => block.smartBlock);
+  return {
+    on: true,
+    occurrences: occurrences.map(({ block, date, window }) => ({
+      blockId: block._id,
+      date,
+      title: block.title,
+      colour: block.colour,
+      start: window.start,
+      end: window.end,
+      startMinute: block.startMinute,
+      endMinute: block.endMinute,
+      timeZone: block.timeZone,
+      filter: block.filter,
+      repeat: block.repeat ? { schedule: block.repeat.schedule, until: block.until === FOREVER ? null : block.until } : null,
+      detached: block.detachedFrom !== undefined,
+      ...filledOf(fills.filter((fill) => fill.smartBlock?.blockId === block._id && fill.smartBlock.date === date)),
+    })),
+  };
+});
+
+const parseDays = (days: number) => {
+  const parsed: Result.Result<number, InvalidSmartBlock> =
+    Number.isInteger(days) && days >= 1 && days <= MAX_RANGE_DAYS ? Result.succeed(days) : Result.fail(refused("window"));
+  return parsed;
+};
+
 export const range = ownerQuery({
   args: { from: v.string(), days: v.number(), timeZone: v.string() },
-  handler: async (ctx, args) => {
-    const parsed = Result.combine([
-      parseDay(args.from),
-      Number.isInteger(args.days) && args.days >= 1 && args.days <= MAX_RANGE_DAYS ? ok<number, PlannerError>(args.days) : err<number, PlannerError>(refused("window")),
-      parseZone(args.timeZone),
-    ]);
-    return serialise(
-      await parsed.asyncMap(async ([from, days, timeZone]) => {
-        if (!(await smartBlocksOn(ctx))) return { on: false, occurrences: [] };
-        const occurrences = await occurrencesIn(ctx, from, days);
-        const first = zonedMoment(from, 0, timeZone) - MAX_BLOCK_MS;
-        const last = zonedMoment(addDays(from, days), 0, timeZone) + MAX_BLOCK_MS;
-        const fills = occurrences.length === 0 ? [] : (await linkedBlocks(ctx, first, last)).filter((block) => block.smartBlock);
-        return {
-          on: true,
-          occurrences: occurrences.map(({ block, date, window }) => ({
-            blockId: block._id,
-            date,
-            title: block.title,
-            colour: block.colour,
-            start: window.start,
-            end: window.end,
-            startMinute: block.startMinute,
-            endMinute: block.endMinute,
-            timeZone: block.timeZone,
-            filter: block.filter,
-            repeat: block.repeat ? { schedule: block.repeat.schedule, until: block.until === FOREVER ? null : block.until } : null,
-            detached: block.detachedFrom !== undefined,
-            ...filledOf(fills.filter((fill) => fill.smartBlock?.blockId === block._id && fill.smartBlock.date === date)),
-          })),
-        };
+  handler: (args) =>
+    asWire(
+      Effect.gen(function* () {
+        const [from, days, timeZone] = yield* Effect.fromResult(Result.all([parseIsoDate(args.from), parseDays(args.days), parseZone(args.timeZone)]));
+        return yield* occurrenceRows(from, days, timeZone);
       }),
-    );
-  },
+    ),
 });
 
 const minuteOf = (instant: number) => Math.round(instant / MINUTE_MS);
@@ -234,15 +253,16 @@ export const loadSnapshot = async (ctx: QueryCtx, date: IsoDate, timeZone: strin
 
 export const fillInputs = ownerQuery({
   args: { date: v.string(), timeZone: v.string() },
-  handler: async (ctx, args) =>
-    serialise(
-      await Result.combine([parseDay(args.date), parseZone(args.timeZone)]).asyncMap(async ([date, timeZone]) =>
-        (await smartBlocksOn(ctx)) ? loadSnapshot(ctx, date, timeZone) : null,
-      ),
+  handler: (args) =>
+    asWire(
+      Effect.gen(function* () {
+        const [date, timeZone] = yield* Effect.fromResult(Result.all([parseIsoDate(args.date), parseZone(args.timeZone)]));
+        return yield* reading(async (ctx) => ((await smartBlocksOn(ctx)) ? loadSnapshot(ctx, date, timeZone) : null));
+      }),
     ),
 });
 
-export const priority = ownerQuery({ args: {}, handler: (ctx) => areaPriority(ctx) });
+export const priority = ownerQuery({ args: {}, handler: () => reading(areaPriority) });
 
 const vFillBlock = v.object({ taskId: v.id("tasks"), start: v.number(), minutes: v.number() });
 
@@ -251,60 +271,60 @@ type FillBlockInput = { taskId: Id<"tasks">; start: number; minutes: number };
 const overlaps = (a: { start: number; minutes: number }, b: { start: number; minutes: number }) =>
   a.start < b.start + b.minutes * MINUTE_MS && b.start < a.start + a.minutes * MINUTE_MS;
 
-const checkFill = async (
-  ctx: QueryCtx,
+const checkFill = Effect.fn("smartBlocks.checkFill")(function* (
   block: Pick<SmartBlock, "startMinute" | "endMinute" | "timeZone">,
   blockId: Id<"smartBlocks"> | null,
   date: IsoDate,
   blocks: readonly FillBlockInput[],
   release: readonly Id<"workBlocks">[],
-) => {
-  if (blocks.length > MAX_FILL_BLOCKS || release.length > MAX_FILL_BLOCKS) return err<null, PlannerError>(refused("too_many"));
+) {
+  if (blocks.length > MAX_FILL_BLOCKS || release.length > MAX_FILL_BLOCKS) return yield* refused("too_many");
   const window = windowOf(block, date);
   const outside = blocks.some(
     (fill) => !Number.isSafeInteger(fill.start) || !Number.isInteger(fill.minutes) || fill.minutes <= 0 || fill.start < window.start || fill.start + fill.minutes * MINUTE_MS > window.end,
   );
-  if (outside) return err<null, PlannerError>(refused("outside"));
-  const released = await Promise.all(release.map((id) => ctx.db.get("workBlocks", id)));
+  if (outside) return yield* refused("outside");
+  const released = yield* reading((ctx) => Promise.all(release.map((id) => ctx.db.get("workBlocks", id))));
   const foreign = released.some(
     (found) => !found || found.removedAt !== undefined || blockId === null || found.smartBlock?.blockId !== blockId || found.smartBlock.date !== date,
   );
-  if (foreign) return err<null, PlannerError>(refused("release"));
-  const tasks = await Promise.all(blocks.map((fill) => ctx.db.get("tasks", fill.taskId)));
+  if (foreign) return yield* refused("release");
+  const tasks = yield* reading((ctx) => Promise.all(blocks.map((fill) => ctx.db.get("tasks", fill.taskId))));
   const closed = blocks.find((_, index) => {
     const task = tasks[index];
     return !task || !isLive(task) || task.status.kind !== "open";
   });
-  if (closed) return err<null, PlannerError>({ kind: "not_found", table: "tasks", id: closed.taskId });
+  if (closed) return yield* new NotFound({ table: "tasks", id: closed.taskId });
   const freed = new Set<string>(release);
-  const existing = (await linkedBlocks(ctx, window.start - MAX_BLOCK_MS, window.end)).filter((other) => !freed.has(other._id));
+  const existing = (yield* reading((ctx) => linkedBlocks(ctx, window.start - MAX_BLOCK_MS, window.end))).filter((other) => !freed.has(other._id));
   const clash = blocks.some((fill, index) => existing.some((other) => overlaps(fill, other)) || blocks.slice(index + 1).some((other) => overlaps(fill, other)));
-  return clash ? err<null, PlannerError>(refused("overlap")) : ok<null, PlannerError>(null);
-};
+  if (clash) return yield* refused("overlap");
+});
 
-const writeFill = async (
-  record: Recorder,
+const writeFill = Effect.fn("smartBlocks.writeFill")(function* (
   block: Pick<SmartBlock, "_id" | "timeZone">,
   date: IsoDate,
   blocks: readonly FillBlockInput[],
   release: readonly Id<"workBlocks">[],
-) => {
-  const at = Date.now();
-  for (const id of release) await record.patch("workBlocks", id, { removedAt: at });
+) {
+  const at = yield* Clock.currentTimeMillis;
+  for (const id of release) yield* recording((record) => record.patch("workBlocks", id, { removedAt: at }));
   const blockIds: Id<"workBlocks">[] = [];
   for (const fill of blocks)
     blockIds.push(
-      await record.insert("workBlocks", {
-        taskId: fill.taskId,
-        start: fill.start,
-        minutes: fill.minutes,
-        timeZone: block.timeZone,
-        done: false,
-        smartBlock: { blockId: block._id, date },
-      }),
+      yield* recording((record) =>
+        record.insert("workBlocks", {
+          taskId: fill.taskId,
+          start: fill.start,
+          minutes: fill.minutes,
+          timeZone: block.timeZone,
+          done: false,
+          smartBlock: { blockId: block._id, date },
+        }),
+      ),
     );
   return blockIds;
-};
+});
 
 const vEditFields = {
   title: v.optional(v.string()),
@@ -317,34 +337,38 @@ const vEditFields = {
 type EditFields = { title?: string; colour?: Doc<"smartBlocks">["colour"]; startMinute?: number; endMinute?: number; filter?: SmartBlockFilter };
 
 const parseEdit = (block: SmartBlock, fields: EditFields) =>
-  Result.combine([
-    fields.title === undefined ? ok<string, PlannerError>(block.title) : parseTitle(fields.title),
-    parseWindow(fields.startMinute ?? block.startMinute, fields.endMinute ?? block.endMinute),
-  ]).map(([title, window]) => ({
-    title,
-    colour: fields.colour ?? block.colour,
-    ...window,
-    filter: fields.filter ? cleanFilter(fields.filter) : block.filter,
-  }));
+  Result.map(
+    Result.all([
+      fields.title === undefined ? Result.succeed(block.title) : parseName(fields.title),
+      parseWindow(fields.startMinute ?? block.startMinute, fields.endMinute ?? block.endMinute),
+    ]),
+    ([title, window]) => ({
+      title,
+      colour: fields.colour ?? block.colour,
+      ...window,
+      filter: fields.filter ? cleanFilter(fields.filter) : block.filter,
+    }),
+  );
 
-const relink = async (ctx: MutationCtx, record: Recorder, from: SmartBlock, date: IsoDate, to: Id<"smartBlocks">) => {
+type Edited = ReturnType<typeof parseEdit> extends Result.Result<infer T, unknown> ? T : never;
+
+const relink = Effect.fn("smartBlocks.relink")(function* (from: SmartBlock, date: IsoDate, to: Id<"smartBlocks">) {
   const window = windowOf(from, date);
-  const linked = (await linkedBlocks(ctx, window.start - MAX_BLOCK_MS, window.end + MAX_BLOCK_MS)).filter(
+  const linked = (yield* reading((ctx) => linkedBlocks(ctx, window.start - MAX_BLOCK_MS, window.end + MAX_BLOCK_MS))).filter(
     (fill) => fill.smartBlock?.blockId === from._id && fill.smartBlock.date === date,
   );
-  for (const fill of linked) await record.patch("workBlocks", fill._id, { smartBlock: { blockId: to, date } });
-};
+  for (const fill of linked) yield* recording((record) => record.patch("workBlocks", fill._id, { smartBlock: { blockId: to, date } }));
+});
 
 const sameIds = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((id, index) => id === b[index]);
 
 const sameFilter = (a: SmartBlockFilter, b: SmartBlockFilter) =>
   sameIds(a.areaIds, b.areaIds) && sameIds(a.projectIds, b.projectIds) && sameIds(a.labelIds, b.labelIds);
 
-type Edited = ReturnType<typeof parseEdit> extends Result<infer T, PlannerError> ? T : never;
-
-const writeOne = async (ctx: MutationCtx, record: Recorder, block: SmartBlock, date: IsoDate, edited: Edited) => {
-  if (!block.repeat) {
-    await record.patch("smartBlocks", block._id, edited);
+const writeOne = Effect.fn("smartBlocks.writeOne")(function* (block: SmartBlock, date: IsoDate, edited: Edited) {
+  const { repeat } = block;
+  if (!repeat) {
+    yield* recording((record) => record.patch("smartBlocks", block._id, edited));
     return block._id;
   }
   const unchanged =
@@ -354,20 +378,28 @@ const writeOne = async (ctx: MutationCtx, record: Recorder, block: SmartBlock, d
     edited.endMinute === block.endMinute &&
     sameFilter(edited.filter, block.filter);
   if (unchanged) return block._id;
-  await record.patch("smartBlocks", block._id, { repeat: { ...block.repeat, skipped: [...block.repeat.skipped, date].toSorted() } });
-  const detachedId = await record.insert("smartBlocks", {
-    ...edited,
-    date,
-    until: date,
-    timeZone: block.timeZone,
-    detachedFrom: { blockId: block._id, date },
-  });
-  await relink(ctx, record, block, date, detachedId);
+  yield* recording((record) => record.patch("smartBlocks", block._id, { repeat: { ...repeat, skipped: [...repeat.skipped, date].toSorted() } }));
+  const detachedId = yield* recording((record) =>
+    record.insert("smartBlocks", {
+      ...edited,
+      date,
+      until: date,
+      timeZone: block.timeZone,
+      detachedFrom: { blockId: block._id, date },
+    }),
+  );
+  yield* relink(block, date, detachedId);
   return detachedId;
-};
+});
 
-const whenOn = async <T>(ctx: QueryCtx, run: () => Promise<Result<T, PlannerError>>) =>
-  (await smartBlocksOn(ctx)) ? run() : err<T, PlannerError>(featureOff);
+const whenOn = <A, E, R>(run: Effect.Effect<A, E, R>) =>
+  reading(smartBlocksOn).pipe(
+    Effect.filterOrFail(
+      (on) => on,
+      () => new FeatureOff({ feature: "smartBlocks" }),
+    ),
+    Effect.andThen(run),
+  );
 
 export const create = changeMutation({
   action: "smartBlock.create",
@@ -382,31 +414,31 @@ export const create = changeMutation({
     repeat: v.optional(vRepeatInput),
     fill: v.optional(v.array(vFillBlock)),
   },
-  handler: (ctx, args, record) =>
-    whenOn(ctx, async () => {
-      const parsed = Result.combine([parseTitle(args.title), parseDay(args.date), parseWindow(args.startMinute, args.endMinute), parseZone(args.timeZone)]);
-      if (parsed.isErr()) return err(parsed.error);
-      const [title, date, window, timeZone] = parsed.value;
-      const repeat = parseRepeat(date, args.repeat, []);
-      if (repeat.isErr()) return err(repeat.error);
-      const fields = {
-        title,
-        colour: args.colour ?? DEFAULT_COLOUR,
-        date,
-        ...window,
-        timeZone,
-        filter: cleanFilter(args.filter ?? { areaIds: [], projectIds: [], labelIds: [] }),
-        until: repeat.value.until ?? date,
-        ...(repeat.value.repeat ? { repeat: repeat.value.repeat } : {}),
-      };
-      if (!occursOnDate(fields, date)) return err<{ blockId: Id<"smartBlocks">; blockIds: Id<"workBlocks">[] }, PlannerError>(refused("occurrence"));
-      const fills = args.fill ?? [];
-      const checked = await checkFill(ctx, fields, null, date, fills, []);
-      if (checked.isErr()) return err(checked.error);
-      const blockId = await record.insert("smartBlocks", fields);
-      const blockIds = await writeFill(record, { _id: blockId, timeZone }, date, fills, []);
-      return ok({ blockId, blockIds });
-    }),
+  handler: (args) =>
+    whenOn(
+      Effect.gen(function* () {
+        const [title, date, window, timeZone] = yield* Effect.fromResult(
+          Result.all([parseName(args.title), parseIsoDate(args.date), parseWindow(args.startMinute, args.endMinute), parseZone(args.timeZone)]),
+        );
+        const series = yield* Effect.fromResult(parseRepeat(date, args.repeat, []));
+        const fields = {
+          title,
+          colour: args.colour ?? DEFAULT_COLOUR,
+          date,
+          ...window,
+          timeZone,
+          filter: cleanFilter(args.filter ?? { areaIds: [], projectIds: [], labelIds: [] }),
+          until: series.until ?? date,
+          ...(series.repeat ? { repeat: series.repeat } : {}),
+        };
+        if (!occursOnDate(fields, date)) return yield* refused("occurrence");
+        const fills = args.fill ?? [];
+        yield* checkFill(fields, null, date, fills, []);
+        const blockId = yield* recording((record) => record.insert("smartBlocks", fields));
+        const blockIds = yield* writeFill({ _id: blockId, timeZone }, date, fills, []);
+        return { blockId, blockIds };
+      }),
+    ),
 });
 
 const vScope = v.union(v.literal("one"), v.literal("all"));
@@ -416,20 +448,34 @@ const vEdit = v.object({ scope: vScope, ...vEditFields, repeat: v.optional(v.uni
 type Edit = EditFields & { scope: "one" | "all"; repeat?: RepeatInput | null | undefined };
 
 const planEdit = (block: SmartBlock, { scope, repeat, ...fields }: Edit) =>
-  parseEdit(block, fields).andThen((edited) =>
-    (scope === "one" || repeat === undefined
-      ? ok<Pick<SmartBlockFields, "repeat" | "until">, PlannerError>({})
-      : parseRepeat(block.date as IsoDate, repeat, block.repeat?.skipped ?? [])
-    ).map((series) => ({ scope, edited, series, after: scope === "one" ? { ...block, ...edited } : { ...block, ...edited, ...series } })),
+  Result.flatMap(parseEdit(block, fields), (edited) =>
+    Result.map(
+      scope === "one" || repeat === undefined ? Result.succeed<Series>({}) : parseRepeat(block.date as IsoDate, repeat, block.repeat?.skipped ?? []),
+      (series) => ({ scope, edited, series, after: scope === "one" ? { ...block, ...edited } : { ...block, ...edited, ...series } }),
+    ),
   );
 
-type PlannedEdit = ReturnType<typeof planEdit> extends Result<infer T, PlannerError> ? T : never;
+type PlannedEdit = ReturnType<typeof planEdit> extends Result.Result<infer T, unknown> ? T : never;
 
-const writeEdit = async (ctx: MutationCtx, record: Recorder, block: SmartBlock, date: IsoDate, plan: PlannedEdit) => {
-  if (plan.scope === "one") return writeOne(ctx, record, block, date, plan.edited);
-  await record.patch("smartBlocks", block._id, { ...plan.edited, ...plan.series });
+const writeEdit = Effect.fn("smartBlocks.writeEdit")(function* (block: SmartBlock, date: IsoDate, plan: PlannedEdit) {
+  if (plan.scope === "one") return yield* writeOne(block, date, plan.edited);
+  yield* recording((record) => record.patch("smartBlocks", block._id, { ...plan.edited, ...plan.series }));
   return block._id;
-};
+});
+
+const editTarget = Effect.fn("smartBlocks.editTarget")(function* (
+  blockId: Id<"smartBlocks">,
+  date: string | undefined,
+  repeat: RepeatInput | null | undefined,
+  fields: EditFields,
+) {
+  if (date === undefined) {
+    const block = yield* liveBlock(blockId);
+    return { block, date: block.date as IsoDate, edit: { scope: "all" as const, repeat, ...fields } };
+  }
+  const found = yield* occurrenceOf(blockId, date);
+  return { ...found, edit: { scope: "one" as const, ...fields } };
+});
 
 export const edit = changeMutation({
   action: "smartBlock.edit",
@@ -439,28 +485,30 @@ export const edit = changeMutation({
     ...vEditFields,
     repeat: v.optional(v.union(vRepeatInput, v.null())),
   },
-  handler: (ctx, { blockId, date, repeat, ...fields }, record) =>
-    whenOn(ctx, async () => {
-      const target =
-        date === undefined
-          ? (await liveBlock(ctx, blockId)).map((block) => ({ block, date: block.date as IsoDate, edit: { scope: "all" as const, repeat, ...fields } }))
-          : (await occurrenceOf(ctx, blockId, date)).map((found) => ({ ...found, edit: { scope: "one" as const, ...fields } }));
-      if (target.isErr()) return err(target.error);
-      const { block, date: day, edit: changes } = target.value;
-      const plan = planEdit(block, changes);
-      if (plan.isErr()) return err(plan.error);
-      return ok({ blockId: await writeEdit(ctx, record, block, day, plan.value) });
-    }),
+  handler: ({ blockId, date, repeat, ...fields }) =>
+    whenOn(
+      Effect.gen(function* () {
+        const { block, date: day, edit: changes } = yield* editTarget(blockId, date, repeat, fields);
+        const plan = yield* Effect.fromResult(planEdit(block, changes));
+        return { blockId: yield* writeEdit(block, day, plan) };
+      }),
+    ),
 });
 
 export const skip = changeMutation({
   action: "smartBlock.skip",
   args: { blockId: v.id("smartBlocks"), date: v.string() },
-  handler: (ctx, { blockId, date }, record) =>
-    whenOn(ctx, async () =>
-      (await occurrenceOf(ctx, blockId, date)).asyncMap(async ({ block, date: day }) => {
-        if (block.repeat) await record.patch("smartBlocks", blockId, { repeat: { ...block.repeat, skipped: [...block.repeat.skipped, day].toSorted() } });
-        else await record.patch("smartBlocks", blockId, { removedAt: Date.now() });
+  handler: ({ blockId, date }) =>
+    whenOn(
+      Effect.gen(function* () {
+        const { block, date: day } = yield* occurrenceOf(blockId, date);
+        const { repeat } = block;
+        const removedAt = yield* Clock.currentTimeMillis;
+        yield* recording((record) =>
+          repeat
+            ? record.patch("smartBlocks", blockId, { repeat: { ...repeat, skipped: [...repeat.skipped, day].toSorted() } })
+            : record.patch("smartBlocks", blockId, { removedAt }),
+        );
         return { blockId };
       }),
     ),
@@ -469,10 +517,12 @@ export const skip = changeMutation({
 export const remove = changeMutation({
   action: "smartBlock.remove",
   args: { blockId: v.id("smartBlocks") },
-  handler: (ctx, { blockId }, record) =>
-    whenOn(ctx, async () =>
-      (await liveBlock(ctx, blockId)).asyncMap(async () => {
-        await record.patch("smartBlocks", blockId, { removedAt: Date.now() });
+  handler: ({ blockId }) =>
+    whenOn(
+      Effect.gen(function* () {
+        yield* liveBlock(blockId);
+        const removedAt = yield* Clock.currentTimeMillis;
+        yield* recording((record) => record.patch("smartBlocks", blockId, { removedAt }));
         return { blockId };
       }),
     ),
@@ -487,19 +537,17 @@ export const fill = changeMutation({
     release: v.array(v.id("workBlocks")),
     edit: v.optional(vEdit),
   },
-  handler: (ctx, { blockId, date, blocks, release, edit: changes }, record) =>
-    whenOn(ctx, async () => {
-      const occurrence = await occurrenceOf(ctx, blockId, date);
-      if (occurrence.isErr()) return err(occurrence.error);
-      const { block, date: day } = occurrence.value;
-      const plan = changes ? planEdit(block, changes) : ok<PlannedEdit | null, PlannerError>(null);
-      if (plan.isErr()) return err(plan.error);
-      const after = plan.value?.after ?? block;
-      if (!occursOnDate(after, day)) return err<{ blockId: Id<"smartBlocks">; blockIds: Id<"workBlocks">[] }, PlannerError>(refused("occurrence"));
-      const checked = await checkFill(ctx, after, block._id, day, blocks, release);
-      if (checked.isErr()) return err(checked.error);
-      const target = plan.value ? await writeEdit(ctx, record, block, day, plan.value) : block._id;
-      const blockIds = await writeFill(record, { _id: target, timeZone: block.timeZone }, day, blocks, release);
-      return ok({ blockId: target, blockIds });
-    }),
+  handler: ({ blockId, date, blocks, release, edit: changes }) =>
+    whenOn(
+      Effect.gen(function* () {
+        const { block, date: day } = yield* occurrenceOf(blockId, date);
+        const plan = changes ? yield* Effect.fromResult(planEdit(block, changes)) : null;
+        const after = plan?.after ?? block;
+        if (!occursOnDate(after, day)) return yield* refused("occurrence");
+        yield* checkFill(after, block._id, day, blocks, release);
+        const target = plan ? yield* writeEdit(block, day, plan) : block._id;
+        const blockIds = yield* writeFill({ _id: target, timeZone: block.timeZone }, day, blocks, release);
+        return { blockId: target, blockIds };
+      }),
+    ),
 });
