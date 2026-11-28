@@ -1,32 +1,23 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { useEffect, useEffectEvent, useRef, useSyncExternalStore } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/reactivity";
+import { useEffect, useEffectEvent, useRef } from "react";
 import { api } from "@lifeos/backend/api";
 import type { Id } from "@lifeos/backend/dataModel";
+import { registry } from "../../lib/atoms";
 import { drafts } from "../app/drafts";
 import { useShell } from "../app/shell-context";
 import { TaskItem, useCardHost } from "../app/task-item";
 
-let current: Id<"tasks"> | null = null;
-const listeners = new Set<() => void>();
+const besideAtom = Atom.make<Id<"tasks"> | null>(null).pipe(Atom.keepAlive);
 
-const set = (taskId: Id<"tasks"> | null) => {
-  current = taskId;
-  for (const listener of listeners) listener();
-};
+const set = (taskId: Id<"tasks"> | null) => registry.set(besideAtom, taskId);
 
 export const openTaskBeside = (taskId: Id<"tasks">) => set(taskId);
 
-const useTaskBeside = () =>
-  useSyncExternalStore(
-    (listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    () => current,
-    () => null,
-  );
+const useTaskBeside = () => useAtomValue(besideAtom);
 
 const Card = ({ taskId }: { taskId: Id<"tasks"> }) => {
   const { openCard, setOpenCard } = useShell();
