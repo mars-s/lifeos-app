@@ -1,25 +1,16 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/reactivity";
+import { registry } from "../../../lib/atoms";
 
-let replaying: boolean | undefined;
-const listeners = new Set<() => void>();
+const askedInUrl = () => import.meta.env.DEV && typeof window !== "undefined" && new URLSearchParams(window.location.search).has("welcome");
 
-const askedInUrl = () => import.meta.env.DEV && new URLSearchParams(window.location.search).has("welcome");
+const replayingAtom = Atom.writable(askedInUrl, (ctx, next: boolean) => ctx.setSelf(next)).pipe(
+  Atom.withServerValue(() => false),
+  Atom.keepAlive,
+);
 
-const read = () => (replaying ??= askedInUrl());
-const readNothing = () => false;
-
-const set = (next: boolean) => {
-  replaying = next;
-  listeners.forEach((listener) => listener());
-};
-
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  return () => void listeners.delete(listener);
-};
-
-export const replayWelcome = () => set(true);
-export const endWelcomeReplay = () => set(false);
-export const useWelcomeReplay = () => useSyncExternalStore(subscribe, read, readNothing);
+export const replayWelcome = () => registry.set(replayingAtom, true);
+export const endWelcomeReplay = () => registry.set(replayingAtom, false);
+export const useWelcomeReplay = () => useAtomValue(replayingAtom);
