@@ -110,7 +110,7 @@ export const parseLabels = Effect.fn("model.parseLabels")(function* (labelIds: I
 export const plannerChange = <Args extends PropertyValidators, A extends object>(spec: {
   action: string;
   args: Args;
-  handler: (args: ObjectType<Args>) => Effect.Effect<A, PlannerFailure | PlannerError, ChangeServices>;
+  handler: (args: ObjectType<Args>) => Effect.Effect<A, PlannerFailure, ChangeServices>;
 }) => changeMutation(spec);
 
 export const changing = <A>(write: (ctx: MutationCtx, record: Recording) => Promise<A>) =>

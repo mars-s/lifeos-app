@@ -4,7 +4,6 @@ import { Clock, Effect, Result } from "effect";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { ownerQuery, reading, recording, type ChangeServices } from "../platform/effect";
-import { effectFromNeverthrow } from "../../shared/effect/bridge";
 import {
   changing,
   keyAfter,
@@ -25,11 +24,11 @@ import { endFocusOnClosedTask } from "./focus";
 import { requestTrip } from "../places/trips";
 import { requestSuggestion } from "./smartEstimates";
 import { followCompletion } from "./recurrence";
-import { parseNewPlace, placeOnDay } from "./plan";
+import { parseNewPlaceFx, placeOnDayFx } from "./plan";
 import { enrich } from "./rows";
 import { vParent, vWhen } from "./tables";
 import type { IsoDate } from "../../shared/date";
-import { parseNewBlock, vNewBlock } from "./workBlocks";
+import { parseNewBlockFx, vNewBlock } from "./workBlocks";
 
 const CARD_LIMIT = 500;
 
@@ -60,8 +59,7 @@ const placeNewTask = Effect.fn("tasks.placeNewTask")(function* (taskId: Id<"task
   if (!task) return yield* new NotFound({ table: "tasks", id: taskId });
   const order = [...place.order.slice(0, place.at), taskId, ...place.order.slice(place.at)];
   const evening = task.when.kind === "scheduled" && task.when.evening;
-  const placed = yield* changing((ctx, record) => placeOnDay(ctx, record, task, place.date, order, evening));
-  yield* effectFromNeverthrow(() => placed);
+  yield* placeOnDayFx(task, place.date, order, evening);
 });
 
 export const create = plannerChange({
@@ -79,10 +77,7 @@ export const create = plannerChange({
     place: v.optional(v.object({ date: v.string(), order: v.array(v.id("tasks")), at: v.number() })),
   },
   handler: Effect.fn("tasks.create")(function* (args) {
-    const newBlock = args.block;
-    const block = newBlock ? yield* effectFromNeverthrow(() => parseNewBlock(newBlock)) : undefined;
-    const newPlace = args.place;
-    const newOrder = args.order;
+    const block = args.block ? yield* Effect.fromResult(parseNewBlockFx(args.block)) : undefined;
     const [title, when, deadline, estimateMinutes, parent, labelIds, order, place] = yield* Effect.all([
       Effect.fromResult(parseTitleFx(args.title)),
       Effect.fromResult(parseWhen(args.when ?? { kind: "inbox" })),
@@ -90,8 +85,8 @@ export const create = plannerChange({
       Effect.fromResult(parseEstimate(args.estimateMinutes ?? null)),
       parseParent(args.parent ?? { kind: "loose" }),
       parseLabels(args.labelIds ?? []),
-      newOrder === undefined ? Effect.succeed(undefined) : Effect.fromResult(parseOrder(newOrder)),
-      newPlace === undefined ? Effect.succeed(undefined) : effectFromNeverthrow(() => parseNewPlace(newPlace)),
+      args.order === undefined ? Effect.succeed(undefined) : Effect.fromResult(parseOrder(args.order)),
+      args.place === undefined ? Effect.succeed(undefined) : Effect.fromResult(parseNewPlaceFx(args.place)),
     ]);
     const key = order ?? keyAfter(yield* reading((ctx) => lastTaskOrder(ctx, parent)));
     const taskId = yield* recording((record) =>
