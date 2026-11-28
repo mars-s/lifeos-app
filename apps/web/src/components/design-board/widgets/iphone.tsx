@@ -302,6 +302,27 @@ const ControlButton = ({ icon: IconComponent, label, on = false }: { icon: Icon;
   </button>
 );
 
+export const BrainDumpButton = () => <ControlButton icon={Tray} label="Brain Dump: add a thought" />;
+
+export const BrainDumpControl = ({ className }: { className?: string }) => (
+  <button
+    type="button"
+    className={cn(
+      "flex h-[4.25rem] touch-manipulation items-center gap-3 rounded-full px-4 text-left text-white outline-none transition-[scale,opacity] duration-(--dur-press) ease-out hover:opacity-85 focus-visible:shadow-[0_0_0_2px_rgb(255_255_255/0.7)] active:scale-[0.96] motion-reduce:transition-none",
+      CONTROL_GLASS,
+      className,
+    )}
+  >
+    <Tray weight="fill" className="size-5 shrink-0" aria-hidden="true" />
+    <span className="min-w-0">
+      <span className="block truncate text-small leading-4 font-semibold">Brain Dump</span>
+      <span className="block truncate text-micro text-white/65">
+        <span className="font-mono">{BRAIN_DUMP}</span> to sort
+      </span>
+    </span>
+  </button>
+);
+
 export const ControlCentre = () => (
   <Fit width={332}>
     <div role="group" aria-label="Control Centre" className="dark relative isolate overflow-hidden rounded-[2.5rem] p-5">
@@ -314,23 +335,9 @@ export const ControlCentre = () => (
             </span>
           ))}
         </div>
-        <ControlButton icon={Tray} label="Brain Dump: add a thought" />
+        <BrainDumpButton />
         <ControlButton icon={Timer} label="Focus Session, running" on />
-        <button
-          type="button"
-          className={cn(
-            "col-span-2 flex h-[4.25rem] touch-manipulation items-center gap-3 rounded-full px-4 text-left text-white outline-none transition-[scale,opacity] duration-(--dur-press) ease-out hover:opacity-85 focus-visible:shadow-[0_0_0_2px_rgb(255_255_255/0.7)] active:scale-[0.96] motion-reduce:transition-none",
-            CONTROL_GLASS,
-          )}
-        >
-          <Tray weight="fill" className="size-5 shrink-0" aria-hidden="true" />
-          <span className="min-w-0">
-            <span className="block truncate text-small leading-4 font-semibold">Brain Dump</span>
-            <span className="block truncate text-micro text-white/65">
-              <span className="font-mono">{BRAIN_DUMP}</span> to sort
-            </span>
-          </span>
-        </button>
+        <BrainDumpControl className="col-span-2" />
       </div>
     </div>
   </Fit>

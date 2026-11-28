@@ -5,6 +5,7 @@ import { Segmented } from "@/components/ui/segmented-control";
 import { LifeosMark } from "@/components/lifeos/mark";
 import { Section, Specimen } from "../specimen";
 import { ThemeContext, useTheme } from "../theme";
+import { Bento } from "./bento";
 import { ControlCentre, HomeScreen, InlineAccessory, IslandCompact, IslandExpanded, IslandMinimal, LockScreen, StandBy, TodayCircle, CapacityCircle, BrainDumpCircle, NextUpRectangle } from "./iphone";
 import { MacDesktop } from "./mac";
 import type { Mode } from "./model";
@@ -31,6 +32,7 @@ const SECTIONS = [
   { id: "lock", label: "Lock Screen" },
   { id: "mac", label: "Mac" },
   { id: "states", label: "States" },
+  { id: "bento", label: "Bento" },
 ];
 
 const PRINCIPLES = [
@@ -403,6 +405,15 @@ export const WidgetsBoard = () => {
                   <PlaceholderWidget />
                 </div>
               </Wall>
+            </Specimen>
+          </Section>
+
+          <Section id="bento" title="Bento" lede="The whole set on one sheet, to share. Every tile is the live widget, so the sheets follow the design.">
+            <Specimen name="Wide" note="16 by 9, for a message or a post. Saved as widgets-bento-light.png and -dark." className="col-span-full" stage="p-2 sm:p-2">
+              <Bento shape="wide" />
+            </Specimen>
+            <Specimen name="Square" note="1 by 1. Saved as widgets-bento-square-light.png and -dark." className="md:col-span-6 xl:col-span-7" stage="p-2 sm:p-2">
+              <Bento shape="square" />
             </Specimen>
           </Section>
         </div>

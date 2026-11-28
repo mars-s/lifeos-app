@@ -5,6 +5,11 @@ Set BASE to the running web app. Needs Playwright with Chromium.
     BASE=http://localhost:3990 uv run --with playwright python scripts/check-widgets-design.py <output folder>
 
 ONLY=iphone,mac limits the screenshots to those sections. SCALE=2 saves the desktop shots at double size.
+
+The bento sheets for sharing (widgets-bento-light.png, -dark, widgets-bento-square-light.png, -dark) are saved at
+their full size and 2x. ONLY=bento remakes just those:
+
+    BASE=http://localhost:3990 ONLY=bento uv run --with playwright python scripts/check-widgets-design.py ../../docs/design
 """
 
 import os
@@ -19,6 +24,12 @@ ONLY = [name for name in os.environ.get("ONLY", "").split(",") if name]
 SECTIONS = ["anatomy", "iphone", "modes", "lock", "mac", "states"]
 SIZES = {"desktop": (1440, 900, int(os.environ.get("SCALE", "1"))), "phone": (390, 844, 2)}
 PHONE_SECTIONS = ["iphone", "lock"]
+BENTO = {"wide": (1920, 1080, "widgets-bento"), "square": (1440, 1440, "widgets-bento-square")}
+ALONE = """(sheet) => {
+  document.body.replaceChildren(sheet);
+  document.body.style.margin = 0;
+  window.scrollTo(0, 0);
+}"""
 
 
 def wanted(section):
@@ -83,6 +94,22 @@ def shoot(page, size, theme):
         mac.get_by_role("radio", name="Desktop", exact=True).click()
 
 
+def bento(browser, theme):
+    for shape, (width, height, name) in BENTO.items():
+        context, page, errors = open_board(browser, width, height, 2, theme)
+        sheet = page.locator(f"[data-bento={shape}]")
+        settle(page, sheet)
+        sheet.evaluate(ALONE)
+        box = sheet.bounding_box()
+        assert (box["x"], box["y"], box["width"], box["height"]) == (0, 0, width, height), f"the {shape} bento sits at {box}"
+        clipped = sheet.evaluate("(sheet) => Array.from(sheet.querySelectorAll('[role=group]')).filter((tile) => tile.scrollWidth > tile.clientWidth + 1 || tile.scrollHeight > tile.clientHeight + 1).map((tile) => tile.getAttribute('aria-label'))")
+        assert not clipped, f"clipped in the {shape} bento: {clipped}"
+        page.screenshot(path=str(OUT / f"{name}-{theme}.png"))
+        assert not errors, "\n".join(errors)
+        context.close()
+        print(f"ok bento {shape} {theme}")
+
+
 def interact(page):
     home = page.locator("#iphone").get_by_role("group", name="iPhone Home Screen, light")
     today = home.get_by_role("group", name="Today: 6 Tasks left")
@@ -98,6 +125,11 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
+        if wanted("bento"):
+            for theme in ("light", "dark"):
+                bento(browser, theme)
+        if ONLY == ["bento"]:
+            return
         for size, (width, height, scale) in SIZES.items():
             for theme in ("light", "dark"):
                 context, page, errors = open_board(browser, width, height, scale, theme)
