@@ -1,9 +1,11 @@
 import { v } from "convex/values";
+import { Effect } from "effect";
 import type { QueryCtx } from "../_generated/server";
-import { ownerQuery } from "../platform/access";
+import { ownerQuery, reading } from "../platform/effect";
 import type { Doc } from "../_generated/dataModel";
-import { parseIsoDate, type IsoDate } from "../../shared/date";
-import { serialise } from "../../shared/result";
+import type { IsoDate } from "../../shared/date";
+import { parseIsoDate } from "../../shared/effect/date";
+import { asWire } from "../../shared/effect/wire";
 import { areaSummary, loadContainers, projectProgress, projectSummary } from "./rows";
 import { openTodayTasks } from "./today";
 
@@ -40,5 +42,5 @@ const loadSidebar = async (ctx: QueryCtx, date: IsoDate) => {
 
 export const get = ownerQuery({
   args: { date: v.string() },
-  handler: async (ctx, { date }) => serialise(await parseIsoDate(date).asyncMap((day) => loadSidebar(ctx, day))),
+  handler: ({ date }) => asWire(Effect.flatMap(Effect.fromResult(parseIsoDate(date)), (day) => reading((ctx) => loadSidebar(ctx, day)))),
 });

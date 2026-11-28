@@ -1,11 +1,13 @@
-import { paginationOptsValidator } from "convex/server";
+import { paginationOptsValidator, type PaginationOptions } from "convex/server";
 import { v } from "convex/values";
+import { Effect } from "effect";
 import type { QueryCtx } from "../_generated/server";
-import { ownerQuery } from "../platform/access";
+import { ownerQuery, reading } from "../platform/effect";
 import type { Doc, Id } from "../_generated/dataModel";
-import { addDays, parseIsoDate, type IsoDate } from "../../shared/date";
+import { addDays, type IsoDate } from "../../shared/date";
+import { parseIsoDate } from "../../shared/effect/date";
+import { asWire } from "../../shared/effect/wire";
 import { byDayPlan } from "../../shared/plan";
-import { serialise } from "../../shared/result";
 import {
   areaSummary,
   compare,
@@ -79,7 +81,7 @@ const isActiveOn = (date: IsoDate) => (project: Doc<"projects">) =>
 
 export const inbox = ownerQuery({
   args: {},
-  handler: async (ctx) => ({ tasks: await enrich(ctx, (await openTasksWhen(ctx, "inbox")).toSorted(byListOrder)) }),
+  handler: () => reading(async (ctx) => ({ tasks: await enrich(ctx, (await openTasksWhen(ctx, "inbox")).toSorted(byListOrder)) })),
 });
 
 const loadAnytime = async (ctx: QueryCtx, date: IsoDate) => {
@@ -97,28 +99,30 @@ const loadAnytime = async (ctx: QueryCtx, date: IsoDate) => {
 
 export const anytime = ownerQuery({
   args: { date: v.string() },
-  handler: async (ctx, { date }) => serialise(await parseIsoDate(date).asyncMap((day) => loadAnytime(ctx, day))),
+  handler: ({ date }) => asWire(Effect.flatMap(Effect.fromResult(parseIsoDate(date)), (day) => reading((ctx) => loadAnytime(ctx, day)))),
 });
+
+const loadSomeday = async (ctx: QueryCtx) => {
+  const { standalone, areas } = await loadContainers(ctx);
+  const parked = [
+    ...standalone.map((project) => ({ project, area: undefined })),
+    ...areas.flatMap(({ area, projects }) => projects.map((project) => ({ project, area }))),
+  ].filter(({ project }) => project.when.kind === "someday");
+  return {
+    groups: await groupByContainer(ctx, await openTasksWhen(ctx, "someday"), (project) => project.when.kind !== "someday"),
+    projects: await Promise.all(
+      parked.map(async ({ project, area }) => ({
+        ...projectSummary(project),
+        area: area && areaSummary(area),
+        progress: await projectProgress(ctx, project),
+      })),
+    ),
+  };
+};
 
 export const someday = ownerQuery({
   args: {},
-  handler: async (ctx) => {
-    const { standalone, areas } = await loadContainers(ctx);
-    const parked = [
-      ...standalone.map((project) => ({ project, area: undefined })),
-      ...areas.flatMap(({ area, projects }) => projects.map((project) => ({ project, area }))),
-    ].filter(({ project }) => project.when.kind === "someday");
-    return {
-      groups: await groupByContainer(ctx, await openTasksWhen(ctx, "someday"), (project) => project.when.kind !== "someday"),
-      projects: await Promise.all(
-        parked.map(async ({ project, area }) => ({
-          ...projectSummary(project),
-          area: area && areaSummary(area),
-          progress: await projectProgress(ctx, project),
-        })),
-      ),
-    };
-  },
+  handler: () => reading(loadSomeday),
 });
 
 const loadUpcoming = async (ctx: QueryCtx, date: IsoDate, days: number) => {
@@ -162,69 +166,75 @@ const loadUpcoming = async (ctx: QueryCtx, date: IsoDate, days: number) => {
 
 export const upcoming = ownerQuery({
   args: { date: v.string(), days: v.number() },
-  handler: async (ctx, { date, days }) => serialise(await parseIsoDate(date).asyncMap((day) => loadUpcoming(ctx, day, days))),
+  handler: ({ date, days }) => asWire(Effect.flatMap(Effect.fromResult(parseIsoDate(date)), (day) => reading((ctx) => loadUpcoming(ctx, day, days)))),
 });
+
+const loadLogbook = async (ctx: QueryCtx, paginationOpts: PaginationOptions, from: number | undefined, to: number | undefined) => {
+  const closed = await ctx.db
+    .query("tasks")
+    .withIndex("by_trashed_closed_at", (q) =>
+      q
+        .eq("trashedAt", undefined)
+        .gte("status.at", from ?? 0)
+        .lte("status.at", to ?? Number.MAX_SAFE_INTEGER),
+    )
+    .order("desc")
+    .paginate(paginationOpts);
+  return { ...closed, page: await enrich(ctx, closed.page) };
+};
 
 export const logbook = ownerQuery({
   args: { paginationOpts: paginationOptsValidator, from: v.optional(v.number()), to: v.optional(v.number()) },
-  handler: async (ctx, { paginationOpts, from, to }) => {
-    const closed = await ctx.db
-      .query("tasks")
-      .withIndex("by_trashed_closed_at", (q) =>
-        q
-          .eq("trashedAt", undefined)
-          .gte("status.at", from ?? 0)
-          .lte("status.at", to ?? Number.MAX_SAFE_INTEGER),
-      )
-      .order("desc")
-      .paginate(paginationOpts);
-    return { ...closed, page: await enrich(ctx, closed.page) };
-  },
+  handler: ({ paginationOpts, from, to }) => reading((ctx) => loadLogbook(ctx, paginationOpts, from, to)),
 });
+
+const loadLogbookTimeline = async (ctx: QueryCtx, from: number) => {
+  const closed = await ctx.db
+    .query("tasks")
+    .withIndex("by_trashed_closed_at", (q) => q.eq("trashedAt", undefined).gte("status.at", from))
+    .order("desc")
+    .take(TIMELINE_LIMIT);
+  return { closedAt: closed.flatMap((task) => (task.status.kind === "open" ? [] : [task.status.at])) };
+};
 
 export const logbookTimeline = ownerQuery({
   args: { from: v.number() },
-  handler: async (ctx, { from }) => {
-    const closed = await ctx.db
-      .query("tasks")
-      .withIndex("by_trashed_closed_at", (q) => q.eq("trashedAt", undefined).gte("status.at", from))
-      .order("desc")
-      .take(TIMELINE_LIMIT);
-    return { closedAt: closed.flatMap((task) => (task.status.kind === "open" ? [] : [task.status.at])) };
-  },
+  handler: ({ from }) => reading((ctx) => loadLogbookTimeline(ctx, from)),
 });
 
 const isOpen = (task: Doc<"tasks">) => task.status.kind === "open";
 
+const loadArea = async (ctx: QueryCtx, areaId: Id<"areas">) => {
+  const found = await ctx.db.get("areas", areaId);
+  if (!found || !isLive(found)) return null;
+  const [tasks, projects] = await Promise.all([
+    ctx.db
+      .query("tasks")
+      .withIndex("by_area_order", (q) => q.eq("parent.areaId", areaId))
+      .take(LIST_LIMIT),
+    ctx.db
+      .query("projects")
+      .withIndex("by_area_order", (q) => q.eq("areaId", areaId))
+      .take(LIST_LIMIT),
+  ]);
+  const open = projects.filter((project) => isLive(project) && project.status.kind === "open");
+  return {
+    area: areaSummary(found),
+    tasks: await enrich(ctx, tasks.filter((task) => isLive(task) && isOpen(task))),
+    projects: await Promise.all(
+      open.map(async (project) => ({
+        ...projectSummary(project),
+        when: project.when,
+        deadline: project.deadline,
+        progress: await projectProgress(ctx, project),
+      })),
+    ),
+  };
+};
+
 export const area = ownerQuery({
   args: { areaId: v.id("areas") },
-  handler: async (ctx, { areaId }) => {
-    const found = await ctx.db.get("areas", areaId);
-    if (!found || !isLive(found)) return null;
-    const [tasks, projects] = await Promise.all([
-      ctx.db
-        .query("tasks")
-        .withIndex("by_area_order", (q) => q.eq("parent.areaId", areaId))
-        .take(LIST_LIMIT),
-      ctx.db
-        .query("projects")
-        .withIndex("by_area_order", (q) => q.eq("areaId", areaId))
-        .take(LIST_LIMIT),
-    ]);
-    const open = projects.filter((project) => isLive(project) && project.status.kind === "open");
-    return {
-      area: areaSummary(found),
-      tasks: await enrich(ctx, tasks.filter((task) => isLive(task) && isOpen(task))),
-      projects: await Promise.all(
-        open.map(async (project) => ({
-          ...projectSummary(project),
-          when: project.when,
-          deadline: project.deadline,
-          progress: await projectProgress(ctx, project),
-        })),
-      ),
-    };
-  },
+  handler: ({ areaId }) => reading((ctx) => loadArea(ctx, areaId)),
 });
 
 const headingOf = (row: TaskRow) => (row.parent.kind === "project" ? row.parent.headingId : undefined);
@@ -240,32 +250,34 @@ const sectionsOf = (headings: Doc<"headings">[], rows: TaskRow[]) => {
   ];
 };
 
+const loadProject = async (ctx: QueryCtx, projectId: Id<"projects">) => {
+  const found = await ctx.db.get("projects", projectId);
+  if (!found || !isLive(found)) return null;
+  const [parent, headings, tasks] = await Promise.all([
+    found.areaId ? ctx.db.get("areas", found.areaId) : null,
+    ctx.db
+      .query("headings")
+      .withIndex("by_project_order", (q) => q.eq("projectId", projectId))
+      .take(HEADING_LIMIT),
+    tasksOfProject(ctx, projectId),
+  ]);
+  return {
+    project: {
+      ...projectSummary(found),
+      notes: found.notes,
+      areaId: found.areaId,
+      when: found.when,
+      deadline: found.deadline,
+      status: found.status,
+      thingsId: found.things?.id,
+    },
+    area: parent ? areaSummary(parent) : undefined,
+    progress: progressOf(tasks),
+    sections: sectionsOf(headings, await enrich(ctx, tasks.filter(isOpen))),
+  };
+};
+
 export const project = ownerQuery({
   args: { projectId: v.id("projects") },
-  handler: async (ctx, { projectId }) => {
-    const found = await ctx.db.get("projects", projectId);
-    if (!found || !isLive(found)) return null;
-    const [parent, headings, tasks] = await Promise.all([
-      found.areaId ? ctx.db.get("areas", found.areaId) : null,
-      ctx.db
-        .query("headings")
-        .withIndex("by_project_order", (q) => q.eq("projectId", projectId))
-        .take(HEADING_LIMIT),
-      tasksOfProject(ctx, projectId),
-    ]);
-    return {
-      project: {
-        ...projectSummary(found),
-        notes: found.notes,
-        areaId: found.areaId,
-        when: found.when,
-        deadline: found.deadline,
-        status: found.status,
-        thingsId: found.things?.id,
-      },
-      area: parent ? areaSummary(parent) : undefined,
-      progress: progressOf(tasks),
-      sections: sectionsOf(headings, await enrich(ctx, tasks.filter(isOpen))),
-    };
-  },
+  handler: ({ projectId }) => reading((ctx) => loadProject(ctx, projectId)),
 });

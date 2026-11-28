@@ -1,10 +1,12 @@
 import { v } from "convex/values";
+import { Effect } from "effect";
 import type { QueryCtx } from "../_generated/server";
-import { ownerQuery } from "../platform/access";
+import { ownerQuery, reading } from "../platform/effect";
 import type { Doc } from "../_generated/dataModel";
-import { parseIsoDate, type IsoDate } from "../../shared/date";
+import type { IsoDate } from "../../shared/date";
+import { parseIsoDate } from "../../shared/effect/date";
+import { asWire } from "../../shared/effect/wire";
 import { byDayPlan } from "../../shared/plan";
-import { serialise } from "../../shared/result";
 import { compare, enrich } from "./rows";
 
 const TODAY_LIMIT = 1000;
@@ -52,5 +54,5 @@ const loadToday = async (ctx: QueryCtx, date: IsoDate) => {
 
 export const get = ownerQuery({
   args: { date: v.string() },
-  handler: async (ctx, { date }) => serialise(await parseIsoDate(date).asyncMap((day) => loadToday(ctx, day))),
+  handler: ({ date }) => asWire(Effect.flatMap(Effect.fromResult(parseIsoDate(date)), (day) => reading((ctx) => loadToday(ctx, day)))),
 });
