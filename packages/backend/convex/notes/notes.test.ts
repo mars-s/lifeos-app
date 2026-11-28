@@ -13,11 +13,18 @@ const projection = (docId: string, title: string, extra: Record<string, unknown>
   ...extra,
 });
 
+const nextMillisecond = async () => {
+  const now = Date.now();
+  while (Date.now() === now) await new Promise((resolve) => setTimeout(resolve, 1));
+};
+
 const setup = async () => {
   const t = await newBackend();
   const token = await registerWorker(t, "relay", ["notes"]);
-  const project = (docId: string, title: string, extra: Record<string, unknown> = {}) =>
-    t.mutation(api.notes.relay.project, { token, ...projection(docId, title, extra) });
+  const project = async (docId: string, title: string, extra: Record<string, unknown> = {}) => {
+    await nextMillisecond();
+    return t.mutation(api.notes.relay.project, { token, ...projection(docId, title, extra) });
+  };
   return { t, token, project };
 };
 
