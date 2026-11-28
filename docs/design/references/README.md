@@ -46,6 +46,16 @@ Stills from Notion's own launch videos, picked by Avi on 26 November 2026 as the
 
 Leave behind: the purple sparkle, the answer living inside the floating box (ours is written onto the page in pencil), and the long menu.
 
+## Widgets (health stat tiles)
+
+Picked by Avi on 28 November 2026 as the style for the iPhone and Mac widgets. The design that uses it is [widgets.md](../widgets.md).
+
+| File | Take from it |
+| --- | --- |
+| `widgets/01-health-stat-tiles.png` | Dark glass tiles, one stat each. A big dot-matrix number, a small title over a one-word state (balanced, recovered, low), a tiny unit badge on the right, and a thin analog strip at the foot: tick scales, bars, dots, a time axis with a label at each end. Calm, one ink, tactile. |
+
+Leave behind: the hover tooltip and the wide chart (a widget is a still snapshot), and the health subject itself.
+
 Avi's notes alongside these:
 
 - Keep the deadline and the allocated time separate.
