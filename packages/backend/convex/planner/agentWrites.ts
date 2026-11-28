@@ -1,13 +1,14 @@
 import { tool, type ToolDefinition } from "@convex-dev/mcp";
 import type { DefaultFunctionArgs, RegisteredMutation } from "convex/server";
-import { ConvexError, v } from "convex/values";
+import { v } from "convex/values";
+import { Effect, Option, Result } from "effect";
 import { internal } from "../_generated/api";
-import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
-import { agentMutation, MCP_SCOPES, readAsOwner, type AgentRunActor } from "../platform/access";
-import { changeAs } from "../platform/change";
+import { MCP_SCOPES, type AgentRunActor } from "../platform/access";
+import { agentMutation, changeAsFx, readAsOwnerFx, reading } from "../platform/effect";
 import { zonedMoment } from "../calendar/model";
-import { addDays, parseIsoDate, type IsoDate } from "../../shared/date";
+import { addDays, type IsoDate } from "../../shared/date";
+import { parseIsoDate } from "../../shared/effect/date";
 import type { SerialisedResult } from "../../shared/result";
 import * as areas from "./areas";
 import * as checklist from "./checklist";
@@ -21,7 +22,7 @@ import * as templates from "./templates";
 import * as workBlocks from "./workBlocks";
 import { labelNamed } from "./labels";
 import type { PlannerTable } from "./model";
-import { agentDate, agentId, agentTimeZone, detail, loadTaskRow, vTaskDetail } from "./agentReads";
+import { agentDate, agentId, agentTimeZone, detail, loadTaskRow, refuse, vTaskDetail } from "./agentReads";
 import { vRepeatEnd, vSchedule, type Parent, type When } from "./tables";
 
 const MAX_CHECKLIST_ADD = 50;
@@ -73,21 +74,20 @@ const refusalMessage = (error: unknown) => {
   return explain ? explain(shaped) : `LifeOS refused that change: ${JSON.stringify(error)}.`;
 };
 
-export const writer = async (ctx: MutationCtx, run: () => Promise<AgentRunActor>) => {
-  const actor = await run();
+export const writer = Effect.fn("agentWrites.writer")(function* (run: Effect.Effect<AgentRunActor>) {
+  const actor = yield* run;
   const activityIds: string[] = [];
-  const change = async <Args extends DefaultFunctionArgs, T extends { activityId: Id<"activity"> | null }, E>(
+  const change = <Args extends DefaultFunctionArgs, T extends { activityId: Id<"activity"> | null }, E>(
     registered: RegisteredMutation<"public", Args, Promise<SerialisedResult<T, E>>>,
     args: Omit<Args, "agentRun">,
-  ) => {
-    const result = await changeAs(ctx, actor, registered, args);
-    if (result.isErr()) throw new ConvexError(refusalMessage(result.error));
-    if (result.value.activityId) activityIds.push(result.value.activityId);
-    return result.value;
-  };
+  ) =>
+    changeAsFx(actor, registered, args).pipe(
+      Effect.catch((error) => refuse(refusalMessage(error))),
+      Effect.tap(({ activityId }) => Effect.sync(() => activityId && activityIds.push(activityId))),
+    );
   const receipt = () => ({ runId: actor.jobId as string, activityIds });
   return { change, receipt };
-};
+});
 
 export const vReceipt = { runId: v.string(), activityIds: v.array(v.string()) };
 
@@ -95,35 +95,41 @@ const vTaskReceipt = v.object({ ...vReceipt, task: vTaskDetail });
 
 const vPlainReceipt = v.object(vReceipt);
 
-const parseWhen = (input: string, today: IsoDate) => {
+const parseWhen = Effect.fn("agentWrites.parseWhen")(function* (input: string, today: IsoDate) {
   const [word, evening] = input.trim().toLowerCase().split(/\s+/);
-  if (evening !== undefined && evening !== "evening") throw new ConvexError(whenHelp(input));
+  if (evening !== undefined && evening !== "evening") return yield* refuse(whenHelp(input));
   if (word === "inbox" || word === "anytime" || word === "someday") {
-    if (evening) throw new ConvexError(whenHelp(input));
-    return { kind: word } satisfies When;
+    if (evening) return yield* refuse(whenHelp(input));
+    const parked: When = { kind: word };
+    return parked;
   }
   const date = word === "today" ? today : word === "tomorrow" ? addDays(today, 1) : (word ?? "");
-  if (parseIsoDate(date).isErr()) throw new ConvexError(whenHelp(input));
-  return { kind: "scheduled", date, evening: evening === "evening" } satisfies When;
-};
+  if (Result.isFailure(parseIsoDate(date))) return yield* refuse(whenHelp(input));
+  const scheduled: When = { kind: "scheduled", date, evening: evening === "evening" };
+  return scheduled;
+});
 
 const whenHelp = (input: string) =>
   `"${input}" is not a When. Use inbox, anytime, someday, today, tomorrow, or a YYYY-MM-DD date, optionally followed by " evening".`;
 
 const vParentInput = v.union(v.literal("none"), v.object({ areaId: v.string() }), v.object({ projectId: v.string() }));
 
-const parseParent = (ctx: QueryCtx, input: "none" | { areaId: string } | { projectId: string }) => {
-  if (input === "none") return { kind: "loose" } satisfies Parent;
-  if ("areaId" in input) return { kind: "area", areaId: agentId(ctx, "areas", input.areaId, "Area") } satisfies Parent;
-  return { kind: "project", projectId: agentId(ctx, "projects", input.projectId, "Project") } satisfies Parent;
-};
+const parseParent = Effect.fn("agentWrites.parseParent")(function* (input: "none" | { areaId: string } | { projectId: string }) {
+  const parent: Parent =
+    input === "none"
+      ? { kind: "loose" }
+      : "areaId" in input
+        ? { kind: "area", areaId: yield* agentId("areas", input.areaId, "Area") }
+        : { kind: "project", projectId: yield* agentId("projects", input.projectId, "Project") };
+  return parent;
+});
 
-const labelIdsFor = async (ctx: QueryCtx, names: string[]) => {
-  const found = await Promise.all(names.map(async (name) => ({ name, label: await labelNamed(ctx, name) })));
+const labelIdsFor = Effect.fn("agentWrites.labelIdsFor")(function* (names: readonly string[]) {
+  const found = yield* reading((ctx) => Promise.all(names.map(async (name) => ({ name, label: await labelNamed(ctx, name) }))));
   const missing = found.filter(({ label }) => !label).map(({ name }) => name);
-  if (missing.length > 0) throw new ConvexError(`No Label is named ${missing.map((name) => `"${name}"`).join(", ")}. list_areas shows the Labels.`);
+  if (missing.length > 0) return yield* refuse(`No Label is named ${missing.map((name) => `"${name}"`).join(", ")}. list_areas shows the Labels.`);
   return found.flatMap(({ label }) => (label ? [label._id] : []));
-};
+});
 
 const LOCAL_START = /^(\d{4}-\d{2}-\d{2})T([01]\d|2[0-3]):([0-5]\d)$/;
 const OFFSET_START = /^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,3})?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
@@ -131,18 +137,27 @@ const OFFSET_START = /^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(
 const parseStart = (input: string, timeZone: string) => {
   const local = LOCAL_START.exec(input);
   const offset = OFFSET_START.exec(input);
-  const date = parseIsoDate(local?.[1] ?? offset?.[1] ?? "");
-  if (local && date.isOk()) return zonedMoment(date.value, Number(local[2]) * 60 + Number(local[3]), timeZone);
-  if (offset && date.isOk()) return Date.parse(input);
-  throw new ConvexError(`"${input}" is not a start time. Use YYYY-MM-DDTHH:mm in Avi's time zone, or ISO 8601 with an offset.`);
+  const date = Result.getSuccess(parseIsoDate(local?.[1] ?? offset?.[1] ?? ""));
+  if (local && Option.isSome(date)) return Effect.succeed(zonedMoment(date.value, Number(local[2]) * 60 + Number(local[3]), timeZone));
+  if (offset && Option.isSome(date)) return Effect.succeed(Date.parse(input));
+  return refuse(`"${input}" is not a start time. Use YYYY-MM-DDTHH:mm in Avi's time zone, or ISO 8601 with an offset.`);
 };
 
-const finishWithTask = async (ctx: MutationCtx, taskId: Id<"tasks">, timeZone: string | undefined, receipt: () => { runId: string; activityIds: string[] }) => ({
-  ...receipt(),
-  task: detail(await loadTaskRow(ctx, taskId), await agentTimeZone(ctx, timeZone)),
+const finishWithTask = Effect.fn("agentWrites.finishWithTask")(function* (
+  taskId: Id<"tasks">,
+  timeZone: string | undefined,
+  receipt: () => { runId: string; activityIds: string[] },
+) {
+  const row = yield* loadTaskRow(taskId);
+  return { ...receipt(), task: detail(row, yield* agentTimeZone(timeZone)) };
 });
 
-const todayIn = async (ctx: QueryCtx, timeZone: string | undefined) => agentDate(undefined, await agentTimeZone(ctx, timeZone));
+const todayIn = Effect.fn("agentWrites.todayIn")(function* (timeZone: string | undefined) {
+  return yield* agentDate(undefined, yield* agentTimeZone(timeZone));
+});
+
+const optional = <A, B, R>(value: A | undefined, read: (given: A) => Effect.Effect<B, never, R>) =>
+  value === undefined ? Effect.succeed(undefined) : read(value);
 
 export const createTask = agentMutation({
   args: {
@@ -156,21 +171,24 @@ export const createTask = agentMutation({
     checklist: v.optional(v.array(v.string())),
     timeZone: v.optional(v.string()),
   },
-  handler: async (ctx, args, run) => {
-    if ((args.checklist?.length ?? 0) > MAX_CHECKLIST_ADD) throw new ConvexError(`Add at most ${MAX_CHECKLIST_ADD} Checklist Items at once.`);
-    const write = await writer(ctx, run);
-    const { taskId } = await write.change(tasks.create, {
+  handler: Effect.fn("agentWrites.createTask")(function* (args, run) {
+    if ((args.checklist?.length ?? 0) > MAX_CHECKLIST_ADD) return yield* refuse(`Add at most ${MAX_CHECKLIST_ADD} Checklist Items at once.`);
+    const write = yield* writer(run);
+    const when = yield* optional(args.when, (given) => Effect.flatMap(todayIn(args.timeZone), (today) => parseWhen(given, today)));
+    const parent = yield* optional(args.parent, parseParent);
+    const labelIds = yield* optional(args.labels, labelIdsFor);
+    const { taskId } = yield* write.change(tasks.create, {
       title: args.title,
       ...(args.notes === undefined ? {} : { notes: args.notes }),
-      ...(args.when === undefined ? {} : { when: parseWhen(args.when, await todayIn(ctx, args.timeZone)) }),
+      ...(when === undefined ? {} : { when }),
       ...(args.deadline === undefined ? {} : { deadline: args.deadline }),
       ...(args.estimateMinutes === undefined ? {} : { estimateMinutes: args.estimateMinutes }),
-      ...(args.parent === undefined ? {} : { parent: parseParent(ctx, args.parent) }),
-      ...(args.labels === undefined ? {} : { labelIds: await labelIdsFor(ctx, args.labels) }),
+      ...(parent === undefined ? {} : { parent }),
+      ...(labelIds === undefined ? {} : { labelIds }),
     });
-    for (const title of args.checklist ?? []) await write.change(checklist.add, { taskId, title });
-    return finishWithTask(ctx, taskId, args.timeZone, write.receipt);
-  },
+    for (const title of args.checklist ?? []) yield* write.change(checklist.add, { taskId, title });
+    return yield* finishWithTask(taskId, args.timeZone, write.receipt);
+  }),
 });
 
 export const updateTask = agentMutation({
@@ -185,35 +203,35 @@ export const updateTask = agentMutation({
     parent: v.optional(vParentInput),
     timeZone: v.optional(v.string()),
   },
-  handler: async (ctx, args, run) => {
-    const taskId = agentId(ctx, "tasks", args.taskId, "Task");
-    await loadTaskRow(ctx, taskId);
-    const write = await writer(ctx, run);
-    if (args.title !== undefined) await write.change(tasks.rename, { taskId, title: args.title });
-    if (args.notes !== undefined) await write.change(tasks.setNotes, { taskId, notes: args.notes });
-    if (args.when !== undefined) await write.change(tasks.setWhen, { taskId, when: parseWhen(args.when, await todayIn(ctx, args.timeZone)) });
-    if (args.deadline !== undefined) await write.change(tasks.setDeadline, { taskId, deadline: args.deadline });
-    if (args.estimateMinutes !== undefined) await write.change(tasks.setEstimate, { taskId, minutes: args.estimateMinutes });
-    if (args.labels !== undefined) await write.change(tasks.setLabels, { taskId, labelIds: await labelIdsFor(ctx, args.labels) });
-    if (args.parent !== undefined) await write.change(tasks.move, { taskId, parent: parseParent(ctx, args.parent) });
-    return finishWithTask(ctx, taskId, args.timeZone, write.receipt);
-  },
+  handler: Effect.fn("agentWrites.updateTask")(function* (args, run) {
+    const taskId = yield* agentId("tasks", args.taskId, "Task");
+    yield* loadTaskRow(taskId);
+    const write = yield* writer(run);
+    if (args.title !== undefined) yield* write.change(tasks.rename, { taskId, title: args.title });
+    if (args.notes !== undefined) yield* write.change(tasks.setNotes, { taskId, notes: args.notes });
+    if (args.when !== undefined) yield* write.change(tasks.setWhen, { taskId, when: yield* parseWhen(args.when, yield* todayIn(args.timeZone)) });
+    if (args.deadline !== undefined) yield* write.change(tasks.setDeadline, { taskId, deadline: args.deadline });
+    if (args.estimateMinutes !== undefined) yield* write.change(tasks.setEstimate, { taskId, minutes: args.estimateMinutes });
+    if (args.labels !== undefined) yield* write.change(tasks.setLabels, { taskId, labelIds: yield* labelIdsFor(args.labels) });
+    if (args.parent !== undefined) yield* write.change(tasks.move, { taskId, parent: yield* parseParent(args.parent) });
+    return yield* finishWithTask(taskId, args.timeZone, write.receipt);
+  }),
 });
 
 export const setTaskStatus = agentMutation({
   args: { taskId: v.string(), status: v.union(v.literal("completed"), v.literal("open"), v.literal("trashed")) },
-  handler: async (ctx, args, run) => {
-    const taskId = agentId(ctx, "tasks", args.taskId, "Task");
-    const task = await loadTaskRow(ctx, taskId);
-    const write = await writer(ctx, run);
-    if (args.status === "completed") await write.change(tasks.complete, { taskId });
-    if (args.status === "trashed") await write.change(tasks.trash, { taskId });
+  handler: Effect.fn("agentWrites.setTaskStatus")(function* (args, run) {
+    const taskId = yield* agentId("tasks", args.taskId, "Task");
+    const task = yield* loadTaskRow(taskId);
+    const write = yield* writer(run);
+    if (args.status === "completed") yield* write.change(tasks.complete, { taskId });
+    if (args.status === "trashed") yield* write.change(tasks.trash, { taskId });
     if (args.status === "open") {
-      if (task.trashedAt !== undefined) await write.change(tasks.restore, { taskId });
-      if (task.status.kind !== "open") await write.change(tasks.uncomplete, { taskId });
+      if (task.trashedAt !== undefined) yield* write.change(tasks.restore, { taskId });
+      if (task.status.kind !== "open") yield* write.change(tasks.uncomplete, { taskId });
     }
-    return finishWithTask(ctx, taskId, undefined, write.receipt);
-  },
+    return yield* finishWithTask(taskId, undefined, write.receipt);
+  }),
 });
 
 export const updateChecklist = agentMutation({
@@ -223,70 +241,70 @@ export const updateChecklist = agentMutation({
     tick: v.optional(v.array(v.string())),
     untick: v.optional(v.array(v.string())),
   },
-  handler: async (ctx, args, run) => {
-    const taskId = agentId(ctx, "tasks", args.taskId, "Task");
-    const task = await loadTaskRow(ctx, taskId);
-    if ((args.add?.length ?? 0) > MAX_CHECKLIST_ADD) throw new ConvexError(`Add at most ${MAX_CHECKLIST_ADD} Checklist Items at once.`);
+  handler: Effect.fn("agentWrites.updateChecklist")(function* (args, run) {
+    const taskId = yield* agentId("tasks", args.taskId, "Task");
+    const task = yield* loadTaskRow(taskId);
+    if ((args.add?.length ?? 0) > MAX_CHECKLIST_ADD) return yield* refuse(`Add at most ${MAX_CHECKLIST_ADD} Checklist Items at once.`);
     const own = new Set<string>(task.checklist.map((item) => item._id));
-    const itemOf = (id: string) => {
-      const itemId = agentId(ctx, "checklistItems", id, "Checklist Item");
-      if (!own.has(itemId)) throw new ConvexError(`Checklist Item "${id}" is not on this Task. get_task lists its items.`);
+    const itemOf = Effect.fn("agentWrites.checklistItemOf")(function* (id: string) {
+      const itemId = yield* agentId("checklistItems", id, "Checklist Item");
+      if (!own.has(itemId)) return yield* refuse(`Checklist Item "${id}" is not on this Task. get_task lists its items.`);
       return itemId;
-    };
-    const write = await writer(ctx, run);
-    for (const title of args.add ?? []) await write.change(checklist.add, { taskId, title });
-    for (const id of args.tick ?? []) await write.change(checklist.tick, { itemId: itemOf(id), done: true });
-    for (const id of args.untick ?? []) await write.change(checklist.tick, { itemId: itemOf(id), done: false });
-    return finishWithTask(ctx, taskId, undefined, write.receipt);
-  },
+    });
+    const write = yield* writer(run);
+    for (const title of args.add ?? []) yield* write.change(checklist.add, { taskId, title });
+    for (const id of args.tick ?? []) yield* write.change(checklist.tick, { itemId: yield* itemOf(id), done: true });
+    for (const id of args.untick ?? []) yield* write.change(checklist.tick, { itemId: yield* itemOf(id), done: false });
+    return yield* finishWithTask(taskId, undefined, write.receipt);
+  }),
 });
 
 export const saveArea = agentMutation({
   args: { areaId: v.optional(v.string()), title: v.string() },
-  handler: async (ctx, args, run) => {
-    const write = await writer(ctx, run);
+  handler: Effect.fn("agentWrites.saveArea")(function* (args, run) {
+    const write = yield* writer(run);
     if (args.areaId === undefined) {
-      const { areaId } = await write.change(areas.create, { title: args.title });
+      const { areaId } = yield* write.change(areas.create, { title: args.title });
       return { ...write.receipt(), areaId: areaId as string, title: args.title.trim() };
     }
-    const areaId = agentId(ctx, "areas", args.areaId, "Area");
-    await write.change(areas.rename, { areaId, title: args.title });
+    const areaId = yield* agentId("areas", args.areaId, "Area");
+    yield* write.change(areas.rename, { areaId, title: args.title });
     return { ...write.receipt(), areaId: areaId as string, title: args.title.trim() };
-  },
+  }),
 });
 
 export const saveProject = agentMutation({
   args: { projectId: v.optional(v.string()), title: v.string(), areaId: v.optional(v.union(v.string(), v.null())) },
-  handler: async (ctx, args, run) => {
-    const write = await writer(ctx, run);
-    const areaId = typeof args.areaId === "string" ? agentId(ctx, "areas", args.areaId, "Area") : args.areaId;
+  handler: Effect.fn("agentWrites.saveProject")(function* (args, run) {
+    const write = yield* writer(run);
+    const areaId = typeof args.areaId === "string" ? yield* agentId("areas", args.areaId, "Area") : args.areaId;
     if (args.projectId === undefined) {
-      const { projectId } = await write.change(projects.create, { title: args.title, ...(areaId ? { areaId } : {}) });
+      const { projectId } = yield* write.change(projects.create, { title: args.title, ...(areaId ? { areaId } : {}) });
       return { ...write.receipt(), projectId: projectId as string, title: args.title.trim() };
     }
-    const projectId = agentId(ctx, "projects", args.projectId, "Project");
-    await write.change(projects.rename, { projectId, title: args.title });
-    if (areaId !== undefined) await write.change(projects.move, { projectId, areaId });
+    const projectId = yield* agentId("projects", args.projectId, "Project");
+    yield* write.change(projects.rename, { projectId, title: args.title });
+    if (areaId !== undefined) yield* write.change(projects.move, { projectId, areaId });
     return { ...write.receipt(), projectId: projectId as string, title: args.title.trim() };
-  },
+  }),
 });
 
 export const convertTaskToProject = agentMutation({
   args: { taskId: v.string() },
-  handler: async (ctx, args, run) => {
-    const write = await writer(ctx, run);
-    const { projectId, taskIds } = await write.change(convert.toProject, { taskId: agentId(ctx, "tasks", args.taskId, "Task") });
+  handler: Effect.fn("agentWrites.convertTaskToProject")(function* (args, run) {
+    const write = yield* writer(run);
+    const { projectId, taskIds } = yield* write.change(convert.toProject, { taskId: yield* agentId("tasks", args.taskId, "Task") });
     return { ...write.receipt(), projectId: projectId as string, taskIds: taskIds.map(String) };
-  },
+  }),
 });
 
 export const setDayGoal = agentMutation({
   args: { date: v.string(), minutes: v.union(v.number(), v.null()) },
-  handler: async (ctx, args, run) => {
-    const write = await writer(ctx, run);
-    await write.change(plan.setGoal, args);
+  handler: Effect.fn("agentWrites.setDayGoal")(function* (args, run) {
+    const write = yield* writer(run);
+    yield* write.change(plan.setGoal, args);
     return write.receipt();
-  },
+  }),
 });
 
 export const saveWorkBlock = agentMutation({
@@ -297,86 +315,84 @@ export const saveWorkBlock = agentMutation({
     minutes: v.number(),
     timeZone: v.optional(v.string()),
   },
-  handler: async (ctx, args, run) => {
-    const timeZone = await agentTimeZone(ctx, args.timeZone);
-    const start = parseStart(args.start, timeZone);
-    const write = await writer(ctx, run);
+  handler: Effect.fn("agentWrites.saveWorkBlock")(function* (args, run) {
+    const timeZone = yield* agentTimeZone(args.timeZone);
+    const start = yield* parseStart(args.start, timeZone);
+    const write = yield* writer(run);
     if (args.blockId === undefined) {
-      if (args.taskId === undefined) throw new ConvexError("Give taskId to add a Work Block, or blockId to move one.");
-      const taskId = agentId(ctx, "tasks", args.taskId, "Task");
-      const { blockId } = await write.change(workBlocks.create, { taskId, start, minutes: args.minutes, timeZone });
+      if (args.taskId === undefined) return yield* refuse("Give taskId to add a Work Block, or blockId to move one.");
+      const taskId = yield* agentId("tasks", args.taskId, "Task");
+      const { blockId } = yield* write.change(workBlocks.create, { taskId, start, minutes: args.minutes, timeZone });
       return { ...write.receipt(), blockId: blockId as string };
     }
-    const blockId = agentId(ctx, "workBlocks", args.blockId, "Work Block");
-    await write.change(workBlocks.move, { blockId, start });
-    await write.change(workBlocks.resize, { blockId, minutes: args.minutes });
+    const blockId = yield* agentId("workBlocks", args.blockId, "Work Block");
+    yield* write.change(workBlocks.move, { blockId, start });
+    yield* write.change(workBlocks.resize, { blockId, minutes: args.minutes });
     return { ...write.receipt(), blockId: blockId as string };
-  },
+  }),
 });
 
 export const removeWorkBlock = agentMutation({
   args: { blockId: v.string() },
-  handler: async (ctx, args, run) => {
-    const write = await writer(ctx, run);
-    await write.change(workBlocks.remove, { blockId: agentId(ctx, "workBlocks", args.blockId, "Work Block") });
+  handler: Effect.fn("agentWrites.removeWorkBlock")(function* (args, run) {
+    const write = yield* writer(run);
+    yield* write.change(workBlocks.remove, { blockId: yield* agentId("workBlocks", args.blockId, "Work Block") });
     return write.receipt();
-  },
+  }),
 });
 
 export const startFocus = agentMutation({
   args: { taskId: v.string(), minutes: v.optional(v.number()) },
-  handler: async (ctx, args, run) => {
-    const write = await writer(ctx, run);
-    const { breakMinutes, longBreakMinutes } = await focus.planChoiceOf(ctx);
-    const { sessionId } = await write.change(focus.start, {
-      taskId: agentId(ctx, "tasks", args.taskId, "Task"),
+  handler: Effect.fn("agentWrites.startFocus")(function* (args, run) {
+    const write = yield* writer(run);
+    const { breakMinutes, longBreakMinutes } = yield* readAsOwnerFx(focus.plan, {});
+    const { sessionId } = yield* write.change(focus.start, {
+      taskId: yield* agentId("tasks", args.taskId, "Task"),
       plan: args.minutes === undefined ? { kind: "open" } : { kind: "pomodoro", focusMinutes: args.minutes, breakMinutes, longBreakMinutes },
     });
     return { ...write.receipt(), sessionId: sessionId as string };
-  },
+  }),
 });
 
 export const stopFocus = agentMutation({
   args: {},
-  handler: async (ctx, _args, run) => {
-    const current = await readAsOwner(ctx, focus.current, {});
-    if (!current) throw new ConvexError("No Focus Session is running.");
-    const write = await writer(ctx, run);
-    await write.change(focus.stop, { sessionId: current._id });
+  handler: Effect.fn("agentWrites.stopFocus")(function* (_args, run) {
+    const current = yield* readAsOwnerFx(focus.current, {});
+    if (!current) return yield* refuse("No Focus Session is running.");
+    const write = yield* writer(run);
+    yield* write.change(focus.stop, { sessionId: current._id });
     return write.receipt();
-  },
+  }),
 });
 
 export const setRepeat = agentMutation({
   args: { taskId: v.string(), schedule: v.union(vSchedule, v.null()), end: v.optional(vRepeatEnd), timeZone: v.optional(v.string()) },
-  handler: async (ctx, args, run) => {
-    const taskId = agentId(ctx, "tasks", args.taskId, "Task");
-    const write = await writer(ctx, run);
-    if (args.schedule === null) await write.change(recurrence.stopRepeat, { taskId });
+  handler: Effect.fn("agentWrites.setRepeat")(function* (args, run) {
+    const taskId = yield* agentId("tasks", args.taskId, "Task");
+    const write = yield* writer(run);
+    if (args.schedule === null) yield* write.change(recurrence.stopRepeat, { taskId });
     else
-      await write.change(recurrence.setRepeat, {
+      yield* write.change(recurrence.setRepeat, {
         taskId,
         schedule: args.schedule,
         end: args.end ?? { kind: "never" },
-        timeZone: await agentTimeZone(ctx, args.timeZone),
+        timeZone: yield* agentTimeZone(args.timeZone),
       });
-    return finishWithTask(ctx, taskId, args.timeZone, write.receipt);
-  },
+    return yield* finishWithTask(taskId, args.timeZone, write.receipt);
+  }),
 });
 
 export const createTaskFromTemplate = agentMutation({
   args: { templateId: v.string(), when: v.optional(v.string()), parent: v.optional(vParentInput), timeZone: v.optional(v.string()) },
-  handler: async (ctx, args, run) => {
-    const today = await todayIn(ctx, args.timeZone);
-    const write = await writer(ctx, run);
-    const { taskId } = await write.change(templates.createTask, {
-      templateId: agentId(ctx, "templates", args.templateId, "Template"),
-      when: parseWhen(args.when ?? "inbox", today),
-      ...(args.parent === undefined ? {} : { parent: parseParent(ctx, args.parent) }),
-      today,
-    });
-    return finishWithTask(ctx, taskId, args.timeZone, write.receipt);
-  },
+  handler: Effect.fn("agentWrites.createTaskFromTemplate")(function* (args, run) {
+    const today = yield* todayIn(args.timeZone);
+    const write = yield* writer(run);
+    const templateId = yield* agentId("templates", args.templateId, "Template");
+    const when = yield* parseWhen(args.when ?? "inbox", today);
+    const parent = yield* optional(args.parent, parseParent);
+    const { taskId } = yield* write.change(templates.createTask, { templateId, when, ...(parent === undefined ? {} : { parent }), today });
+    return yield* finishWithTask(taskId, args.timeZone, write.receipt);
+  }),
 });
 
 const whenArg = v.optional(v.string());

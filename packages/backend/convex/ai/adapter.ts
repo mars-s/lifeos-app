@@ -1,11 +1,12 @@
 import { checkValue, toJsonSchema, type McpUser, type ToolCtx, type ToolDefinition } from "@convex-dev/mcp";
 import { jsonSchema, tool, type JSONSchema7 } from "ai";
 import { asObjectValidator, ConvexError } from "convex/values";
+import { Predicate } from "effect";
 import type { ActionCtx } from "../_generated/server";
 
 const refusalOf = (error: unknown) => {
   if (!(error instanceof ConvexError)) throw error;
-  return { refused: typeof error.data === "string" ? error.data : JSON.stringify(error.data) };
+  return { refused: Predicate.isString(error.data) ? error.data : JSON.stringify(error.data) };
 };
 
 const call = async (definition: ToolDefinition, ctx: ToolCtx, caller: McpUser, input: unknown) => {

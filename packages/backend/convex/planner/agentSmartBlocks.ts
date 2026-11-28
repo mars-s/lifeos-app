@@ -1,14 +1,15 @@
 import { tool, type ToolDefinition } from "@convex-dev/mcp";
-import { ConvexError, v } from "convex/values";
+import { v } from "convex/values";
+import { Clock, Effect } from "effect";
 import { internal } from "../_generated/api";
-import type { QueryCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
-import { agentMutation, agentQuery, MCP_SCOPES } from "../platform/access";
+import { MCP_SCOPES } from "../platform/access";
+import { agentMutation, agentQuery, reading } from "../platform/effect";
 import { featureReady } from "../platform/features";
 import { zonedIso } from "../calendar/model";
 import { describeSchedule } from "../../shared/recurrence";
 import { FOREVER, fillSmartBlock, occursOnDate, type FillCandidate } from "../../shared/smartBlocks";
-import { agentDate, agentId, agentTimeZone } from "./agentReads";
+import { agentDate, agentId, agentTimeZone, refuse } from "./agentReads";
 import { vReceipt, write, writer } from "./agentWrites";
 import { labelNamed } from "./labels";
 import * as smartBlocks from "./smartBlocks";
@@ -18,23 +19,23 @@ import { vCalendarSchedule, vColour } from "./tables";
 const MINUTE_MS = 60_000;
 const MAX_LIST_DAYS = 14;
 
-const requireOn = async (ctx: QueryCtx) => {
-  if (!(await featureReady(ctx, "smartBlocks"))) throw new ConvexError("Smart Blocks is switched off in Settings. Ask Avi to switch it on.");
-};
+const requireOn = Effect.fn("agentSmartBlocks.requireOn")(function* () {
+  if (!(yield* reading((ctx) => featureReady(ctx, "smartBlocks")))) return yield* refuse("Smart Blocks is switched off in Settings. Ask Avi to switch it on.");
+});
 
 const clockMinute = (input: string) => {
   const match = /^(\d{1,2}):(\d{2})$/.exec(input.trim());
   const minute = match ? Number(match[1]) * 60 + Number(match[2]) : Number.NaN;
-  if (!match || Number(match[2]) > 59 || minute > 24 * 60) throw new ConvexError(`"${input}" is not a time. Use HH:mm, such as 16:00.`);
-  return minute;
+  if (!match || Number(match[2]) > 59 || minute > 24 * 60) return refuse(`"${input}" is not a time. Use HH:mm, such as 16:00.`);
+  return Effect.succeed(minute);
 };
 
-const labelIdsFor = async (ctx: QueryCtx, names: readonly string[]) => {
-  const found = await Promise.all(names.map((name) => labelNamed(ctx, name)));
+const labelIdsFor = Effect.fn("agentSmartBlocks.labelIdsFor")(function* (names: readonly string[]) {
+  const found = yield* reading((ctx) => Promise.all(names.map((name) => labelNamed(ctx, name))));
   const missing = names.filter((_, index) => !found[index]);
-  if (missing.length > 0) throw new ConvexError(`No Label is named ${missing.map((name) => `"${name}"`).join(", ")}. list_areas shows the Labels.`);
+  if (missing.length > 0) return yield* refuse(`No Label is named ${missing.map((name) => `"${name}"`).join(", ")}. list_areas shows the Labels.`);
   return found.flatMap((label) => (label ? [label._id] : []));
-};
+});
 
 const vFilterOut = v.object({ areaIds: v.array(v.string()), projectIds: v.array(v.string()), labelIds: v.array(v.string()) });
 
@@ -51,20 +52,22 @@ const vOccurrence = v.object({
 
 export const listSmartBlocks = agentQuery({
   args: { date: v.optional(v.string()), days: v.optional(v.number()), timeZone: v.optional(v.string()) },
-  handler: async (ctx, args) => {
-    await requireOn(ctx);
-    const timeZone = await agentTimeZone(ctx, args.timeZone);
-    const from = agentDate(args.date, timeZone);
+  handler: Effect.fn("agentSmartBlocks.listSmartBlocks")(function* (args) {
+    yield* requireOn();
+    const timeZone = yield* agentTimeZone(args.timeZone);
+    const from = yield* agentDate(args.date, timeZone);
     const days = Math.min(Math.max(Math.trunc(args.days ?? 1), 1), MAX_LIST_DAYS);
-    const found = await occurrencesIn(ctx, from, days);
-    const fills = await Promise.all(
-      found.map(async ({ block, date, window }) =>
-        (
-          await ctx.db
-            .query("workBlocks")
-            .withIndex("by_removed_start", (q) => q.eq("removedAt", undefined).gte("start", window.start).lt("start", window.end))
-            .take(100)
-        ).filter((fill) => fill.smartBlock?.blockId === block._id && fill.smartBlock.date === date).length,
+    const found = yield* reading((ctx) => occurrencesIn(ctx, from, days));
+    const fills = yield* reading((ctx) =>
+      Promise.all(
+        found.map(async ({ block, date, window }) =>
+          (
+            await ctx.db
+              .query("workBlocks")
+              .withIndex("by_removed_start", (q) => q.eq("removedAt", undefined).gte("start", window.start).lt("start", window.end))
+              .take(100)
+          ).filter((fill) => fill.smartBlock?.blockId === block._id && fill.smartBlock.date === date).length,
+        ),
       ),
     );
     return {
@@ -79,7 +82,7 @@ export const listSmartBlocks = agentQuery({
         filledWorkBlocks: fills[index] ?? 0,
       })),
     };
-  },
+  }),
 });
 
 const sized = (candidate: FillCandidate) =>
@@ -101,22 +104,25 @@ const vFillPlan = v.object({
   filledMinutes: v.number(),
 });
 
-const planFill = async (ctx: QueryCtx, args: { blockId: string; date?: string | undefined; exclude?: string[] | undefined; prefer?: string[] | undefined; timeZone?: string | undefined }) => {
-  await requireOn(ctx);
-  const blockId = agentId(ctx, "smartBlocks", args.blockId, "Smart Block");
-  const block = await ctx.db.get("smartBlocks", blockId);
-  if (!block || block.removedAt !== undefined) throw new ConvexError(`No Smart Block has the id "${args.blockId}". Find Smart Block ids with list_smart_blocks.`);
-  const timeZone = await agentTimeZone(ctx, args.timeZone ?? block.timeZone);
-  const date = agentDate(args.date, timeZone);
-  if (!occursOnDate(block, date)) throw new ConvexError(`"${block.title}" does not happen on ${date}. list_smart_blocks shows its dates.`);
+type FillArgs = { blockId: string; date?: string | undefined; exclude?: string[] | undefined; prefer?: string[] | undefined; timeZone?: string | undefined };
+
+const planFill = Effect.fn("agentSmartBlocks.planFill")(function* (args: FillArgs) {
+  yield* requireOn();
+  const blockId = yield* agentId("smartBlocks", args.blockId, "Smart Block");
+  const block = yield* reading((ctx) => ctx.db.get("smartBlocks", blockId));
+  if (!block || block.removedAt !== undefined) return yield* refuse(`No Smart Block has the id "${args.blockId}". Find Smart Block ids with list_smart_blocks.`);
+  const timeZone = yield* agentTimeZone(args.timeZone ?? block.timeZone);
+  const date = yield* agentDate(args.date, timeZone);
+  if (!occursOnDate(block, date)) return yield* refuse(`"${block.title}" does not happen on ${date}. list_smart_blocks shows its dates.`);
   const window = windowOf(block, date);
-  const snapshot = await loadSnapshot(ctx, date, block.timeZone);
+  const snapshot = yield* reading((ctx) => loadSnapshot(ctx, date, block.timeZone));
+  const now = yield* Clock.currentTimeMillis;
   const result = fillSmartBlock({
     snapshot,
     blockId,
     window: { start: window.start / MINUTE_MS, end: window.end / MINUTE_MS },
     filter: block.filter,
-    now: Math.floor(Date.now() / MINUTE_MS),
+    now: Math.floor(now / MINUTE_MS),
     edits: { exclude: args.exclude ?? [], prefer: args.prefer ?? [] },
   });
   const at = (minute: number) => zonedIso(minute * MINUTE_MS, timeZone);
@@ -149,27 +155,27 @@ const planFill = async (ctx: QueryCtx, args: { blockId: string; date?: string | 
     blockId,
     date,
   };
-};
+});
 
 export const previewFill = agentQuery({
   args: { blockId: v.string(), date: v.optional(v.string()), ...vEdits, timeZone: v.optional(v.string()) },
-  handler: async (ctx, args) => (await planFill(ctx, args)).plan,
+  handler: (args) => Effect.map(planFill(args), ({ plan }) => plan),
 });
 
 export const acceptFill = agentMutation({
   args: { blockId: v.string(), date: v.optional(v.string()), ...vEdits, timeZone: v.optional(v.string()) },
-  handler: async (ctx, args, run) => {
-    const { plan, result, blockId, date } = await planFill(ctx, args);
-    if (result.picks.length === 0 && result.released.length === 0) throw new ConvexError("Nothing new fits in that Smart Block, so nothing changed.");
-    const change = await writer(ctx, run);
-    await change.change(smartBlocks.fill, {
+  handler: Effect.fn("agentSmartBlocks.acceptFill")(function* (args, run) {
+    const { plan, result, blockId, date } = yield* planFill(args);
+    if (result.picks.length === 0 && result.released.length === 0) return yield* refuse("Nothing new fits in that Smart Block, so nothing changed.");
+    const change = yield* writer(run);
+    yield* change.change(smartBlocks.fill, {
       blockId,
       date,
       blocks: result.picks.map((pick) => ({ taskId: pick.task._id as Id<"tasks">, start: pick.start * MINUTE_MS, minutes: pick.minutes })),
       release: result.released.map((released) => released.blockId as Id<"workBlocks">),
     });
     return { ...change.receipt(), plan };
-  },
+  }),
 });
 
 export const createSmartBlock = agentMutation({
@@ -185,28 +191,30 @@ export const createSmartBlock = agentMutation({
     colour: v.optional(vColour),
     timeZone: v.optional(v.string()),
   },
-  handler: async (ctx, args, run) => {
-    await requireOn(ctx);
-    const timeZone = await agentTimeZone(ctx, args.timeZone);
-    const date = agentDate(args.date, timeZone);
+  handler: Effect.fn("agentSmartBlocks.createSmartBlock")(function* (args, run) {
+    yield* requireOn();
+    const timeZone = yield* agentTimeZone(args.timeZone);
+    const date = yield* agentDate(args.date, timeZone);
     const filter = {
-      areaIds: (args.areaIds ?? []).map((id) => agentId(ctx, "areas", id, "Area")),
-      projectIds: (args.projectIds ?? []).map((id) => agentId(ctx, "projects", id, "Project")),
-      labelIds: await labelIdsFor(ctx, args.labels ?? []),
+      areaIds: yield* Effect.forEach(args.areaIds ?? [], (id) => agentId("areas", id, "Area")),
+      projectIds: yield* Effect.forEach(args.projectIds ?? [], (id) => agentId("projects", id, "Project")),
+      labelIds: yield* labelIdsFor(args.labels ?? []),
     };
-    const change = await writer(ctx, run);
-    const { blockId } = await change.change(smartBlocks.create, {
+    const change = yield* writer(run);
+    const startMinute = yield* clockMinute(args.start);
+    const endMinute = yield* clockMinute(args.end);
+    const { blockId } = yield* change.change(smartBlocks.create, {
       title: args.title,
       date,
-      startMinute: clockMinute(args.start),
-      endMinute: clockMinute(args.end),
+      startMinute,
+      endMinute,
       timeZone,
       filter,
       ...(args.colour ? { colour: args.colour } : {}),
       ...(args.repeat ? { repeat: args.repeat } : {}),
     });
     return { ...change.receipt(), blockId: blockId as string, date };
-  },
+  }),
 });
 
 const vEditArgs = {

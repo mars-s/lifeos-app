@@ -1,3 +1,5 @@
+import { Predicate } from "effect";
+
 export const QUIET_CHANGE_LIMIT = 10;
 
 export type ToolCallFacts = {
@@ -8,8 +10,7 @@ export type ToolCallFacts = {
   readonly askFirst: boolean;
 };
 
-const trashes = (toolName: string, input: unknown) =>
-  toolName === "set_task_status" && typeof input === "object" && input !== null && "status" in input && input.status === "trashed";
+const trashes = (toolName: string, input: unknown) => toolName === "set_task_status" && Predicate.isObject(input) && input.status === "trashed";
 
 export const asksFirst = ({ toolName, input, readOnly, changesSoFar, askFirst }: ToolCallFacts) =>
   !readOnly && (askFirst || toolName === "convert_task_to_project" || trashes(toolName, input) || changesSoFar >= QUIET_CHANGE_LIMIT);

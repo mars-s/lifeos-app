@@ -73,3 +73,8 @@ export class NotWaiting extends Schema.TaggedError<NotWaiting>()("NotWaiting", {
 }) {}
 
 export type RunFailure = AiNotConfigured | EmptyRequest | NotWaiting;
+
+export class ModelFailed extends Schema.TaggedError<ModelFailed>()("ModelFailed", {
+  kind: Schema.tag("model_failed"),
+  reason: Schema.String,
+}) {}

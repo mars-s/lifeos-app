@@ -1,13 +1,16 @@
 import { tool, type ToolDefinition } from "@convex-dev/mcp";
 import { ConvexError, v, type Infer } from "convex/values";
+import { Clock, Effect, Result } from "effect";
 import { internal } from "../_generated/api";
-import type { QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
-import { agentQuery, MCP_SCOPES, readAsOwner } from "../platform/access";
+import { MCP_SCOPES } from "../platform/access";
+import { agentQuery, Reads, readAsOwnerFx, reading } from "../platform/effect";
 import { commitmentsBetween } from "../calendar/commitments";
-import { blocksTime, parseTimeZone, zonedDate, zonedIso, zonedMoment } from "../calendar/model";
+import { blocksTime, zonedDate, zonedIso, zonedMoment } from "../calendar/model";
 import { nights } from "../health/sleep";
-import { addDays, parseIsoDate } from "../../shared/date";
+import { addDays } from "../../shared/date";
+import { parseIsoDate } from "../../shared/effect/date";
+import { parseTimeZone } from "../../shared/effect/recurrence";
 import { describeSchedule } from "../../shared/recurrence";
 import type { SerialisedResult } from "../../shared/result";
 import { anytime, inbox, logbook, someday, upcoming } from "./lists";
@@ -102,34 +105,34 @@ export const detail = (row: TaskRow, timeZone: string) => ({
     : {}),
 });
 
-export const agentTimeZone = async (ctx: QueryCtx, given: string | undefined) => {
+export const refuse = (message: string) => Effect.die(new ConvexError(message));
+
+export const agentTimeZone = Effect.fn("agentReads.agentTimeZone")(function* (given: string | undefined) {
   if (given !== undefined) {
-    if (parseTimeZone(given).isErr()) throw new ConvexError(`"${given}" is not an IANA time zone. Use one like "Australia/Sydney".`);
+    if (Result.isFailure(parseTimeZone(given))) return yield* refuse(`"${given}" is not an IANA time zone. Use one like "Australia/Sydney".`);
     return given;
   }
-  const block = await ctx.db.query("workBlocks").order("desc").first();
+  const block = yield* reading((ctx) => ctx.db.query("workBlocks").order("desc").first());
   if (block) return block.timeZone;
-  const rule = await ctx.db.query("recurrenceRules").order("desc").first();
+  const rule = yield* reading((ctx) => ctx.db.query("recurrenceRules").order("desc").first());
   return rule?.timeZone ?? FALLBACK_TIME_ZONE;
-};
+});
 
-export const agentDate = (given: string | undefined, timeZone: string) => {
-  if (given === undefined) return zonedDate(Date.now(), timeZone);
+export const agentDate = Effect.fn("agentReads.agentDate")(function* (given: string | undefined, timeZone: string) {
+  if (given === undefined) return zonedDate(yield* Clock.currentTimeMillis, timeZone);
   const parsed = parseIsoDate(given);
-  if (parsed.isErr()) throw new ConvexError(`Use a real date in YYYY-MM-DD form, not "${given}".`);
-  return parsed.value;
-};
+  if (Result.isFailure(parsed)) return yield* refuse(`Use a real date in YYYY-MM-DD form, not "${given}".`);
+  return parsed.success;
+});
 
-export const agentId = <T extends "tasks" | "projects" | "areas" | "templates" | "checklistItems" | "workBlocks" | "recurrenceRules" | "smartBlocks">(
-  ctx: QueryCtx,
-  table: T,
-  id: string,
-  hint: string,
-) => {
+type AgentTable = "tasks" | "projects" | "areas" | "templates" | "checklistItems" | "workBlocks" | "recurrenceRules" | "smartBlocks";
+
+export const agentId = Effect.fn("agentReads.agentId")(function* <T extends AgentTable>(table: T, id: string, hint: string) {
+  const ctx = yield* Reads;
   const normalised = ctx.db.normalizeId(table, id);
-  if (!normalised) throw new ConvexError(`No ${hint} has the id "${id}". ${lookupHint[table]}`);
+  if (!normalised) return yield* refuse(`No ${hint} has the id "${id}". ${lookupHint[table]}`);
   return normalised;
-};
+});
 
 const lookupHint = {
   tasks: "Find Task ids with search or list_tasks.",
@@ -142,10 +145,8 @@ const lookupHint = {
   smartBlocks: "Find Smart Block ids with list_smart_blocks.",
 } as const;
 
-export const unwrapRead = <T, E>(result: SerialisedResult<T, E>) => {
-  if (!result.ok) throw new ConvexError(`LifeOS could not read that: ${JSON.stringify(result.error)}.`);
-  return result.value;
-};
+export const unwrapRead = <T, E>(result: SerialisedResult<T, E>) =>
+  result.ok ? Effect.succeed(result.value) : refuse(`LifeOS could not read that: ${JSON.stringify(result.error)}.`);
 
 const clampLimit = (limit: number | undefined) => Math.min(Math.max(Math.trunc(limit ?? DEFAULT_LIMIT), 1), MAX_LIMIT);
 
@@ -183,27 +184,27 @@ export const listTasks = agentQuery({
     cursor: v.optional(v.string()),
     timeZone: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
+  handler: Effect.fn("agentReads.listTasks")(function* (args) {
     const limit = clampLimit(args.limit);
-    const timeZone = await agentTimeZone(ctx, args.timeZone);
-    const date = agentDate(args.date, timeZone);
+    const timeZone = yield* agentTimeZone(args.timeZone);
+    const date = yield* agentDate(args.date, timeZone);
     switch (args.view) {
       case "today": {
-        const day = unwrapRead(await readAsOwner(ctx, today, { date }));
+        const day = yield* unwrapRead(yield* readAsOwnerFx(today, { date }));
         return { view: args.view, date, ...limited([...day.tasks, ...day.evening], limit) };
       }
       case "inbox":
-        return { view: args.view, ...limited((await readAsOwner(ctx, inbox, {})).tasks, limit) };
+        return { view: args.view, ...limited((yield* readAsOwnerFx(inbox, {})).tasks, limit) };
       case "upcoming": {
-        const days = unwrapRead(await readAsOwner(ctx, upcoming, { date, days: args.days ?? 14 })).days;
+        const { days } = yield* unwrapRead(yield* readAsOwnerFx(upcoming, { date, days: args.days ?? 14 }));
         return { view: args.view, date, ...limited(uniqueRows(days.flatMap((day) => [...day.tasks, ...day.deadlines])), limit) };
       }
       case "anytime": {
-        const groups = unwrapRead(await readAsOwner(ctx, anytime, { date })).groups;
+        const { groups } = yield* unwrapRead(yield* readAsOwnerFx(anytime, { date }));
         return { view: args.view, date, ...limited(groups.flatMap((group) => group.tasks), limit) };
       }
       case "someday": {
-        const parked = await readAsOwner(ctx, someday, {});
+        const parked = yield* readAsOwnerFx(someday, {});
         return {
           view: args.view,
           ...limited(parked.groups.flatMap((group) => group.tasks), limit),
@@ -211,7 +212,7 @@ export const listTasks = agentQuery({
         };
       }
       case "logbook": {
-        const page = await readAsOwner(ctx, logbook, { paginationOpts: { numItems: limit, cursor: args.cursor ?? null } });
+        const page = yield* readAsOwnerFx(logbook, { paginationOpts: { numItems: limit, cursor: args.cursor ?? null } });
         return {
           view: args.view,
           tasks: page.page.map(summarise),
@@ -220,7 +221,7 @@ export const listTasks = agentQuery({
         };
       }
     }
-  },
+  }),
 });
 
 const vSearchResult = v.object({
@@ -236,47 +237,50 @@ const matches = (query: string) => {
 
 export const search = agentQuery({
   args: { query: v.string(), includeClosed: v.optional(v.boolean()), limit: v.optional(v.number()) },
-  handler: async (ctx, { query, includeClosed, limit }) => {
-    const count = Math.min(clampLimit(limit ?? SEARCH_LIMIT), 50);
-    const found = await ctx.db
-      .query("tasks")
-      .withSearchIndex("search_title", (q) =>
-        includeClosed ? q.search("title", query) : q.search("title", query).eq("status.kind", "open"),
-      )
-      .take(count * 2);
-    const { standalone, areas } = await loadContainers(ctx);
-    const fits = matches(query);
-    const projects = [
-      ...standalone.map((project) => ({ project, area: undefined as Doc<"areas"> | undefined })),
-      ...areas.flatMap(({ area, projects: inArea }) => inArea.map((project) => ({ project, area }))),
-    ].filter(({ project }) => fits(project.title));
-    return {
-      tasks: (await enrich(ctx, found.filter(isLive).slice(0, count))).map(summarise),
-      projects: projects.slice(0, count).map(({ project, area }) => ({
-        id: project._id,
-        title: project.title,
-        ...(area ? { area: area.title } : {}),
-      })),
-      areas: areas
-        .filter(({ area }) => fits(area.title))
-        .slice(0, count)
-        .map(({ area }) => ({ id: area._id, title: area.title })),
-    };
-  },
+  handler: ({ query, includeClosed, limit }) =>
+    reading(async (ctx) => {
+      const count = Math.min(clampLimit(limit ?? SEARCH_LIMIT), 50);
+      const found = await ctx.db
+        .query("tasks")
+        .withSearchIndex("search_title", (q) =>
+          includeClosed ? q.search("title", query) : q.search("title", query).eq("status.kind", "open"),
+        )
+        .take(count * 2);
+      const { standalone, areas } = await loadContainers(ctx);
+      const fits = matches(query);
+      const projects = [
+        ...standalone.map((project) => ({ project, area: undefined as Doc<"areas"> | undefined })),
+        ...areas.flatMap(({ area, projects: inArea }) => inArea.map((project) => ({ project, area }))),
+      ].filter(({ project }) => fits(project.title));
+      return {
+        tasks: (await enrich(ctx, found.filter(isLive).slice(0, count))).map(summarise),
+        projects: projects.slice(0, count).map(({ project, area }) => ({
+          id: project._id,
+          title: project.title,
+          ...(area ? { area: area.title } : {}),
+        })),
+        areas: areas
+          .filter(({ area }) => fits(area.title))
+          .slice(0, count)
+          .map(({ area }) => ({ id: area._id, title: area.title })),
+      };
+    }),
 });
 
-export const loadTaskRow = async (ctx: QueryCtx, taskId: Id<"tasks">) => {
-  const task = await ctx.db.get("tasks", taskId);
-  if (!task) throw new ConvexError(`No Task has the id "${taskId}". ${lookupHint.tasks}`);
-  const [row] = await enrich(ctx, [task]);
-  if (!row) throw new ConvexError(`No Task has the id "${taskId}".`);
+export const loadTaskRow = Effect.fn("agentReads.loadTaskRow")(function* (taskId: Id<"tasks">) {
+  const task = yield* reading((ctx) => ctx.db.get("tasks", taskId));
+  if (!task) return yield* refuse(`No Task has the id "${taskId}". ${lookupHint.tasks}`);
+  const [row] = yield* reading((ctx) => enrich(ctx, [task]));
+  if (!row) return yield* refuse(`No Task has the id "${taskId}".`);
   return row;
-};
+});
 
 export const getTask = agentQuery({
   args: { taskId: v.string(), timeZone: v.optional(v.string()) },
-  handler: async (ctx, { taskId, timeZone }) =>
-    detail(await loadTaskRow(ctx, agentId(ctx, "tasks", taskId, "Task")), await agentTimeZone(ctx, timeZone)),
+  handler: Effect.fn("agentReads.getTask")(function* ({ taskId, timeZone }) {
+    const row = yield* loadTaskRow(yield* agentId("tasks", taskId, "Task"));
+    return detail(row, yield* agentTimeZone(timeZone));
+  }),
 });
 
 const vAreasResult = v.object({
@@ -291,14 +295,14 @@ const projectRef = (project: Doc<"projects">) => ({ id: project._id, title: proj
 
 export const listAreas = agentQuery({
   args: {},
-  handler: async (ctx) => {
-    const { standalone, areas } = await loadContainers(ctx);
+  handler: Effect.fn("agentReads.listAreas")(function* () {
+    const { standalone, areas } = yield* reading(loadContainers);
     return {
       areas: areas.map(({ area, projects }) => ({ id: area._id, title: area.title, projects: projects.map(projectRef) })),
       projectsWithoutArea: standalone.map(projectRef),
-      labels: (await readAsOwner(ctx, labelList, {})).map((label) => label.name),
+      labels: (yield* readAsOwnerFx(labelList, {})).map((label) => label.name),
     };
-  },
+  }),
 });
 
 const vSleepNight = v.object({
@@ -334,19 +338,18 @@ const clock = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2,
 
 export const getDayPlan = agentQuery({
   args: { date: v.optional(v.string()), timeZone: v.optional(v.string()) },
-  handler: async (ctx, args) => {
-    const timeZone = await agentTimeZone(ctx, args.timeZone);
-    const date = agentDate(args.date, timeZone);
-    const plan = unwrapRead(await readAsOwner(ctx, week, { from: date, days: 1, timeZone }));
+  handler: Effect.fn("agentReads.getDayPlan")(function* (args) {
+    const timeZone = yield* agentTimeZone(args.timeZone);
+    const date = yield* agentDate(args.date, timeZone);
+    const plan = yield* unwrapRead(yield* readAsOwnerFx(week, { from: date, days: 1, timeZone }));
     const day = plan.days[0];
-    if (!day) throw new ConvexError(`LifeOS has no plan for ${date}.`);
+    if (!day) return yield* refuse(`LifeOS has no plan for ${date}.`);
     const start = zonedMoment(date, 0, timeZone);
     const end = zonedMoment(addDays(date, 1), 0, timeZone);
-    const [blocks, commitments, sleep] = await Promise.all([
-      readAsOwner(ctx, blocksInRange, { from: start, to: end }),
-      commitmentsBetween(ctx, start, end),
-      readAsOwner(ctx, nights, { from: date, days: 1, today: zonedDate(Date.now(), timeZone), timeZone }),
-    ]);
+    const blocks = yield* unwrapRead(yield* readAsOwnerFx(blocksInRange, { from: start, to: end }));
+    const commitments = yield* reading((ctx) => commitmentsBetween(ctx, start, end));
+    const now = zonedDate(yield* Clock.currentTimeMillis, timeZone);
+    const sleep = yield* unwrapRead(yield* readAsOwnerFx(nights, { from: date, days: 1, today: now, timeZone }));
     const at = (instant: number) => zonedIso(instant, timeZone);
     return {
       date,
@@ -361,7 +364,7 @@ export const getDayPlan = agentQuery({
       busyMinutes: day.busyMinutes,
       freeMinutes: day.freeMinutes,
       tasks: day.tasks.map(summarise),
-      workBlocks: unwrapRead(blocks).map((block) => ({
+      workBlocks: blocks.map((block) => ({
         id: block._id,
         taskId: block.taskId,
         title: block.task.title,
@@ -376,9 +379,9 @@ export const getDayPlan = agentQuery({
         allDay: commitment.allDay,
         takesTime: blocksTime(commitment),
       })),
-      sleep: unwrapRead(sleep).map((night) => ({ kind: night.kind, wakeDate: night.wakeDate, start: at(night.start), end: at(night.end) })),
+      sleep: sleep.map((night) => ({ kind: night.kind, wakeDate: night.wakeDate, start: at(night.start), end: at(night.end) })),
     };
-  },
+  }),
 });
 
 const vRepeatsAndTemplates = v.object({
@@ -404,14 +407,12 @@ const vRepeatsAndTemplates = v.object({
 
 export const listRepeatsAndTemplates = agentQuery({
   args: { days: v.optional(v.number()), timeZone: v.optional(v.string()) },
-  handler: async (ctx, args) => {
-    const date = agentDate(undefined, await agentTimeZone(ctx, args.timeZone));
-    const [repeats, templates] = await Promise.all([
-      readAsOwner(ctx, upcomingRepeats, { date, days: Math.min(Math.max(args.days ?? 30, 1), 366) }),
-      readAsOwner(ctx, templateList, {}),
-    ]);
+  handler: Effect.fn("agentReads.listRepeatsAndTemplates")(function* (args) {
+    const date = yield* agentDate(undefined, yield* agentTimeZone(args.timeZone));
+    const repeats = yield* unwrapRead(yield* readAsOwnerFx(upcomingRepeats, { date, days: Math.min(Math.max(args.days ?? 30, 1), 366) }));
+    const templates = yield* readAsOwnerFx(templateList, {});
     return {
-      repeats: unwrapRead(repeats).map((occurrence) => ({
+      repeats: repeats.map((occurrence) => ({
         ruleId: occurrence.ruleId,
         title: occurrence.title,
         summary: describeSchedule(occurrence.schedule, occurrence.end),
@@ -426,7 +427,7 @@ export const listRepeatsAndTemplates = agentQuery({
         checklistItems: template.checklistCount,
       })),
     };
-  },
+  }),
 });
 
 const vTimeZoneArg = v.optional(v.string());

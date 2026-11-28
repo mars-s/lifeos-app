@@ -1,16 +1,18 @@
 import { createThread, listUIMessages, saveMessage, stepCountIs, syncStreams, vStreamArgs, type SyncStreamsReturnValue, type UIMessage } from "@convex-dev/agent";
+import type { LanguageModelV4 } from "@ai-sdk/provider";
 import type { ToolSet } from "ai";
 import { paginationOptsValidator } from "convex/server";
 import { v, type Infer } from "convex/values";
-import { err, ok } from "neverthrow";
+import { Clock, Effect, Layer, Predicate, Result } from "effect";
 import { components, internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import { internalAction, internalMutation, internalQuery, type ActionCtx, type MutationCtx, type QueryCtx } from "../_generated/server";
+import type { ActionCtx, QueryCtx } from "../_generated/server";
 import type { ModelId } from "../../shared/ai";
-import { serialise } from "../../shared/result";
-import { MCP_SCOPES, mcpOwnerUserId, ownerMutation, ownerQuery, type AgentCaller } from "../platform/access";
+import { asWire } from "../../shared/effect/wire";
+import { MCP_SCOPES, mcpOwnerUserId, type AgentCaller } from "../platform/access";
 import { IN_APP_CONNECTION, IN_APP_WORKER_NAME, namedWorker } from "../platform/agentRuns";
 import { describeActivity } from "../platform/agentTools";
+import { Acts, acting, internalAction, internalMutation, internalQuery, ownerMutation, ownerQuery, reading, writing } from "../platform/effect";
 import { featureState } from "../platform/features";
 import { agentTimeZone } from "../planner/agentReads";
 import { trimNotes } from "../planner/smartEstimateModel";
@@ -19,12 +21,13 @@ import type { Hit } from "./search";
 import { LIFEOS_TOOLS } from "../tools";
 import { aiToolOf, isReadOnly } from "./adapter";
 import { AGENT_NAME, lifeosAgent } from "./agent";
+import { AiNotConfigured, EmptyRequest, ModelFailed, NotWaiting } from "./errors";
 import { proposalTools } from "./proposals";
 import { memoriesFor, memoryBlock, rememberTool } from "./memory";
-import { languageModelFor } from "./models";
 import { asksFirst, QUIET_CHANGE_LIMIT } from "./policy";
-import { attemptsFor, capabilityChain, capabilityReady } from "./capabilities";
-import type { Attempt } from "./transport";
+import { capabilityChain, capabilityReady } from "./capabilities";
+import { AiRouter } from "./routing";
+import { AiProvider, type Attempt } from "./transport";
 
 const RUN_LEASE_MS = 10 * 60_000;
 const MAX_REQUEST = 2000;
@@ -38,35 +41,45 @@ export type RunStatus = "working" | "needsYou" | "done" | "failed";
 export const inAppCaller = (jobId: Id<"jobs">) =>
   ({ userId: mcpOwnerUserId(), scopes: [MCP_SCOPES.read, MCP_SCOPES.write], clientId: "lifeos", connectionId: `${IN_APP_CONNECTION}${jobId}` }) satisfies AgentCaller;
 
-const lease = async (ctx: MutationCtx) => {
-  const now = Date.now();
-  return { kind: "claimed" as const, workerId: await namedWorker(ctx, IN_APP_WORKER_NAME), leaseUntil: now + RUN_LEASE_MS, heartbeatAt: now };
-};
+const lease = Effect.fn("runs.lease")(function* () {
+  const now = yield* Clock.currentTimeMillis;
+  const workerId = yield* writing((ctx) => namedWorker(ctx, IN_APP_WORKER_NAME));
+  return { kind: "claimed" as const, workerId, leaseUntil: now + RUN_LEASE_MS, heartbeatAt: now };
+});
 
-export const beginRun = async (ctx: MutationCtx, args: { request: string; mode: RunMode; taskId?: Id<"tasks"> }) => {
-  const request = args.request.trim().slice(0, MAX_REQUEST);
-  if (request === "") return err<{ jobId: Id<"jobs">; threadId: string }, RunError>({ kind: "empty_request" });
-  if (!(await capabilityReady(ctx, "agent"))) return err<{ jobId: Id<"jobs">; threadId: string }, RunError>({ kind: "not_configured" });
-  const threadId = await createThread(ctx, components.agent, { title: request });
-  const { messageId } = await saveMessage(ctx, components.agent, { threadId, agentName: AGENT_NAME, prompt: request });
-  const jobId = await ctx.db.insert("jobs", {
-    job: { kind: "agent", payload: { request, mode: args.mode, threadId, ...(args.taskId ? { taskId: args.taskId } : {}) } },
-    idempotencyKey: `agent:${threadId}`,
-    status: await lease(ctx),
-    attempts: 1,
+const scheduleStep = (jobId: Id<"jobs">, promptMessageId: string) =>
+  writing(async (ctx) => {
+    await ctx.scheduler.runAfter(0, internal.ai.runs.step, { jobId, promptMessageId });
+    return null;
   });
-  await ctx.scheduler.runAfter(0, internal.ai.runs.step, { jobId, promptMessageId: messageId });
-  return ok<{ jobId: Id<"jobs">; threadId: string }, RunError>({ jobId, threadId });
-};
+
+export const beginRun = Effect.fn("runs.beginRun")(function* (args: { request: string; mode: RunMode; taskId?: Id<"tasks"> }) {
+  const request = args.request.trim().slice(0, MAX_REQUEST);
+  if (request === "") return yield* new EmptyRequest();
+  if (!(yield* reading((ctx) => capabilityReady(ctx, "agent")))) return yield* new AiNotConfigured();
+  const threadId = yield* writing((ctx) => createThread(ctx, components.agent, { title: request }));
+  const { messageId } = yield* writing((ctx) => saveMessage(ctx, components.agent, { threadId, agentName: AGENT_NAME, prompt: request }));
+  const status = yield* lease();
+  const jobId = yield* writing((ctx) =>
+    ctx.db.insert("jobs", {
+      job: { kind: "agent", payload: { request, mode: args.mode, threadId, ...(args.taskId ? { taskId: args.taskId } : {}) } },
+      idempotencyKey: `agent:${threadId}`,
+      status,
+      attempts: 1,
+    }),
+  );
+  yield* scheduleStep(jobId, messageId);
+  return { jobId, threadId };
+});
 
 export const begin = internalMutation({
   args: { request: v.string(), mode: vRunMode, taskId: v.optional(v.id("tasks")) },
-  handler: async (ctx, args) => serialise(await beginRun(ctx, args)),
+  handler: (args) => asWire(beginRun(args)),
 });
 
 export const start = ownerMutation({
   args: { request: v.string(), mode: vRunMode, taskId: v.optional(v.id("tasks")) },
-  handler: async (ctx, args) => serialise(await beginRun(ctx, args)),
+  handler: (args) => asWire(beginRun(args)),
 });
 
 const STATUS = { queued: "working", claimed: "working", waiting: "needsYou", done: "done", failed: "failed" } as const satisfies Record<Doc<"jobs">["status"]["kind"], RunStatus>;
@@ -86,7 +99,7 @@ export const viewOf = (job: Doc<"jobs">) => ({
   mode: job.job.payload.mode ?? "run",
   status: statusOf(job),
   startedAt: job._creationTime,
-  answeredBy: job.status.kind === "done" && typeof job.status.receipt?.answeredBy === "string" ? (job.status.receipt.answeredBy as string) : null,
+  answeredBy: job.status.kind === "done" && Predicate.isString(job.status.receipt?.answeredBy) ? (job.status.receipt.answeredBy as string) : null,
   error: job.status.kind === "failed" ? job.status.error : null,
 });
 
@@ -108,29 +121,33 @@ const runUndone = async (ctx: QueryCtx, jobId: Id<"jobs">) =>
 
 export const recent = ownerQuery({
   args: {},
-  handler: async (ctx) =>
-    Promise.all(
-      (await recentRuns(ctx, RECENT_RUNS)).map(async (job) => ({ ...viewOf(job), changes: await changesOf(ctx, job._id), undone: await runUndone(ctx, job._id) })),
+  handler: () =>
+    reading(async (ctx) =>
+      Promise.all(
+        (await recentRuns(ctx, RECENT_RUNS)).map(async (job) => ({ ...viewOf(job), changes: await changesOf(ctx, job._id), undone: await runUndone(ctx, job._id) })),
+      ),
     ),
 });
 
 export const live = ownerQuery({
   args: {},
-  handler: async (ctx) => {
-    const [job] = await recentRuns(ctx, 1);
-    return job && job.job.payload.dismissed !== true ? { ...viewOf(job), changes: await changesOf(ctx, job._id), undone: await runUndone(ctx, job._id) } : null;
-  },
+  handler: () =>
+    reading(async (ctx) => {
+      const [job] = await recentRuns(ctx, 1);
+      return job && job.job.payload.dismissed !== true ? { ...viewOf(job), changes: await changesOf(ctx, job._id), undone: await runUndone(ctx, job._id) } : null;
+    }),
 });
 
 export const receipt = ownerQuery({
   args: { jobId: v.id("jobs") },
-  handler: async (ctx, { jobId }) => {
-    const entries = await ctx.db
-      .query("activity")
-      .withIndex("by_run", (q) => q.eq("actor.jobId", jobId))
-      .take(RECEIPT_LIMIT);
-    return Promise.all(entries.map((entry) => describeActivity(ctx, entry)));
-  },
+  handler: ({ jobId }) =>
+    reading(async (ctx) => {
+      const entries = await ctx.db
+        .query("activity")
+        .withIndex("by_run", (q) => q.eq("actor.jobId", jobId))
+        .take(RECEIPT_LIMIT);
+      return Promise.all(entries.map((entry) => describeActivity(ctx, entry)));
+    }),
 });
 
 const runJob = async (ctx: QueryCtx, jobId: Id<"jobs">) => {
@@ -140,51 +157,58 @@ const runJob = async (ctx: QueryCtx, jobId: Id<"jobs">) => {
 
 export const dismiss = ownerMutation({
   args: { jobId: v.id("jobs") },
-  handler: async (ctx, { jobId }) => {
-    const job = await runJob(ctx, jobId);
-    if (job) await ctx.db.patch("jobs", jobId, { job: { ...job.job, payload: { ...job.job.payload, dismissed: true } } });
+  handler: Effect.fn("runs.dismiss")(function* ({ jobId }) {
+    const job = yield* reading((ctx) => runJob(ctx, jobId));
+    if (job) yield* writing((ctx) => ctx.db.patch("jobs", jobId, { job: { ...job.job, payload: { ...job.job.payload, dismissed: true } } }));
     return null;
-  },
+  }),
 });
 
 export const stop = ownerMutation({
   args: { jobId: v.id("jobs") },
-  handler: async (ctx, { jobId }) => {
-    const job = await runJob(ctx, jobId);
-    if (job && (job.status.kind === "claimed" || job.status.kind === "waiting")) await ctx.db.patch("jobs", jobId, { status: { kind: "failed", at: Date.now(), error: "stopped" } });
+  handler: Effect.fn("runs.stop")(function* ({ jobId }) {
+    const job = yield* reading((ctx) => runJob(ctx, jobId));
+    const at = yield* Clock.currentTimeMillis;
+    if (job && (job.status.kind === "claimed" || job.status.kind === "waiting")) {
+      yield* writing((ctx) => ctx.db.patch("jobs", jobId, { status: { kind: "failed", at, error: "stopped" } }));
+    }
     return null;
-  },
+  }),
 });
 
 export const tell = ownerMutation({
   args: { jobId: v.id("jobs"), text: v.string() },
-  handler: async (ctx, { jobId, text }) => {
-    const job = await runJob(ctx, jobId);
+  handler: Effect.fn("runs.tell")(function* ({ jobId, text }) {
+    const job = yield* reading((ctx) => runJob(ctx, jobId));
     const said = text.trim().slice(0, MAX_REQUEST);
-    if (!job?.job.payload.threadId || said === "" || job.status.kind === "claimed") return serialise(err<{ jobId: Id<"jobs"> }, RunError>({ kind: "not_waiting" }));
-    const { messageId } = await saveMessage(ctx, components.agent, { threadId: job.job.payload.threadId, agentName: AGENT_NAME, prompt: said });
-    await ctx.db.patch("jobs", jobId, { status: await lease(ctx), job: { ...job.job, payload: { ...job.job.payload, dismissed: false } } });
-    await ctx.scheduler.runAfter(0, internal.ai.runs.step, { jobId, promptMessageId: messageId });
-    return serialise(ok<{ jobId: Id<"jobs"> }, RunError>({ jobId }));
-  },
+    const threadId = job?.job.payload.threadId;
+    if (!job || !threadId || said === "" || job.status.kind === "claimed") return yield* new NotWaiting();
+    const { messageId } = yield* writing((ctx) => saveMessage(ctx, components.agent, { threadId, agentName: AGENT_NAME, prompt: said }));
+    const status = yield* lease();
+    yield* writing((ctx) => ctx.db.patch("jobs", jobId, { status, job: { ...job.job, payload: { ...job.job.payload, dismissed: false } } }));
+    yield* scheduleStep(jobId, messageId);
+    return { jobId };
+  }, asWire),
 });
 
 export const get = ownerQuery({
   args: { jobId: v.id("jobs") },
-  handler: async (ctx, { jobId }) => {
-    const job = await ctx.db.get("jobs", jobId);
-    return job?.job.payload.threadId ? viewOf(job) : null;
-  },
+  handler: ({ jobId }) =>
+    reading(async (ctx) => {
+      const job = await ctx.db.get("jobs", jobId);
+      return job?.job.payload.threadId ? viewOf(job) : null;
+    }),
 });
 
 export const messages = ownerQuery({
   args: { threadId: v.string(), paginationOpts: paginationOptsValidator, streamArgs: vStreamArgs },
-  handler: async (ctx, args) => {
-    const quiet = { kind: "list", messages: [] } satisfies SyncStreamsReturnValue;
-    if (!(await runOfThread(ctx, args.threadId))) return { page: [] as UIMessage[], isDone: true, continueCursor: "", streams: quiet as SyncStreamsReturnValue };
-    const [paginated, streams] = await Promise.all([listUIMessages(ctx, components.agent, args), syncStreams(ctx, components.agent, args)]);
-    return { ...paginated, streams: streams ?? quiet };
-  },
+  handler: (args) =>
+    reading(async (ctx) => {
+      const quiet = { kind: "list", messages: [] } satisfies SyncStreamsReturnValue;
+      if (!(await runOfThread(ctx, args.threadId))) return { page: [] as UIMessage[], isDone: true, continueCursor: "", streams: quiet as SyncStreamsReturnValue };
+      const [paginated, streams] = await Promise.all([listUIMessages(ctx, components.agent, args), syncStreams(ctx, components.agent, args)]);
+      return { ...paginated, streams: streams ?? quiet };
+    }),
 });
 
 export type StepPlan =
@@ -193,7 +217,7 @@ export type StepPlan =
 
 const CHECKLIST_LIMIT = 50;
 
-const todayIn = (timeZone: string) => new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+const todayIn = (timeZone: string, now: number) => new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 
 const line = (label: string, value: string | undefined | null) => (value ? [`${label}: ${value}`] : []);
 
@@ -238,18 +262,21 @@ const changesOf = async (ctx: QueryCtx, jobId: Id<"jobs">) =>
 
 export const planFor = internalQuery({
   args: { jobId: v.id("jobs") },
-  handler: async (ctx, { jobId }) => {
-    const job = await ctx.db.get("jobs", jobId);
+  handler: Effect.fn("runs.planFor")(function* ({ jobId }) {
+    const job = yield* reading((ctx) => ctx.db.get("jobs", jobId));
     const threadId = job?.job.payload.threadId;
     if (!job || !threadId || job.status.kind !== "claimed") return { kind: "skip" } satisfies StepPlan;
-    const [chain, ai, changes, timeZone, task, memories] = await Promise.all([
-      capabilityChain(ctx, "agent"),
-      featureState(ctx, "ai"),
-      changesOf(ctx, jobId),
-      agentTimeZone(ctx, undefined),
-      taskContext(ctx, job.job.payload.taskId, job.job.payload.mode ?? "run"),
-      memoriesFor(ctx, job.job.payload.request),
-    ]);
+    const timeZone = yield* agentTimeZone(undefined);
+    const now = yield* Clock.currentTimeMillis;
+    const [chain, ai, changes, task, memories] = yield* reading((ctx) =>
+      Promise.all([
+        capabilityChain(ctx, "agent"),
+        featureState(ctx, "ai"),
+        changesOf(ctx, jobId),
+        taskContext(ctx, job.job.payload.taskId, job.job.payload.mode ?? "run"),
+        memoriesFor(ctx, job.job.payload.request),
+      ]),
+    );
     return {
       kind: "go",
       threadId,
@@ -260,9 +287,9 @@ export const planFor = internalQuery({
       timeZone,
       about: aboutTask(job.job.payload.taskId, task),
       memoryOn: ai.settings.memory !== false,
-      context: [`Today is ${todayIn(timeZone)} in ${timeZone}.`, ...task, ...memoryBlock(memories)].join("\n"),
+      context: [`Today is ${todayIn(timeZone, now)} in ${timeZone}.`, ...task, ...memoryBlock(memories)].join("\n"),
     } satisfies StepPlan;
-  },
+  }),
 });
 
 const vOutcome = v.union(
@@ -275,18 +302,26 @@ type Outcome = Infer<typeof vOutcome>;
 
 type GoPlan = Extract<StepPlan, { kind: "go" }>;
 
+const statusAfter = (outcome: Outcome, at: number) => {
+  const status: Doc<"jobs">["status"] =
+    outcome.kind === "waiting"
+      ? { kind: "waiting", since: at }
+      : outcome.kind === "failed"
+        ? { kind: "failed", at, error: outcome.error }
+        : { kind: "done", at, receipt: { answeredBy: outcome.answeredBy, inputTokens: outcome.inputTokens, outputTokens: outcome.outputTokens } };
+  return status;
+};
+
 export const settle = internalMutation({
   args: { jobId: v.id("jobs"), outcome: vOutcome },
   returns: v.null(),
-  handler: async (ctx, { jobId, outcome }) => {
-    const job = await ctx.db.get("jobs", jobId);
+  handler: Effect.fn("runs.settle")(function* ({ jobId, outcome }) {
+    const job = yield* reading((ctx) => ctx.db.get("jobs", jobId));
     if (job?.status.kind !== "claimed") return null;
-    const at = Date.now();
-    if (outcome.kind === "waiting") await ctx.db.patch("jobs", jobId, { status: { kind: "waiting", since: at } });
-    else if (outcome.kind === "failed") await ctx.db.patch("jobs", jobId, { status: { kind: "failed", at, error: outcome.error } });
-    else await ctx.db.patch("jobs", jobId, { status: { kind: "done", at, receipt: { answeredBy: outcome.answeredBy, inputTokens: outcome.inputTokens, outputTokens: outcome.outputTokens } } });
+    const status = statusAfter(outcome, yield* Clock.currentTimeMillis);
+    yield* writing((ctx) => ctx.db.patch("jobs", jobId, { status }));
     return null;
-  },
+  }),
 });
 
 const toolsFor = (ctx: ActionCtx, jobId: Id<"jobs">, plan: GoPlan) => {
@@ -313,80 +348,106 @@ const approvalPolicy = (plan: GoPlan) => {
 
 const describeError = (error: unknown) => (error instanceof Error ? error.message : String(error)).slice(0, 300);
 
-const tryModel = async (ctx: ActionCtx, plan: GoPlan, attempt: Attempt, tools: ToolSet, promptMessageId: string) => {
+const streamOnce = async (ctx: ActionCtx, model: LanguageModelV4, plan: GoPlan, attempt: Attempt, tools: ToolSet, promptMessageId: string) => {
   let failure: unknown = null;
   const remember = (error: unknown) => {
     failure ??= error;
   };
-  try {
-    const result = await lifeosAgent(languageModelFor(attempt, plan.threadId)).streamText(
-      ctx,
-      { threadId: plan.threadId },
-      {
-        promptMessageId,
-        tools,
-        system: plan.context,
-        stopWhen: stepCountIs(STEPS[plan.mode]),
-        onError: ({ error }) => remember(error),
-        ...(plan.mode === "run" ? { toolApproval: approvalPolicy(plan) } : {}),
-      },
-      { saveStreamDeltas: { throttleMs: 50 } },
-    );
-    await result.consumeStream({ onError: remember });
-    if (failure === null && (await result.finishReason) === "error") remember(new Error("The model stopped with an error."));
-    if (failure !== null) return err<Outcome, unknown>(failure);
-    const [content, usage] = await Promise.all([result.content, result.totalUsage]);
-    const waiting = content.some((part) => part.type === "tool-approval-request" && !part.isAutomatic);
-    return ok<Outcome, unknown>(
-      waiting ? { kind: "waiting" } : { kind: "done", answeredBy: attempt.model, inputTokens: usage.inputTokens ?? 0, outputTokens: usage.outputTokens ?? 0 },
-    );
-  } catch (error) {
-    return err<Outcome, unknown>(error);
-  }
+  const result = await lifeosAgent(model).streamText(
+    ctx,
+    { threadId: plan.threadId },
+    {
+      promptMessageId,
+      tools,
+      system: plan.context,
+      stopWhen: stepCountIs(STEPS[plan.mode]),
+      onError: ({ error }) => remember(error),
+      ...(plan.mode === "run" ? { toolApproval: approvalPolicy(plan) } : {}),
+    },
+    { saveStreamDeltas: { throttleMs: 50 } },
+  );
+  await result.consumeStream({ onError: remember });
+  if (failure === null && (await result.finishReason) === "error") remember(new Error("The model stopped with an error."));
+  if (failure !== null) return { kind: "failed", error: describeError(failure) } satisfies Outcome;
+  const [content, usage] = await Promise.all([result.content, result.totalUsage]);
+  const waiting = content.some((part) => part.type === "tool-approval-request" && !part.isAutomatic);
+  const outcome: Outcome = waiting
+    ? { kind: "waiting" }
+    : { kind: "done", answeredBy: attempt.model, inputTokens: usage.inputTokens ?? 0, outputTokens: usage.outputTokens ?? 0 };
+  return outcome;
 };
+
+const tryModel = Effect.fn("runs.tryModel")(function* (plan: GoPlan, attempt: Attempt, tools: ToolSet, promptMessageId: string) {
+  const ctx = yield* Acts;
+  const provider = yield* AiProvider;
+  const outcome = yield* Effect.tryPromise({
+    try: () => streamOnce(ctx, provider.languageModel(attempt, plan.threadId), plan, attempt, tools, promptMessageId),
+    catch: (error) => new ModelFailed({ reason: describeError(error) }),
+  });
+  if (outcome.kind === "failed") return yield* new ModelFailed({ reason: outcome.error });
+  return outcome;
+});
+
+const settleRun = (jobId: Id<"jobs">, outcome: Outcome) =>
+  acting((ctx) => {
+    const settled: Promise<null> = ctx.runMutation(internal.ai.runs.settle, { jobId, outcome });
+    return settled;
+  });
 
 export const step = internalAction({
   args: { jobId: v.id("jobs"), promptMessageId: v.string() },
   returns: v.null(),
-  handler: async (ctx, { jobId, promptMessageId }) => {
-    const plan: StepPlan = await ctx.runQuery(internal.ai.runs.planFor, { jobId });
-    if (plan.kind === "skip") return null;
-    const attempts = await attemptsFor(ctx, plan.chain);
-    if (attempts.length === 0) {
-      await ctx.runMutation(internal.ai.runs.settle, { jobId, outcome: { kind: "failed", error: "not_configured" } });
-      return null;
-    }
-    const related: { hits: Hit[] } = plan.about
-      ? await ctx.runAction(internal.ai.search.hybrid, { query: plan.about.query, limit: 5, exclude: plan.about.taskId })
-      : { hits: [] };
-    const planned = { ...plan, context: [plan.context, ...relatedBlock(related.hits)].join("\n") };
-    const tools = toolsFor(ctx, jobId, planned);
-    let failure: unknown = null;
-    for (const attempt of attempts) {
-      const outcome = await tryModel(ctx, planned, attempt, tools, promptMessageId);
-      if (outcome.isOk()) {
-        await ctx.runMutation(internal.ai.runs.settle, { jobId, outcome: outcome.value });
+  handler: Effect.fn("runs.step")(
+    function* ({ jobId, promptMessageId }) {
+      const ctx = yield* Acts;
+      const plan = yield* acting(() => {
+        const planned: Promise<StepPlan> = ctx.runQuery(internal.ai.runs.planFor, { jobId });
+        return planned;
+      });
+      if (plan.kind === "skip") return null;
+      const attempts = yield* (yield* AiRouter).attemptsFor(plan.chain);
+      if (attempts.length === 0) {
+        yield* settleRun(jobId, { kind: "failed", error: "not_configured" });
         return null;
       }
-      failure = outcome.error;
-      console.warn(`${attempt.model} failed`, describeError(failure));
-    }
-    await ctx.runMutation(internal.ai.runs.settle, { jobId, outcome: { kind: "failed", error: describeError(failure) } });
-    return null;
-  },
+      const about = plan.about;
+      const related = about
+        ? yield* acting(() => {
+            const found: Promise<{ hits: Hit[] }> = ctx.runAction(internal.ai.search.hybrid, { query: about.query, limit: 5, exclude: about.taskId });
+            return found;
+          })
+        : { hits: [] };
+      const planned = { ...plan, context: [plan.context, ...relatedBlock(related.hits)].join("\n") };
+      const tools = toolsFor(ctx, jobId, planned);
+      let failure = "";
+      for (const attempt of attempts) {
+        const outcome = yield* Effect.result(tryModel(planned, attempt, tools, promptMessageId));
+        if (Result.isSuccess(outcome)) {
+          yield* settleRun(jobId, outcome.success);
+          return null;
+        }
+        failure = outcome.failure.reason;
+        yield* Effect.logWarning(`${attempt.model} failed`, failure);
+      }
+      yield* settleRun(jobId, { kind: "failed", error: failure });
+      return null;
+    },
+    Effect.provide(Layer.mergeAll(AiRouter.layer, AiProvider.layer)),
+  ),
 });
 
 const vDecision = v.object({ approvalId: v.string(), approved: v.boolean() });
 
 export const respond = ownerMutation({
   args: { jobId: v.id("jobs"), decisions: v.array(vDecision) },
-  handler: async (ctx, { jobId, decisions }) => {
-    const job = await ctx.db.get("jobs", jobId);
+  handler: Effect.fn("runs.respond")(function* ({ jobId, decisions }) {
+    const job = yield* reading((ctx) => ctx.db.get("jobs", jobId));
     const threadId = job?.job.payload.threadId;
-    if (!job || !threadId || job.status.kind !== "waiting") return serialise(err<{ jobId: Id<"jobs"> }, RunError>({ kind: "not_waiting" }));
-    const { messageId } = await ctx.runMutation(components.agent.messages.respondToToolCallApprovals, { threadId, agentName: AGENT_NAME, decisions });
-    await ctx.db.patch("jobs", jobId, { status: await lease(ctx) });
-    await ctx.scheduler.runAfter(0, internal.ai.runs.step, { jobId, promptMessageId: messageId });
-    return serialise(ok<{ jobId: Id<"jobs"> }, RunError>({ jobId }));
-  },
+    if (!job || !threadId || job.status.kind !== "waiting") return yield* new NotWaiting();
+    const { messageId } = yield* writing((ctx) => ctx.runMutation(components.agent.messages.respondToToolCallApprovals, { threadId, agentName: AGENT_NAME, decisions }));
+    const status = yield* lease();
+    yield* writing((ctx) => ctx.db.patch("jobs", jobId, { status }));
+    yield* scheduleStep(jobId, messageId);
+    return { jobId };
+  }, asWire),
 });
