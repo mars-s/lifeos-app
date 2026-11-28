@@ -11,7 +11,7 @@ export const ShortcutSheet = () => {
   const surface = isTauri() ? "app" : "browser";
   return (
     <BarDialog title="Keyboard shortcuts" onClose={bar.close} className="top-[max(1rem,10vh)] w-[min(46rem,calc(100vw-2rem))]">
-      <div className="max-h-[80vh] overflow-y-auto overscroll-contain rounded-2xl bg-popover text-foreground shadow-float">
+      <div role="region" aria-label="Keyboard shortcuts" tabIndex={0} className="max-h-[80vh] overflow-y-auto overscroll-contain rounded-2xl bg-popover text-foreground shadow-float">
         <div className="flex h-12 items-center justify-between px-5">
           <h2 className="text-heading font-medium">Keyboard shortcuts</h2>
           <Kbd>Esc</Kbd>
