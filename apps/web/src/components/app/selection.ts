@@ -1,16 +1,18 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/reactivity";
+import { useCallback, useEffect } from "react";
 import type { PlannerTask } from "@lifeos/backend/types";
+import { registry } from "../../lib/atoms";
 
 type Selection = { keys: ReadonlySet<string>; anchor: string | null; cursor: string | null };
 
 const EMPTY: Selection = { keys: new Set(), anchor: null, cursor: null };
 
-let current = EMPTY;
-let lingering: ReadonlySet<string> = new Set();
-let registered = 0;
-const listeners = new Set<() => void>();
+const selectionAtom = Atom.make(EMPTY).pipe(Atom.keepAlive);
+const lingeringAtom = Atom.make<ReadonlySet<string>>(new Set<string>()).pipe(Atom.keepAlive);
+const registeredAtom = Atom.make(0).pipe(Atom.keepAlive);
 const tasks = new Map<string, PlannerTask>();
 
 const leaving = new Set<string>();
@@ -22,20 +24,13 @@ const announce = () => {
   announcing = true;
   queueMicrotask(() => {
     announcing = false;
-    registered += 1;
-    listeners.forEach((listener) => listener());
+    registry.update(registeredAtom, (registered) => registered + 1);
   });
 };
 
-const publish = (next: Selection) => {
-  current = next;
-  listeners.forEach((listener) => listener());
-};
+const now = () => registry.get(selectionAtom);
 
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  return () => void listeners.delete(listener);
-};
+const publish = (next: Selection) => registry.set(selectionAtom, next);
 
 const between = (ordered: readonly string[], from: string, to: string) => {
   const start = ordered.indexOf(from);
@@ -48,30 +43,32 @@ export const rowKeys = () =>
   [...document.querySelectorAll<HTMLElement>("#main [data-task-key]")].flatMap((row) => (row.dataset.taskKey ? [row.dataset.taskKey] : []));
 
 export const selection = {
-  has: (key: string) => current.keys.has(key),
-  size: () => current.keys.size,
-  cursor: () => current.cursor,
+  has: (key: string) => now().keys.has(key),
+  size: () => now().keys.size,
+  cursor: () => now().cursor,
   only: (key: string) => publish({ keys: new Set([key]), anchor: key, cursor: key }),
   toggle: (key: string) => {
-    const keys = new Set(current.keys);
+    const keys = new Set(now().keys);
     if (!keys.delete(key)) keys.add(key);
     publish({ keys, anchor: key, cursor: key });
   },
   extendTo: (key: string, ordered: readonly string[] = rowKeys()) => {
-    const anchor = current.anchor && ordered.includes(current.anchor) ? current.anchor : key;
+    const { anchor: held } = now();
+    const anchor = held && ordered.includes(held) ? held : key;
     publish({ keys: new Set(between(ordered, anchor, key)), anchor, cursor: key });
   },
   set: (keys: readonly string[], anchor: string | null = keys[0] ?? null) =>
     publish(keys.length === 0 ? EMPTY : { keys: new Set(keys), anchor, cursor: keys.at(-1) ?? null }),
   all: () => selection.set(rowKeys()),
   clear: () => {
-    if (current.keys.size > 0) publish(EMPTY);
+    if (now().keys.size > 0) publish(EMPTY);
   },
-  keys: () => [...current.keys],
+  keys: () => [...now().keys],
   tasks: () => {
     const seen = new Set<string>();
+    const { keys } = now();
     return rowKeys().flatMap((key) => {
-      const task = current.keys.has(key) ? tasks.get(key) : undefined;
+      const task = keys.has(key) ? tasks.get(key) : undefined;
       if (!task || seen.has(task._id)) return [];
       seen.add(task._id);
       return [task];
@@ -88,6 +85,7 @@ export const selection = {
     queueMicrotask(() => {
       if (!leaving.delete(key)) return;
       tasks.delete(key);
+      const current = now();
       if (!current.keys.has(key)) return;
       const keys = new Set(current.keys);
       keys.delete(key);
@@ -95,12 +93,11 @@ export const selection = {
     });
   },
   linger: (ids: readonly string[], on: boolean) => {
-    const next = new Set(lingering);
+    const next = new Set(registry.get(lingeringAtom));
     ids.forEach((id) => (on ? next.add(id) : next.delete(id)));
-    lingering = next;
-    listeners.forEach((listener) => listener());
+    registry.set(lingeringAtom, next);
   },
-  isLingering: (id: string) => lingering.has(id),
+  isLingering: (id: string) => registry.get(lingeringAtom).has(id),
 };
 
 export const useRegisteredTask = (key: string, task: PlannerTask) => {
@@ -108,30 +105,12 @@ export const useRegisteredTask = (key: string, task: PlannerTask) => {
   useEffect(() => () => selection.forget(key), [key]);
 };
 
-export const useSelected = (key: string) =>
-  useSyncExternalStore(
-    subscribe,
-    () => current.keys.has(key),
-    () => false,
-  );
+const sizeOf = (current: Selection) => current.keys.size;
 
-export const useSelectionSize = () =>
-  useSyncExternalStore(
-    subscribe,
-    () => current.keys.size,
-    () => 0,
-  );
+export const useSelected = (key: string) => useAtomValue(selectionAtom, useCallback((current: Selection) => current.keys.has(key), [key]));
 
-export const useRegisteredTasks = () =>
-  useSyncExternalStore(
-    subscribe,
-    () => registered,
-    () => 0,
-  );
+export const useSelectionSize = () => useAtomValue(selectionAtom, sizeOf);
 
-export const useLingering = (id: string) =>
-  useSyncExternalStore(
-    subscribe,
-    () => lingering.has(id),
-    () => false,
-  );
+export const useRegisteredTasks = () => useAtomValue(registeredAtom);
+
+export const useLingering = (id: string) => useAtomValue(lingeringAtom, useCallback((lingering: ReadonlySet<string>) => lingering.has(id), [id]));
