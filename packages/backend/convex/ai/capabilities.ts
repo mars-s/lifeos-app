@@ -1,7 +1,9 @@
+import { Effect, Option, Redacted } from "effect";
 import type { ActionCtx, QueryCtx } from "../_generated/server";
 import { CAPABILITIES, MODELS, modelChain, PROVIDER_IDS, PROVIDERS, routeOf, type CapabilityId, type ModelId, type ProviderId } from "../../shared/ai";
+import { Acts, runAtEdge } from "../platform/effect";
 import { featureReady, featureState } from "../platform/features";
-import { revealSecret, secretAvailable } from "../platform/secrets";
+import { secretAvailable, Secrets } from "../platform/secrets";
 import type { Attempt } from "./transport";
 
 export const keyedProviders = async (ctx: QueryCtx) => {
@@ -23,15 +25,18 @@ export const capabilityChain = async (ctx: QueryCtx, capability: CapabilityId) =
 
 export const capabilityReady = async (ctx: QueryCtx, capability: CapabilityId) => (await capabilityChain(ctx, capability)).length > 0;
 
-export const attemptsFor = async (ctx: ActionCtx, chain: readonly ModelId[]) => {
+export const keyedAttempts = Effect.fn("capabilities.keyedAttempts")(function* (chain: readonly ModelId[]) {
+  const secrets = yield* Secrets;
   const keys = new Map<ProviderId, string | undefined>();
   for (const model of chain) {
     const { provider } = MODELS[model];
-    if (!keys.has(provider)) keys.set(provider, await revealSecret(ctx, PROVIDERS[provider].secret));
+    if (!keys.has(provider)) keys.set(provider, Option.getOrUndefined(Option.map(yield* secrets.reveal(PROVIDERS[provider].secret), Redacted.value)));
   }
   return chain.flatMap((model) => {
     const key = keys.get(MODELS[model].provider);
     return key ? [{ model, key } satisfies Attempt] : [];
   });
-};
+});
 
+export const attemptsFor = (ctx: ActionCtx, chain: readonly ModelId[]) =>
+  runAtEdge(keyedAttempts(chain).pipe(Effect.provide(Secrets.layer), Effect.provideService(Acts, ctx)));

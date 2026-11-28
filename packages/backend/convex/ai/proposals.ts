@@ -1,6 +1,7 @@
 import { jsonSchema, tool, type JSONSchema7 } from "ai";
+import { Result } from "effect";
 import { zonedMoment } from "../calendar/model";
-import { parseIsoDate } from "../../shared/date";
+import { parseIsoDate } from "../../shared/effect/date";
 
 export const MAX_PROPOSED_STEPS = 8;
 
@@ -35,8 +36,8 @@ export const proposalTools = (timeZone: string) => ({
     execute: async ({ date, start, minutes }) => {
       const day = parseIsoDate(date);
       const minute = minuteOf(start);
-      if (day.isErr() || minute === null) return { refused: "Give a real date as YYYY-MM-DD and a start as HH:MM." };
-      return { ...DRAFTED, start: zonedMoment(day.value, minute, timeZone), minutes, timeZone, date: day.value };
+      if (Result.isFailure(day) || minute === null) return { refused: "Give a real date as YYYY-MM-DD and a start as HH:MM." };
+      return { ...DRAFTED, start: zonedMoment(day.success, minute, timeZone), minutes, timeZone, date: day.success };
     },
   }),
   propose_notes: tool({

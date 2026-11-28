@@ -5,6 +5,7 @@ import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { costLine, modelChain, PROVIDERS } from "../../shared/ai";
 import { DECISIONS_URL, GO_CHAT_URL, newAiBackend, newBackend, OPENAI_CHAT_URL, switchAiOn, unwrap, type Backend } from "../backend.test-utils";
+import { resultToWire } from "../../shared/effect/wire";
 import { decisionsFromChat, type Question } from "./transport";
 
 type Call = { url: string; authorization: string | null; session: string | null; body: Record<string, unknown> };
@@ -382,20 +383,23 @@ describe("reading a chat model's odds", () => {
   ];
 
   test("drops options it did not offer, renormalises, and picks the most likely", () => {
-    expect(decisionsFromChat(questions, "m", reply('```json\n{"size":{"small":1,"big":3,"huge":9},"vague":1.4}\n```'))._unsafeUnwrap()).toEqual({
-      model: "m",
-      answers: [
-        { type: "choice", name: "size", choice: "big", confidence: 0.75, probabilities: [{ value: "big", probability: 0.75 }, { value: "small", probability: 0.25 }] },
-        { type: "predicate", name: "vague", probability: 1 },
-      ],
+    expect(resultToWire(decisionsFromChat(questions, "m", reply('```json\n{"size":{"small":1,"big":3,"huge":9},"vague":1.4}\n```')))).toEqual({
+      ok: true,
+      value: {
+        model: "m",
+        answers: [
+          { type: "choice", name: "size", choice: "big", confidence: 0.75, probabilities: [{ value: "big", probability: 0.75 }, { value: "small", probability: 0.25 }] },
+          { type: "predicate", name: "vague", probability: 1 },
+        ],
+      },
     });
   });
 
   test("a missing answer, no odds at all or a refusal is not read as an answer", () => {
-    expect(decisionsFromChat(questions, "m", reply('{"size":{"small":0,"big":0},"vague":0.1}'))._unsafeUnwrapErr()).toEqual({ kind: "invalid_response" });
-    expect(decisionsFromChat(questions, "m", reply('{"size":{"small":1}}'))._unsafeUnwrapErr()).toEqual({ kind: "invalid_response" });
-    expect(decisionsFromChat(questions, "m", reply("not json"))._unsafeUnwrapErr()).toEqual({ kind: "invalid_response" });
-    expect(decisionsFromChat(questions, "m", { choices: [{ message: { content: null, refusal: "No." } }] })._unsafeUnwrapErr()).toEqual({ kind: "refused" });
+    expect(resultToWire(decisionsFromChat(questions, "m", reply('{"size":{"small":0,"big":0},"vague":0.1}')))).toEqual({ ok: false, error: { kind: "invalid_response" } });
+    expect(resultToWire(decisionsFromChat(questions, "m", reply('{"size":{"small":1}}')))).toEqual({ ok: false, error: { kind: "invalid_response" } });
+    expect(resultToWire(decisionsFromChat(questions, "m", reply("not json")))).toEqual({ ok: false, error: { kind: "invalid_response" } });
+    expect(resultToWire(decisionsFromChat(questions, "m", { choices: [{ message: { content: null, refusal: "No." } }] }))).toEqual({ ok: false, error: { kind: "refused" } });
   });
 });
 
@@ -608,10 +612,10 @@ describe("reading a chat model's odds, malformed", () => {
   ];
 
   test("a list, a choice given as a word, odds given as text or no message at all is not an answer", () => {
-    expect(decisionsFromChat(questions, "m", reply("[1, 2]"))._unsafeUnwrapErr()).toEqual({ kind: "invalid_response" });
-    expect(decisionsFromChat(questions, "m", reply('{"size":"small","vague":0.1}'))._unsafeUnwrapErr()).toEqual({ kind: "invalid_response" });
-    expect(decisionsFromChat(questions, "m", reply('{"size":{"small":1},"vague":"no"}'))._unsafeUnwrapErr()).toEqual({ kind: "invalid_response" });
-    expect(decisionsFromChat(questions, "m", { choices: [] })._unsafeUnwrapErr()).toEqual({ kind: "invalid_response" });
-    expect(decisionsFromChat(questions, "m", null)._unsafeUnwrapErr()).toEqual({ kind: "invalid_response" });
+    expect(resultToWire(decisionsFromChat(questions, "m", reply("[1, 2]")))).toEqual({ ok: false, error: { kind: "invalid_response" } });
+    expect(resultToWire(decisionsFromChat(questions, "m", reply('{"size":"small","vague":0.1}')))).toEqual({ ok: false, error: { kind: "invalid_response" } });
+    expect(resultToWire(decisionsFromChat(questions, "m", reply('{"size":{"small":1},"vague":"no"}')))).toEqual({ ok: false, error: { kind: "invalid_response" } });
+    expect(resultToWire(decisionsFromChat(questions, "m", { choices: [] }))).toEqual({ ok: false, error: { kind: "invalid_response" } });
+    expect(resultToWire(decisionsFromChat(questions, "m", null))).toEqual({ ok: false, error: { kind: "invalid_response" } });
   });
 });
