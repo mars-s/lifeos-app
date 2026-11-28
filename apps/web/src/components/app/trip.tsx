@@ -4,7 +4,7 @@ import { ArrowSquareOut, CaretDown, MapPin, X } from "@phosphor-icons/react";
 import type { OptimisticLocalStore } from "convex/browser";
 import { useMutation } from "convex/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { lazy, Suspense, useEffect, useId, useMemo, useState } from "react";
+import { lazy, Suspense, use, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { api } from "@lifeos/backend/api";
 import type { Id } from "@lifeos/backend/dataModel";
 import { TRIP_LOOK_LIMIT_MS, type TravelMode } from "@lifeos/backend/features";
@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/action-button";
 import { instant, springLayout } from "@/lib/motion-tokens";
 import { useChange } from "./changes";
 import { isDraftTask } from "./drafts";
-import { useQuietView } from "./hooks";
+import { Unfolded, useQuietView } from "./hooks";
 
 const TripMap = lazy(() => import("./trip-map"));
 
@@ -193,6 +193,7 @@ const TripDetails = ({ taskId, trip, onPick }: { taskId: Id<"tasks">; trip: Trip
 
 const TripPanel = ({ taskId, view }: { taskId: Id<"tasks">; view: Trip | Looking }) => {
   const change = useChange();
+  const unfolded = use(Unfolded);
   const trip = view.kind === "trip" ? view : undefined;
   const pick = (place: Place) => {
     if (!trip) return;
@@ -209,7 +210,7 @@ const TripPanel = ({ taskId, view }: { taskId: Id<"tasks">; view: Trip | Looking
     <section aria-label={trip ? `Trip to ${placeLabel(trip.chosen)}` : "Finding a trip"} aria-busy={!trip} className="grid grid-cols-[minmax(0,1fr)] gap-2">
       <div className="relative h-36 overflow-hidden rounded-lg bg-foreground/[0.04]">
         <Streets looking={!trip} />
-        {trip && (
+        {trip && unfolded && (
           <div className="absolute inset-0 motion-safe:animate-fade-in">
             <Suspense fallback={null}>
               <TripMap trip={trip} onPick={pick} />
@@ -241,9 +242,29 @@ const lookAgain = (store: OptimisticLocalStore, { taskId }: { taskId: Id<"tasks"
 
 const LINE = `${FACT_GRID} items-center! text-small text-muted-foreground`;
 
+const HIDDEN = { height: 0, opacity: 0 };
+const SHOWN = { height: "auto", opacity: 1 };
+
+const TripGrow = ({ grow, children }: { grow: boolean; children: ReactNode }) => {
+  const reduce = useReducedMotion();
+  const unfolded = use(Unfolded);
+  const [grown, setGrown] = useState(!grow);
+  return (
+    <motion.div
+      initial={grow ? HIDDEN : false}
+      animate={SHOWN}
+      exit={HIDDEN}
+      transition={reduce ? instant : springLayout}
+      onAnimationComplete={() => setGrown(true)}
+      className="-m-1 overflow-hidden p-1"
+    >
+      <Unfolded value={unfolded && grown}>{children}</Unfolded>
+    </motion.div>
+  );
+};
+
 export const TaskTrip = ({ task }: { task: PlannerTask }) => {
   const live = task.status.kind === "open" && !isDraftTask(task._id);
-  const reduce = useReducedMotion();
   const trip = useQuietView(api.places.trips.forTask, live ? { taskId: task._id } : "skip");
   const ask = useMutation(api.places.trips.request);
   const request = useMemo(() => ask.withOptimisticUpdate(lookAgain), [ask]);
@@ -252,17 +273,12 @@ export const TaskTrip = ({ task }: { task: PlannerTask }) => {
   }, [live, request, task._id]);
   const overdue = useOverdue(trip?.kind === "looking" ? trip.since : undefined);
   const view = trip?.kind === "looking" && overdue ? { kind: "failed" as const, query: trip.query } : trip;
+  const [arrivedLate, setArrivedLate] = useState(view === undefined);
+  if (view === undefined && !arrivedLate) setArrivedLate(true);
   return (
     <AnimatePresence initial={false}>
       {view && (
-        <motion.div
-          key={view.kind === "trip" || view.kind === "looking" ? "panel" : view.kind}
-          initial={{ height: 0, opacity: 0 }}
-          animate={{ height: "auto", opacity: 1 }}
-          exit={{ height: 0, opacity: 0 }}
-          transition={reduce ? instant : springLayout}
-          className="-m-1 overflow-hidden p-1"
-        >
+        <TripGrow key={view.kind === "trip" || view.kind === "looking" ? "panel" : view.kind} grow={arrivedLate}>
           {(view.kind === "trip" || view.kind === "looking") && <TripPanel taskId={task._id} view={view} />}
           {view.kind === "unfound" && (
             <p className={LINE}>
@@ -283,7 +299,7 @@ export const TaskTrip = ({ task }: { task: PlannerTask }) => {
               </div>
             </div>
           )}
-        </motion.div>
+        </TripGrow>
       )}
     </AnimatePresence>
   );

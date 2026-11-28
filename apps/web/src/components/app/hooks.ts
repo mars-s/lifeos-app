@@ -8,7 +8,7 @@ import {
   type FunctionReference,
   type FunctionReturnType,
 } from "convex/server";
-import { useMemo, useSyncExternalStore } from "react";
+import { createContext, useMemo, useSyncExternalStore } from "react";
 import { localIsoDate } from "@lifeos/backend/date";
 import { lastSeenView, settleView } from "@lifeos/backend/client/view-cache";
 import { useReverted } from "./reverted-views";
@@ -61,6 +61,8 @@ export const useView = <Query extends FunctionReference<"query">>(query: Query, 
   if (error) throw error;
   return value;
 };
+
+export const Unfolded = createContext(true);
 
 export const useQuietView = <Query extends FunctionReference<"query">>(query: Query, args: FunctionArgs<Query> | "skip") =>
   useViewState(query, args).value;

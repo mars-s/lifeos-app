@@ -6,7 +6,7 @@ import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { generateKeyBetween } from "fractional-indexing";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion, type Transition } from "motion/react";
 import { Result } from "neverthrow";
 import { memo, useCallback, useEffect, useEffectEvent, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { PlannerTask, TaskRepeat } from "@lifeos/backend/types";
@@ -24,6 +24,7 @@ import { clockTime, deadlineMark, isToday, localDate, shortDay, whenLabel } from
 import { drafts, isDraftTask, useDraftCount, useRows } from "./drafts";
 import { useChange } from "./changes";
 import { FocusBadge, useActualMs, useFocusOn } from "./focus";
+import { Unfolded } from "./hooks";
 import { PanelBoundary } from "./panel-boundary";
 import { routeHref } from "./route";
 import { RowGap, useRowWindow } from "./row-window";
@@ -341,6 +342,15 @@ type TaskItemProps = {
   settled?: boolean;
 };
 
+const CardUnfold = ({ transition, children }: { transition: Transition; children: ReactNode }) => {
+  const [unfolded, setUnfolded] = useState(false);
+  return (
+    <motion.div initial={ROW_HIDDEN} animate={ROW_SHOWN} exit={ROW_HIDDEN} transition={transition} onAnimationComplete={() => setUnfolded(true)}>
+      <Unfolded value={unfolded}>{children}</Unfolded>
+    </motion.div>
+  );
+};
+
 const isShut = (card: CardState) => card === "closed" || card === "snapped";
 
 export const useCardHost = () => {
@@ -585,7 +595,7 @@ const TaskItemRow = ({ task, itemKey, show = NO_SHOW, sortable, today, card, onC
         </div>
         <AnimatePresence initial={false}>
           {open && (
-            <motion.div initial={ROW_HIDDEN} animate={ROW_SHOWN} exit={ROW_HIDDEN} transition={transition}>
+            <CardUnfold transition={transition}>
               {closed ? (
                 <ClosedBody task={task} today={today} />
               ) : (
@@ -593,7 +603,7 @@ const TaskItemRow = ({ task, itemKey, show = NO_SHOW, sortable, today, card, onC
                   <TaskCardBody task={task} today={today} />
                 </PanelBoundary>
               )}
-            </motion.div>
+            </CardUnfold>
           )}
         </AnimatePresence>
       </motion.div>

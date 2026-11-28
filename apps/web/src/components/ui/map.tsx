@@ -34,6 +34,7 @@ function loadMapLibre() {
           `https://unpkg.com/maplibre-gl@${lib.getVersion()}/dist/maplibre-gl-worker.mjs`,
         );
       }
+      lib.prewarm();
       return lib;
     })
     .catch((error) => {
