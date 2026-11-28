@@ -18,6 +18,7 @@ test("N adds a Task to the list with the focused row", async ({ app, page }) => 
   await page.keyboard.press("Enter");
   await page.keyboard.press("Escape");
   await expect(app.row(title)).toHaveCount(1);
+  await app.mutationsReachedServer();
   await app.go("/today");
   await expect(app.row(title)).toHaveCount(1);
 });

@@ -2,6 +2,13 @@ import { defineConfig, type Project } from "@playwright/test";
 
 const WEB_PORT = Number(process.env.E2E_WEB_PORT ?? 4290);
 
+const workersFrom = (value: string | undefined) => {
+  const text = value?.trim() ?? "";
+  if (/^\d+%$/.test(text)) return text;
+  const count = Number(text);
+  return Number.isInteger(count) && count > 0 ? count : "50%";
+};
+
 const ENGINES = ["chromium", "webkit"] as const;
 const WIDTHS = {
   desktop: { viewport: { width: 1440, height: 900 }, hasTouch: false },
@@ -27,7 +34,7 @@ export default defineConfig({
   outputDir: "out/results",
   globalSetup: "./src/global-setup.ts",
   fullyParallel: true,
-  workers: process.env.E2E_WORKERS ?? "50%",
+  workers: workersFrom(process.env.E2E_WORKERS),
   retries: Number(process.env.E2E_RETRIES ?? 1),
   timeout: 90_000,
   expect: { timeout: 15_000 },

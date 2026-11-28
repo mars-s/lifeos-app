@@ -25,15 +25,37 @@ const WATCH_BOUNDARIES = `(() => {
   new MutationObserver(look).observe(document, { subtree: true, childList: true });
 })();`;
 
+const convexMessageType = (payload: string | Buffer) => {
+  try {
+    return (JSON.parse(payload.toString()) as { type?: string }).type;
+  } catch {
+    return undefined;
+  }
+};
+
 export const namespaceOf = (convexUrl: string) => convexUrl.replace(/[^a-zA-Z0-9]/g, "");
 
 export class App {
   readonly page: Page;
   readonly info: TestInfo;
+  private mutationsSent = 0;
+  private mutationsAnswered = 0;
 
   constructor(page: Page, info: TestInfo) {
     this.page = page;
     this.info = info;
+    page.on("websocket", (socket) => {
+      socket.on("framesent", ({ payload }) => {
+        if (convexMessageType(payload) === "Mutation") this.mutationsSent += 1;
+      });
+      socket.on("framereceived", ({ payload }) => {
+        if (convexMessageType(payload) === "MutationResponse") this.mutationsAnswered += 1;
+      });
+    });
+  }
+
+  async mutationsReachedServer() {
+    await expect.poll(() => this.mutationsSent > 0 && this.mutationsAnswered >= this.mutationsSent, { message: "every mutation was answered by the server" }).toBe(true);
   }
 
   get narrow() {
