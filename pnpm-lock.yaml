@@ -201,6 +201,9 @@ importers:
       '@lifeos/notes':
         specifier: workspace:*
         version: link:../../packages/notes
+      effect:
+        specifier: 4.1.7
+        version: 4.1.7
       jose:
         specifier: 6.2.18
         version: 6.2.18

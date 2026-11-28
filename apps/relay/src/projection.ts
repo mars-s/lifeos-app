@@ -1,14 +1,13 @@
+import { Schema } from "effect";
 import type * as Y from "yjs";
 import { NOTE_META, NOTE_TEXT } from "@lifeos/notes/protocol";
-import { projectNote, type FolderRef } from "@lifeos/notes/markdown";
+import { projectNote } from "@lifeos/notes/markdown";
 
-const isFolder = (value: unknown): value is FolderRef =>
-  typeof value === "object" &&
-  value !== null &&
-  "table" in value &&
-  "id" in value &&
-  (value.table === "areas" || value.table === "projects") &&
-  typeof value.id === "string";
+const Folder = Schema.Struct({ table: Schema.Literals(["areas", "projects"]), id: Schema.String });
+
+const isFolder = Schema.is(Folder);
+
+const hasStatus = Schema.is(Schema.Struct({ status: Schema.String }));
 
 export const projectionOf = (docId: string, doc: Y.Doc) => {
   const meta = doc.getMap<unknown>(NOTE_META);
@@ -36,6 +35,6 @@ export const sendProjection = async (convexUrl: string, token: string, projectio
     body: JSON.stringify({ path: "notes/relay:project", args: { token, ...projection }, format: "json" }),
   });
   const body: unknown = await response.json().catch(() => null);
-  const failed = !response.ok || (typeof body === "object" && body !== null && "status" in body && body.status !== "success");
+  const failed = !response.ok || (hasStatus(body) && body.status !== "success");
   if (failed) throw new Error(`Core refused the projection: ${response.status} ${JSON.stringify(body).slice(0, 300)}`);
 };

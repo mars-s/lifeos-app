@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@lifeos/notes": "workspace:*",
+    "effect": "4.1.7",
     "jose": "6.2.18",
     "lib0": "0.2.120",
     "y-protocols": "1.0.7",

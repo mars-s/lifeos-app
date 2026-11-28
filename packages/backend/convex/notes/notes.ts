@@ -1,10 +1,10 @@
 import { v } from "convex/values";
-import { err, ok } from "neverthrow";
+import { Clock, Effect } from "effect";
 import type { QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
-import { ownerQuery } from "../platform/access";
-import { changeMutation } from "../platform/change";
+import { changeMutation, ownerQuery, reading, recording } from "../platform/effect";
 import { vEntityRef, type EntityRef } from "../platform/tables";
+import { NoteNotFound } from "./errors";
 
 const LIST_LIMIT = 1000;
 const SEARCH_LIMIT = 20;
@@ -33,15 +33,17 @@ const isLive = (note: Doc<"notes"> | null): note is Doc<"notes"> => note !== nul
 
 export const list = ownerQuery({
   args: {},
-  handler: async (ctx) =>
-    (
-      await ctx.db
-        .query("notes")
-        .withIndex("by_trashed", (q) => q.eq("trashedAt", undefined))
-        .take(LIST_LIMIT)
-    )
-      .toSorted((a, b) => b.updatedAt - a.updatedAt || b._creationTime - a._creationTime)
-      .map(noteRow),
+  handler: () =>
+    reading(async (ctx) =>
+      (
+        await ctx.db
+          .query("notes")
+          .withIndex("by_trashed", (q) => q.eq("trashedAt", undefined))
+          .take(LIST_LIMIT)
+      )
+        .toSorted((a, b) => b.updatedAt - a.updatedAt || b._creationTime - a._creationTime)
+        .map(noteRow),
+    ),
 });
 
 export const searchNotes = async (ctx: QueryCtx, query: string, limit = SEARCH_LIMIT) => {
@@ -56,7 +58,7 @@ export const searchNotes = async (ctx: QueryCtx, query: string, limit = SEARCH_L
 
 export const search = ownerQuery({
   args: { query: v.string(), limit: v.optional(v.number()) },
-  handler: (ctx, { query, limit }) => searchNotes(ctx, query, limit),
+  handler: ({ query, limit }) => reading((ctx) => searchNotes(ctx, query, limit)),
 });
 
 const byDoc = (ctx: QueryCtx, docId: string) =>
@@ -67,21 +69,24 @@ const byDoc = (ctx: QueryCtx, docId: string) =>
 
 export const get = ownerQuery({
   args: { docId: v.string() },
-  handler: async (ctx, { docId }) => {
-    const note = await byDoc(ctx, docId);
-    return note ? noteRow(note) : null;
-  },
+  handler: ({ docId }) =>
+    reading(async (ctx) => {
+      const note = await byDoc(ctx, docId);
+      return note ? noteRow(note) : null;
+    }),
 });
 
 export const changedSince = ownerQuery({
   args: { since: v.number() },
-  handler: async (ctx, { since }) =>
-    (
-      await ctx.db
-        .query("notes")
-        .withIndex("by_updated", (q) => q.gt("updatedAt", since))
-        .take(CHANGED_LIMIT)
-    ).map(noteRow),
+  handler: ({ since }) =>
+    reading(async (ctx) =>
+      (
+        await ctx.db
+          .query("notes")
+          .withIndex("by_updated", (q) => q.gt("updatedAt", since))
+          .take(CHANGED_LIMIT)
+      ).map(noteRow),
+    ),
 });
 
 const notesLinkingTo = async (ctx: QueryCtx, id: EntityRef["id"]) => {
@@ -97,7 +102,7 @@ const notesLinkingTo = async (ctx: QueryCtx, id: EntityRef["id"]) => {
 
 export const forEntity = ownerQuery({
   args: { entity: vEntityRef },
-  handler: (ctx, { entity }) => notesLinkingTo(ctx, entity.id),
+  handler: ({ entity }) => reading((ctx) => notesLinkingTo(ctx, entity.id)),
 });
 
 export const linksOf = async (ctx: QueryCtx, note: Doc<"notes">) => {
@@ -124,34 +129,36 @@ export const linksOf = async (ctx: QueryCtx, note: Doc<"notes">) => {
 
 export const links = ownerQuery({
   args: { docId: v.string() },
-  handler: async (ctx, { docId }) => {
-    const note = await byDoc(ctx, docId);
-    return note ? linksOf(ctx, note) : { linkedFrom: [], linksOut: [] };
-  },
+  handler: ({ docId }) =>
+    reading(async (ctx) => {
+      const note = await byDoc(ctx, docId);
+      return note ? linksOf(ctx, note) : { linkedFrom: [], linksOut: [] };
+    }),
 });
 
 export const trash = changeMutation({
   action: "note.trash",
   args: { noteId: v.id("notes") },
-  handler: async (ctx, { noteId }, record) => {
-    const note = await ctx.db.get("notes", noteId);
-    if (!note) return err<{ changed: boolean }, NoteError>({ kind: "not_found" });
-    if (note.trashedAt !== undefined) return ok({ changed: false });
-    await record.patch("notes", noteId, { trashedAt: Date.now() });
-    return ok({ changed: true });
-  },
+  handler: Effect.fn("notes.trash")(function* ({ noteId }) {
+    const note = yield* reading((ctx) => ctx.db.get("notes", noteId));
+    if (!note) return yield* new NoteNotFound();
+    if (note.trashedAt !== undefined) return { changed: false };
+    const trashedAt = yield* Clock.currentTimeMillis;
+    yield* recording((record) => record.patch("notes", noteId, { trashedAt }));
+    return { changed: true };
+  }),
 });
 
 export const restore = changeMutation({
   action: "note.restore",
   args: { noteId: v.id("notes") },
-  handler: async (ctx, { noteId }, record) => {
-    const note = await ctx.db.get("notes", noteId);
-    if (!note) return err<{ changed: boolean }, NoteError>({ kind: "not_found" });
-    if (note.trashedAt === undefined) return ok({ changed: false });
-    await record.patch("notes", noteId, { trashedAt: undefined });
-    return ok({ changed: true });
-  },
+  handler: Effect.fn("notes.restore")(function* ({ noteId }) {
+    const note = yield* reading((ctx) => ctx.db.get("notes", noteId));
+    if (!note) return yield* new NoteNotFound();
+    if (note.trashedAt === undefined) return { changed: false };
+    yield* recording((record) => record.patch("notes", noteId, { trashedAt: undefined }));
+    return { changed: true };
+  }),
 });
 
 const SUGGEST_LIMIT = 8;
@@ -188,38 +195,41 @@ const entityOf = async (ctx: QueryCtx, id: string) => {
 
 export const entities = ownerQuery({
   args: { ids: v.array(v.string()) },
-  handler: async (ctx, { ids }) =>
-    (await Promise.all([...new Set(ids)].slice(0, LINK_LIMIT).map((id) => entityOf(ctx, id)))).filter(
-      (entity) => entity !== null,
+  handler: ({ ids }) =>
+    reading(async (ctx) =>
+      (await Promise.all([...new Set(ids)].slice(0, LINK_LIMIT).map((id) => entityOf(ctx, id)))).filter(
+        (entity) => entity !== null,
+      ),
     ),
 });
 
 export const suggest = ownerQuery({
   args: { query: v.string() },
-  handler: async (ctx, { query }) => {
-    const words = query.trim();
-    const lower = words.toLowerCase();
-    const tasks =
-      words.length === 0
-        ? []
-        : (
-            await ctx.db
-              .query("tasks")
-              .withSearchIndex("search_title", (q) => q.search("title", words).eq("status.kind", "open"))
-              .take(SUGGEST_LIMIT * 2)
-          )
-            .filter((task) => task.trashedAt === undefined)
-            .slice(0, SUGGEST_LIMIT)
-            .map((task) => ({ id: task._id as string, title: task.title }));
-    const fits = (title: string) => lower.length === 0 || title.toLowerCase().includes(lower);
-    const projects = (await ctx.db.query("projects").withIndex("by_trashed", (q) => q.eq("trashedAt", undefined)).take(500))
-      .filter((project) => project.status.kind === "open" && fits(project.title))
-      .slice(0, SUGGEST_LIMIT)
-      .map((project) => ({ id: project._id as string, title: project.title }));
-    const areas = (await ctx.db.query("areas").withIndex("by_trashed", (q) => q.eq("trashedAt", undefined)).take(200))
-      .filter((area) => fits(area.title))
-      .slice(0, SUGGEST_LIMIT)
-      .map((area) => ({ id: area._id as string, title: area.title }));
-    return { tasks, projects, areas };
-  },
+  handler: ({ query }) =>
+    reading(async (ctx) => {
+      const words = query.trim();
+      const lower = words.toLowerCase();
+      const tasks =
+        words.length === 0
+          ? []
+          : (
+              await ctx.db
+                .query("tasks")
+                .withSearchIndex("search_title", (q) => q.search("title", words).eq("status.kind", "open"))
+                .take(SUGGEST_LIMIT * 2)
+            )
+              .filter((task) => task.trashedAt === undefined)
+              .slice(0, SUGGEST_LIMIT)
+              .map((task) => ({ id: task._id as string, title: task.title }));
+      const fits = (title: string) => lower.length === 0 || title.toLowerCase().includes(lower);
+      const projects = (await ctx.db.query("projects").withIndex("by_trashed", (q) => q.eq("trashedAt", undefined)).take(500))
+        .filter((project) => project.status.kind === "open" && fits(project.title))
+        .slice(0, SUGGEST_LIMIT)
+        .map((project) => ({ id: project._id as string, title: project.title }));
+      const areas = (await ctx.db.query("areas").withIndex("by_trashed", (q) => q.eq("trashedAt", undefined)).take(200))
+        .filter((area) => fits(area.title))
+        .slice(0, SUGGEST_LIMIT)
+        .map((area) => ({ id: area._id as string, title: area.title }));
+      return { tasks, projects, areas };
+    }),
 });

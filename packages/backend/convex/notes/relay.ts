@@ -1,7 +1,8 @@
 import { v, type Infer } from "convex/values";
+import { Clock, Effect } from "effect";
 import type { MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
-import { workerMutation } from "../platform/access";
+import { CurrentWorker, workerMutation, writing } from "../platform/effect";
 import type { EntityRef } from "../platform/tables";
 import { requireCapability } from "../platform/workers";
 import { vNoteEntity, vNoteFolder } from "./tables";
@@ -80,39 +81,43 @@ export const project = workerMutation({
     entities: v.array(vNoteEntity),
     noteTitles: v.array(v.string()),
   },
-  handler: async (ctx, args, worker) => {
+  handler: Effect.fn("notes.project")(function* (args) {
+    const worker = yield* CurrentWorker;
     requireCapability(worker, "notes");
     const title = args.title.slice(0, 200);
     const excerpt = args.excerpt.slice(0, 400);
-    const labelIds = await labelIdsOf(ctx, args.labels.slice(0, 50));
-    const fields = {
-      title,
-      titleKey: titleKeyOf(title),
-      excerpt,
-      searchText: `${title}\n${excerpt}\n${args.labels.join(" ")}`.slice(0, SEARCH_TEXT_LENGTH),
-      words: args.words,
-      labelIds,
-      updatedAt: Date.now(),
-      ...(await placeOf(ctx, args.folder)),
-      ...(args.day && /^\d{4}-\d{2}-\d{2}$/.test(args.day) ? { day: args.day } : {}),
-    } satisfies Partial<Doc<"notes">>;
-    const current = await ctx.db
-      .query("notes")
-      .withIndex("by_doc", (q) => q.eq("docId", args.docId))
-      .unique();
-    const noteId = current
-      ? (await ctx.db.replace("notes", current._id, {
-          docId: args.docId,
-          ...fields,
-          ...(current.trashedAt === undefined ? {} : { trashedAt: current.trashedAt }),
-        }),
-        current._id)
-      : await ctx.db.insert("notes", { docId: args.docId, ...fields });
-    const entityRefs = (await Promise.all(args.entities.slice(0, MAX_LINKS).map((e) => entityRefOf(ctx, e)))).filter(
-      (ref): ref is EntityRef => ref !== null,
-    );
-    const noteRefs = await noteRefsOf(ctx, noteId, args.noteTitles.slice(0, MAX_LINKS));
-    await syncLinks(ctx, noteId, [...entityRefs, ...noteRefs].slice(0, MAX_LINKS));
-    return { noteId };
-  },
+    const updatedAt = yield* Clock.currentTimeMillis;
+    return yield* writing(async (ctx) => {
+      const labelIds = await labelIdsOf(ctx, args.labels.slice(0, 50));
+      const fields = {
+        title,
+        titleKey: titleKeyOf(title),
+        excerpt,
+        searchText: `${title}\n${excerpt}\n${args.labels.join(" ")}`.slice(0, SEARCH_TEXT_LENGTH),
+        words: args.words,
+        labelIds,
+        updatedAt,
+        ...(await placeOf(ctx, args.folder)),
+        ...(args.day && /^\d{4}-\d{2}-\d{2}$/.test(args.day) ? { day: args.day } : {}),
+      } satisfies Partial<Doc<"notes">>;
+      const current = await ctx.db
+        .query("notes")
+        .withIndex("by_doc", (q) => q.eq("docId", args.docId))
+        .unique();
+      const noteId = current
+        ? (await ctx.db.replace("notes", current._id, {
+            docId: args.docId,
+            ...fields,
+            ...(current.trashedAt === undefined ? {} : { trashedAt: current.trashedAt }),
+          }),
+          current._id)
+        : await ctx.db.insert("notes", { docId: args.docId, ...fields });
+      const entityRefs = (await Promise.all(args.entities.slice(0, MAX_LINKS).map((e) => entityRefOf(ctx, e)))).filter(
+        (ref): ref is EntityRef => ref !== null,
+      );
+      const noteRefs = await noteRefsOf(ctx, noteId, args.noteTitles.slice(0, MAX_LINKS));
+      await syncLinks(ctx, noteId, [...entityRefs, ...noteRefs].slice(0, MAX_LINKS));
+      return { noteId };
+    });
+  }),
 });
