@@ -1,10 +1,16 @@
+import { Effect, Result } from "effect";
 import { generateKeyBetween } from "fractional-indexing";
-import { Result, err, ok } from "neverthrow";
-import type { QueryCtx } from "../_generated/server";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
-import { parseIsoDate } from "../../shared/date";
-import { MAX_ESTIMATE_MINUTES } from "../../shared/estimate";
+import type { Recorder as Recording } from "../platform/activity";
+import type { ObjectType, PropertyValidators } from "convex/values";
+import { changeMutation, legacyRead, reading, Recorder, type ChangeServices } from "../platform/effect";
+import { toNeverthrow } from "../../shared/effect/bridge";
+import type { InvalidDate } from "../../shared/effect/errors";
+import { parseIsoDate } from "../../shared/effect/date";
+import { MAX_ESTIMATE_MINUTES } from "../../shared/effect/estimate";
 import type { ScheduleError } from "../../shared/recurrence";
+import { EmptyTitle, HeadingOutsideProject, InvalidEstimate, InvalidOrder, NotFound, type PlannerFailure } from "./errors";
 import type { Parent, When } from "./tables";
 
 export type PlannerTable =
@@ -47,61 +53,68 @@ export type PlannerError =
       readonly reason: "minutes" | "task_closed" | "not_active" | "not_ended" | "not_timed" | "not_pomodoro" | "on_break";
     };
 
-export const load = async <T extends PlannerTable>(ctx: QueryCtx, table: T, id: Id<T>) => {
-  const doc = await ctx.db.get(id);
-  const found: Result<Doc<T>, PlannerError> = doc ? ok(doc) : err({ kind: "not_found", table, id });
-  return found;
-};
+export const loadFx = <T extends PlannerTable>(table: T, id: Id<T>) =>
+  Effect.flatMap(reading((ctx) => ctx.db.get(id)), (doc) => (doc ? Effect.succeed(doc) : Effect.fail(new NotFound({ table, id }))));
 
-export const parseTitle = (title: string) => {
+export const load = <T extends PlannerTable>(ctx: QueryCtx, table: T, id: Id<T>) => legacyRead<Doc<T>, PlannerFailure>(ctx, loadFx(table, id));
+
+export const parseTitleFx = (title: string) => {
   const trimmed = title.trim();
-  return trimmed ? ok<string, PlannerError>(trimmed) : err<string, PlannerError>({ kind: "empty_title" });
+  const parsed: Result.Result<string, EmptyTitle> = trimmed ? Result.succeed(trimmed) : Result.fail(new EmptyTitle());
+  return parsed;
 };
 
-const parseDate = (input: string) => parseIsoDate(input).mapErr<PlannerError>((error) => error);
+export const parseTitle = (title: string) => toNeverthrow<string, PlannerFailure>(parseTitleFx(title));
 
-export const parseWhen = (when: When) =>
-  when.kind === "scheduled" ? parseDate(when.date).map(() => when) : ok<When, PlannerError>(when);
+export const parseWhen = (when: When) => {
+  const parsed: Result.Result<When, InvalidDate> = when.kind === "scheduled" ? Result.map(parseIsoDate(when.date), () => when) : Result.succeed(when);
+  return parsed;
+};
 
-export const parseDeadline = (deadline: string | null) =>
-  deadline === null ? ok<string | undefined, PlannerError>(undefined) : parseDate(deadline).map(String);
+export const parseDeadline = (deadline: string | null) => {
+  const parsed: Result.Result<string | undefined, InvalidDate> = deadline === null ? Result.succeed(undefined) : parseIsoDate(deadline);
+  return parsed;
+};
 
-export const parseEstimate = (minutes: number | null) =>
-  minutes === null
-    ? ok<number | undefined, PlannerError>(undefined)
-    : Number.isInteger(minutes) && minutes > 0 && minutes <= MAX_ESTIMATE_MINUTES
-      ? ok<number | undefined, PlannerError>(minutes)
-      : err<number | undefined, PlannerError>({ kind: "invalid_estimate", minutes });
+export const parseEstimate = (minutes: number | null) => {
+  const parsed: Result.Result<number | undefined, InvalidEstimate> =
+    minutes === null
+      ? Result.succeed(undefined)
+      : Number.isInteger(minutes) && minutes > 0 && minutes <= MAX_ESTIMATE_MINUTES
+        ? Result.succeed(minutes)
+        : Result.fail(new InvalidEstimate({ minutes }));
+  return parsed;
+};
 
 export const parseOrder = (order: string) =>
-  Result.fromThrowable<() => string, PlannerError>(
-    () => generateKeyBetween(order, null),
-    () => ({ kind: "invalid_order", order }),
-  )().map(() => order);
+  Result.try({ try: () => generateKeyBetween(order, null), catch: () => new InvalidOrder({ order }) }).pipe(Result.map(() => order));
 
 export const keyAfter = (last: string | undefined) => generateKeyBetween(last ?? null, null);
 
-export const parseParent = async (ctx: QueryCtx, parent: Parent) => {
-  if (parent.kind === "loose") return ok<Parent, PlannerError>(parent);
-  if (parent.kind === "area") return (await load(ctx, "areas", parent.areaId)).map(() => parent);
-  const project = await load(ctx, "projects", parent.projectId);
-  if (project.isErr() || !parent.headingId) return project.map(() => parent);
-  const heading = await load(ctx, "headings", parent.headingId);
-  return heading.andThen((found) =>
-    found.projectId === parent.projectId
-      ? ok<Parent, PlannerError>(parent)
-      : err<Parent, PlannerError>({ kind: "heading_outside_project", headingId: found._id }),
-  );
-};
+export const parseParent = Effect.fn("model.parseParent")(function* (parent: Parent) {
+  if (parent.kind === "area") yield* loadFx("areas", parent.areaId);
+  if (parent.kind !== "project") return parent;
+  yield* loadFx("projects", parent.projectId);
+  if (!parent.headingId) return parent;
+  const heading = yield* loadFx("headings", parent.headingId);
+  if (heading.projectId !== parent.projectId) return yield* new HeadingOutsideProject({ headingId: heading._id });
+  return parent;
+});
 
-export const parseLabels = async (ctx: QueryCtx, labelIds: Id<"labels">[]) => {
+export const parseLabels = Effect.fn("model.parseLabels")(function* (labelIds: Id<"labels">[]) {
   const unique = [...new Set(labelIds)];
-  for (const id of unique) {
-    const found = await load(ctx, "labels", id);
-    if (found.isErr()) return err<Id<"labels">[], PlannerError>(found.error);
-  }
-  return ok<Id<"labels">[], PlannerError>(unique);
-};
+  for (const id of unique) yield* loadFx("labels", id);
+  return unique;
+});
+
+export const plannerChange = <Args extends PropertyValidators, A extends object>(spec: {
+  action: string;
+  args: Args;
+  handler: (args: ObjectType<Args>) => Effect.Effect<A, PlannerFailure | PlannerError, ChangeServices>;
+}) => changeMutation(spec);
+
+export const changing = <A>(write: (ctx: MutationCtx, record: Recording) => Promise<A>) =>
+  Effect.flatMap(Recorder, (record) => reading((ctx) => write(ctx as MutationCtx, record)));
 
 export const nextTaskOrder = async (ctx: QueryCtx, parent: Parent, after: string) => {
   const next =

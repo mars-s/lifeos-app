@@ -1,76 +1,62 @@
 import { v } from "convex/values";
-import { err, ok } from "neverthrow";
-import type { Id } from "../_generated/dataModel";
-import { changeMutation } from "../platform/change";
-import { keyAfter, load, parseOrder, parseTitle, type PlannerError } from "./model";
+import { Effect } from "effect";
+import { reading, recording } from "../platform/effect";
+import { keyAfter, loadFx, parseOrder, parseTitleFx, plannerChange } from "./model";
 
-export const add = changeMutation({
+export const add = plannerChange({
   action: "checklist.add",
   args: { taskId: v.id("tasks"), title: v.string() },
-  handler: async (ctx, { taskId, title }, record) => {
-    const task = await load(ctx, "tasks", taskId);
-    const validTitle = parseTitle(title);
-    if (task.isErr()) return err<{ itemId: Id<"checklistItems"> }, PlannerError>(task.error);
-    if (validTitle.isErr()) return err<{ itemId: Id<"checklistItems"> }, PlannerError>(validTitle.error);
-    const last = await ctx.db
-      .query("checklistItems")
-      .withIndex("by_task_order", (q) => q.eq("taskId", taskId))
-      .order("desc")
-      .first();
-    const itemId = await record.insert("checklistItems", {
-      taskId,
-      title: validTitle.value,
-      done: false,
-      order: keyAfter(last?.order),
-    });
-    return ok<{ itemId: Id<"checklistItems"> }, PlannerError>({ itemId });
-  },
+  handler: Effect.fn("checklist.add")(function* ({ taskId, title }) {
+    yield* loadFx("tasks", taskId);
+    const validTitle = yield* Effect.fromResult(parseTitleFx(title));
+    const last = yield* reading((ctx) =>
+      ctx.db
+        .query("checklistItems")
+        .withIndex("by_task_order", (q) => q.eq("taskId", taskId))
+        .order("desc")
+        .first(),
+    );
+    const itemId = yield* recording((record) =>
+      record.insert("checklistItems", { taskId, title: validTitle, done: false, order: keyAfter(last?.order) }),
+    );
+    return { itemId };
+  }),
 });
 
-export const edit = changeMutation({
+export const edit = plannerChange({
   action: "checklist.edit",
   args: { itemId: v.id("checklistItems"), title: v.string() },
-  handler: async (ctx, { itemId, title }, record) => {
-    const item = await load(ctx, "checklistItems", itemId);
-    const validTitle = parseTitle(title);
-    if (item.isErr()) return err<{ changed: boolean }, PlannerError>(item.error);
-    if (validTitle.isErr()) return err<{ changed: boolean }, PlannerError>(validTitle.error);
-    return ok<{ changed: boolean }, PlannerError>({
-      changed: await record.patch("checklistItems", itemId, { title: validTitle.value }),
-    });
-  },
+  handler: Effect.fn("checklist.edit")(function* ({ itemId, title }) {
+    yield* loadFx("checklistItems", itemId);
+    const validTitle = yield* Effect.fromResult(parseTitleFx(title));
+    return { changed: yield* recording((record) => record.patch("checklistItems", itemId, { title: validTitle })) };
+  }),
 });
 
-export const tick = changeMutation({
+export const tick = plannerChange({
   action: "checklist.tick",
   args: { itemId: v.id("checklistItems"), done: v.boolean() },
-  handler: async (ctx, { itemId, done }, record) => {
-    const item = await load(ctx, "checklistItems", itemId);
-    if (item.isErr()) return err<{ changed: boolean }, PlannerError>(item.error);
-    return ok<{ changed: boolean }, PlannerError>({ changed: await record.patch("checklistItems", itemId, { done }) });
-  },
+  handler: Effect.fn("checklist.tick")(function* ({ itemId, done }) {
+    yield* loadFx("checklistItems", itemId);
+    return { changed: yield* recording((record) => record.patch("checklistItems", itemId, { done })) };
+  }),
 });
 
-export const reorder = changeMutation({
+export const reorder = plannerChange({
   action: "checklist.reorder",
   args: { itemId: v.id("checklistItems"), order: v.string() },
-  handler: async (ctx, { itemId, order }, record) => {
-    const item = await load(ctx, "checklistItems", itemId);
-    const validOrder = parseOrder(order);
-    if (item.isErr()) return err<{ changed: boolean }, PlannerError>(item.error);
-    if (validOrder.isErr()) return err<{ changed: boolean }, PlannerError>(validOrder.error);
-    return ok<{ changed: boolean }, PlannerError>({
-      changed: await record.patch("checklistItems", itemId, { order: validOrder.value }),
-    });
-  },
+  handler: Effect.fn("checklist.reorder")(function* ({ itemId, order }) {
+    yield* loadFx("checklistItems", itemId);
+    const validOrder = yield* Effect.fromResult(parseOrder(order));
+    return { changed: yield* recording((record) => record.patch("checklistItems", itemId, { order: validOrder })) };
+  }),
 });
 
-export const remove = changeMutation({
+export const remove = plannerChange({
   action: "checklist.remove",
   args: { itemId: v.id("checklistItems") },
-  handler: async (ctx, { itemId }, record) => {
-    const item = await load(ctx, "checklistItems", itemId);
-    if (item.isErr()) return err<{ changed: boolean }, PlannerError>(item.error);
-    return ok<{ changed: boolean }, PlannerError>({ changed: await record.remove("checklistItems", itemId) });
-  },
+  handler: Effect.fn("checklist.remove")(function* ({ itemId }) {
+    yield* loadFx("checklistItems", itemId);
+    return { changed: yield* recording((record) => record.remove("checklistItems", itemId)) };
+  }),
 });

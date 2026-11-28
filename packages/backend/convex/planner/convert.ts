@@ -1,20 +1,17 @@
 import { v } from "convex/values";
-import { err, ok } from "neverthrow";
+import { Clock, Effect } from "effect";
 import type { MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { Recorder } from "../platform/activity";
-import { changeMutation } from "../platform/change";
 import type { EntityRef } from "../platform/tables";
 import { requestTrip } from "../places/trips";
 import { lastProjectOrder } from "./containers";
 import { endFocusOnClosedTask } from "./focus";
-import { keyAfter, load, type PlannerError } from "./model";
+import { changing, keyAfter, loadFx, plannerChange } from "./model";
 import { requestSuggestion } from "./smartEstimates";
 import type { When } from "./tables";
 
 const CARRY_LIMIT = 500;
-
-type Converted = { projectId: Id<"projects">; taskIds: Id<"tasks">[] };
 
 const projectArea = async (ctx: MutationCtx, task: Doc<"tasks">) => {
   if (task.parent.kind === "area") return task.parent.areaId;
@@ -58,57 +55,60 @@ const carryOver = async (
   for (const link of links) await record.patch("entityLinks", link._id, { from: moved(link.from), to: moved(link.to) });
 };
 
-export const toProject = changeMutation({
+const convert = async (ctx: MutationCtx, record: Recorder, task: Doc<"tasks">, at: number) => {
+  const taskId = task._id;
+  const areaId = await projectArea(ctx, task);
+  const projectId = await record.insert("projects", {
+    title: task.title,
+    notes: task.notes,
+    ...(areaId ? { areaId } : {}),
+    when: projectWhen(task.when),
+    ...(task.deadline ? { deadline: task.deadline } : {}),
+    labelIds: task.labelIds,
+    status: { kind: "open" },
+    order: keyAfter(await lastProjectOrder(ctx, areaId)),
+  });
+  const items = await ctx.db
+    .query("checklistItems")
+    .withIndex("by_task_order", (q) => q.eq("taskId", taskId))
+    .take(CARRY_LIMIT);
+  const history = await carried(ctx, taskId);
+  const needsCarrier = items.length === 0 && history.blocks.length + history.sessions.length + history.links.length > 0;
+  const steps = needsCarrier ? [{ title: task.title, done: false }] : items;
+  const taskIds: Id<"tasks">[] = [];
+  let order: string | undefined;
+  for (const step of steps) {
+    order = keyAfter(order);
+    taskIds.push(
+      await record.insert("tasks", {
+        title: step.title,
+        notes: "",
+        when: { kind: "anytime" },
+        parent: { kind: "project", projectId },
+        labelIds: [],
+        status: step.done ? { kind: "completed", at } : { kind: "open" },
+        order,
+      }),
+    );
+  }
+  const carrier = taskIds[steps.findIndex((step) => !step.done)] ?? taskIds[0];
+  if (carrier) await carryOver(record, taskId, carrier, history);
+  if (task.trashedAt === undefined) await record.patch("tasks", taskId, { trashedAt: at });
+  await endFocusOnClosedTask(ctx, record, at);
+  for (const [index, id] of taskIds.entries()) {
+    if (steps[index]?.done) continue;
+    await requestSuggestion(ctx, id);
+    await requestTrip(ctx, id);
+  }
+  return { projectId, taskIds };
+};
+
+export const toProject = plannerChange({
   action: "task.convertToProject",
   args: { taskId: v.id("tasks") },
-  handler: async (ctx, { taskId }, record) => {
-    const found = await load(ctx, "tasks", taskId);
-    if (found.isErr()) return err<Converted, PlannerError>(found.error);
-    const task = found.value;
-    const areaId = await projectArea(ctx, task);
-    const projectId = await record.insert("projects", {
-      title: task.title,
-      notes: task.notes,
-      ...(areaId ? { areaId } : {}),
-      when: projectWhen(task.when),
-      ...(task.deadline ? { deadline: task.deadline } : {}),
-      labelIds: task.labelIds,
-      status: { kind: "open" },
-      order: keyAfter(await lastProjectOrder(ctx, areaId)),
-    });
-    const items = await ctx.db
-      .query("checklistItems")
-      .withIndex("by_task_order", (q) => q.eq("taskId", taskId))
-      .take(CARRY_LIMIT);
-    const history = await carried(ctx, taskId);
-    const needsCarrier = items.length === 0 && history.blocks.length + history.sessions.length + history.links.length > 0;
-    const steps = needsCarrier ? [{ title: task.title, done: false }] : items;
-    const at = Date.now();
-    const taskIds: Id<"tasks">[] = [];
-    let order: string | undefined;
-    for (const step of steps) {
-      order = keyAfter(order);
-      taskIds.push(
-        await record.insert("tasks", {
-          title: step.title,
-          notes: "",
-          when: { kind: "anytime" },
-          parent: { kind: "project", projectId },
-          labelIds: [],
-          status: step.done ? { kind: "completed", at } : { kind: "open" },
-          order,
-        }),
-      );
-    }
-    const carrier = taskIds[steps.findIndex((step) => !step.done)] ?? taskIds[0];
-    if (carrier) await carryOver(record, taskId, carrier, history);
-    if (task.trashedAt === undefined) await record.patch("tasks", taskId, { trashedAt: at });
-    await endFocusOnClosedTask(ctx, record, at);
-    for (const [index, id] of taskIds.entries()) {
-      if (steps[index]?.done) continue;
-      await requestSuggestion(ctx, id);
-      await requestTrip(ctx, id);
-    }
-    return ok<Converted, PlannerError>({ projectId, taskIds });
-  },
+  handler: Effect.fn("convert.toProject")(function* ({ taskId }) {
+    const task = yield* loadFx("tasks", taskId);
+    const at = yield* Clock.currentTimeMillis;
+    return yield* changing((ctx, record) => convert(ctx, record, task, at));
+  }),
 });

@@ -1,10 +1,9 @@
 import { v } from "convex/values";
-import { err, ok } from "neverthrow";
+import { Effect } from "effect";
 import type { QueryCtx } from "../_generated/server";
-import type { Id } from "../_generated/dataModel";
-import { ownerQuery } from "../platform/access";
-import { changeMutation } from "../platform/change";
-import { keyAfter, load, parseTitle, type PlannerError } from "./model";
+import { ownerQuery, reading, recording } from "../platform/effect";
+import { NameTaken } from "./errors";
+import { changing, keyAfter, loadFx, parseTitleFx, plannerChange } from "./model";
 import { vColour } from "./tables";
 
 const LABEL_LIMIT = 500;
@@ -24,75 +23,73 @@ export const labelNamed = async (ctx: QueryCtx, name: string) => {
 
 export const list = ownerQuery({
   args: {},
-  handler: async (ctx) =>
-    (await ctx.db.query("labels").withIndex("by_order").take(LABEL_LIMIT)).map(({ _id, name, colour }) => ({
-      _id,
-      name,
-      colour,
-    })),
+  handler: () =>
+    reading(async (ctx) =>
+      (await ctx.db.query("labels").withIndex("by_order").take(LABEL_LIMIT)).map(({ _id, name, colour }) => ({
+        _id,
+        name,
+        colour,
+      })),
+    ),
 });
 
-export const create = changeMutation({
+export const create = plannerChange({
   action: "label.create",
   args: { name: v.string(), colour: vColour, taskId: v.optional(v.id("tasks")) },
-  handler: async (ctx, { name, colour, taskId }, record) => {
-    const validName = parseTitle(name);
-    if (validName.isErr()) return err<{ labelId: Id<"labels"> }, PlannerError>(validName.error);
-    const task = taskId ? await load(ctx, "tasks", taskId) : undefined;
-    if (task?.isErr()) return err<{ labelId: Id<"labels"> }, PlannerError>(task.error);
-    const existing = await labelNamed(ctx, validName.value);
-    const last = existing ? undefined : await ctx.db.query("labels").withIndex("by_order").order("desc").first();
-    const labelId =
-      existing?._id ?? (await record.insert("labels", { name: validName.value, colour, order: keyAfter(last?.order) }));
-    if (task?.isOk() && !task.value.labelIds.includes(labelId)) {
-      await record.patch("tasks", task.value._id, { labelIds: [...task.value.labelIds, labelId] });
+  handler: Effect.fn("labels.create")(function* ({ name, colour, taskId }) {
+    const validName = yield* Effect.fromResult(parseTitleFx(name));
+    const task = taskId ? yield* loadFx("tasks", taskId) : undefined;
+    const existing = yield* reading((ctx) => labelNamed(ctx, validName));
+    const last = existing ? undefined : yield* reading((ctx) => ctx.db.query("labels").withIndex("by_order").order("desc").first());
+    const labelId = existing?._id ?? (yield* recording((record) => record.insert("labels", { name: validName, colour, order: keyAfter(last?.order) })));
+    if (task && !task.labelIds.includes(labelId)) {
+      yield* recording((record) => record.patch("tasks", task._id, { labelIds: [...task.labelIds, labelId] }));
     }
-    return ok<{ labelId: Id<"labels"> }, PlannerError>({ labelId });
-  },
+    return { labelId };
+  }),
 });
 
-export const setColour = changeMutation({
+export const setColour = plannerChange({
   action: "label.setColour",
   args: { labelId: v.id("labels"), colour: vColour },
-  handler: async (ctx, { labelId, colour }, record) => {
-    const label = await load(ctx, "labels", labelId);
-    if (label.isErr()) return err<{ changed: boolean }, PlannerError>(label.error);
-    return ok<{ changed: boolean }, PlannerError>({ changed: await record.patch("labels", labelId, { colour }) });
-  },
+  handler: Effect.fn("labels.setColour")(function* ({ labelId, colour }) {
+    yield* loadFx("labels", labelId);
+    return { changed: yield* recording((record) => record.patch("labels", labelId, { colour })) };
+  }),
 });
 
-export const rename = changeMutation({
+export const rename = plannerChange({
   action: "label.rename",
   args: { labelId: v.id("labels"), name: v.string() },
-  handler: async (ctx, { labelId, name }, record) => {
-    const validName = parseTitle(name);
-    if (validName.isErr()) return err<{ changed: boolean }, PlannerError>(validName.error);
-    const label = await load(ctx, "labels", labelId);
-    if (label.isErr()) return err<{ changed: boolean }, PlannerError>(label.error);
-    const holder = await labelNamed(ctx, validName.value);
-    if (holder && holder._id !== labelId) return err<{ changed: boolean }, PlannerError>({ kind: "name_taken", name: holder.name });
-    return ok<{ changed: boolean }, PlannerError>({ changed: await record.patch("labels", labelId, { name: validName.value }) });
-  },
+  handler: Effect.fn("labels.rename")(function* ({ labelId, name }) {
+    const validName = yield* Effect.fromResult(parseTitleFx(name));
+    yield* loadFx("labels", labelId);
+    const holder = yield* reading((ctx) => labelNamed(ctx, validName));
+    if (holder && holder._id !== labelId) return yield* new NameTaken({ taken: holder.name });
+    return { changed: yield* recording((record) => record.patch("labels", labelId, { name: validName })) };
+  }),
 });
 
-export const remove = changeMutation({
+export const remove = plannerChange({
   action: "label.remove",
   args: { labelId: v.id("labels") },
-  handler: async (ctx, { labelId }, record) => {
-    const label = await load(ctx, "labels", labelId);
-    if (label.isErr()) return err<{ stripped: number }, PlannerError>(label.error);
-    const open = await ctx.db
-      .query("tasks")
-      .withIndex("by_trashed_status_when", (q) => q.eq("trashedAt", undefined).eq("status.kind", "open"))
-      .take(STRIP_LIMIT);
+  handler: Effect.fn("labels.remove")(function* ({ labelId }) {
+    const label = yield* loadFx("labels", labelId);
+    const open = yield* reading((ctx) =>
+      ctx.db
+        .query("tasks")
+        .withIndex("by_trashed_status_when", (q) => q.eq("trashedAt", undefined).eq("status.kind", "open"))
+        .take(STRIP_LIMIT),
+    );
     let stripped = 0;
     for (const task of open) {
       if (!task.labelIds.includes(labelId)) continue;
-      await record.patch("tasks", task._id, { labelIds: task.labelIds.filter((id) => id !== labelId) });
+      yield* recording((record) => record.patch("tasks", task._id, { labelIds: task.labelIds.filter((id) => id !== labelId) }));
       stripped += 1;
     }
-    if (label.value.things) await ctx.db.insert("thingsTombstones", { thingsId: label.value.things.id });
-    await record.remove("labels", labelId);
-    return ok<{ stripped: number }, PlannerError>({ stripped });
-  },
+    const things = label.things;
+    if (things) yield* changing((ctx) => ctx.db.insert("thingsTombstones", { thingsId: things.id }));
+    yield* recording((record) => record.remove("labels", labelId));
+    return { stripped };
+  }),
 });

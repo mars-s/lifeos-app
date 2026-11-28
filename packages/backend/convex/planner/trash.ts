@@ -1,12 +1,12 @@
 import { v, type Infer } from "convex/values";
-import { err, ok } from "neverthrow";
+import { Effect } from "effect";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
-import { ownerQuery } from "../platform/access";
 import type { Recorder } from "../platform/activity";
-import { changeMutation } from "../platform/change";
+import { ownerQuery, reading, recording } from "../platform/effect";
 import { restoreArea, restoreProject } from "./containers";
-import { keyAfter, lastTaskOrder, liveHome, type PlannerError } from "./model";
+import { NotFound, NotTrashed } from "./errors";
+import { changing, keyAfter, lastTaskOrder, liveHome, plannerChange } from "./model";
 import { stopWithLatest } from "./recurrence";
 import type { Parent } from "./tables";
 
@@ -71,97 +71,101 @@ const loadMap = async <T extends "projects" | "areas">(ctx: QueryCtx, table: T, 
   return new Map(docs.flatMap((doc) => (doc ? [[doc._id as string, doc] as const] : [])));
 };
 
+const listTrash = async (ctx: QueryCtx) => {
+  const [tasks, projects, areas] = await Promise.all([
+    trashedTasks(ctx, LIST_LIMIT),
+    trashedProjects(ctx, LIST_LIMIT),
+    trashedAreas(ctx, LIST_LIMIT),
+  ]);
+  const projectsById = await loadMap(
+    ctx,
+    "projects",
+    tasks.flatMap((task) => (task.parent.kind === "project" ? [task.parent.projectId] : [])),
+  );
+  const areasById = await loadMap(ctx, "areas", [
+    ...tasks.flatMap((task) => (task.parent.kind === "area" ? [task.parent.areaId] : [])),
+    ...[...projectsById.values(), ...projects].flatMap((project) => (project.areaId ? [project.areaId] : [])),
+  ]);
+  const areaOf = (areaId: Id<"areas"> | undefined) => (areaId ? areasById.get(areaId) : undefined);
+
+  const taskRows = tasks.filter(isTrashed).flatMap((task) => {
+    const project = task.parent.kind === "project" ? projectsById.get(task.parent.projectId) : undefined;
+    const area = areaOf(task.parent.kind === "area" ? task.parent.areaId : project?.areaId);
+    const container = project ?? (task.parent.kind === "area" ? area : undefined);
+    if (container?.trashedAt === task.trashedAt) return [];
+    return [
+      {
+        kind: "task" as const,
+        id: task._id,
+        title: task.title,
+        trashedAt: task.trashedAt,
+        closed: task.status.kind !== "open",
+        context: project?.title ?? area?.title,
+        colour: area?.colour,
+      },
+    ];
+  });
+
+  const projectRows = await Promise.all(
+    projects.filter(isTrashed).flatMap((project) => {
+      const area = areaOf(project.areaId);
+      if (area?.trashedAt === project.trashedAt) return [];
+      return [
+        (async () => ({
+          kind: "project" as const,
+          id: project._id,
+          title: project.title,
+          trashedAt: project.trashedAt,
+          context: area?.title,
+          colour: area?.colour,
+          tasks: (await tasksOfProject(ctx, project._id)).filter(wentWith(project.trashedAt)).length,
+        }))(),
+      ];
+    }),
+  );
+
+  const areaRows = await Promise.all(
+    areas.filter(isTrashed).map(async (area) => {
+      const projectsWith = (await projectsOfArea(ctx, area._id)).filter(wentWith(area.trashedAt));
+      const nested = await Promise.all(projectsWith.map((project) => tasksOfProject(ctx, project._id)));
+      const own = (await tasksOfArea(ctx, area._id)).filter(wentWith(area.trashedAt)).length;
+      return {
+        kind: "area" as const,
+        id: area._id,
+        title: area.title,
+        trashedAt: area.trashedAt,
+        colour: area.colour,
+        icon: area.icon,
+        projects: projectsWith.length,
+        tasks: own + nested.flat().filter(wentWith(area.trashedAt)).length,
+      };
+    }),
+  );
+
+  return {
+    rows: [...areaRows, ...projectRows, ...taskRows].toSorted((a, b) => b.trashedAt - a.trashedAt),
+    truncated: tasks.length === LIST_LIMIT,
+  };
+};
+
 export const list = ownerQuery({
   args: {},
-  handler: async (ctx) => {
-    const [tasks, projects, areas] = await Promise.all([
-      trashedTasks(ctx, LIST_LIMIT),
-      trashedProjects(ctx, LIST_LIMIT),
-      trashedAreas(ctx, LIST_LIMIT),
-    ]);
-    const projectsById = await loadMap(
-      ctx,
-      "projects",
-      tasks.flatMap((task) => (task.parent.kind === "project" ? [task.parent.projectId] : [])),
-    );
-    const areasById = await loadMap(ctx, "areas", [
-      ...tasks.flatMap((task) => (task.parent.kind === "area" ? [task.parent.areaId] : [])),
-      ...[...projectsById.values(), ...projects].flatMap((project) => (project.areaId ? [project.areaId] : [])),
-    ]);
-    const areaOf = (areaId: Id<"areas"> | undefined) => (areaId ? areasById.get(areaId) : undefined);
-
-    const taskRows = tasks.filter(isTrashed).flatMap((task) => {
-      const project = task.parent.kind === "project" ? projectsById.get(task.parent.projectId) : undefined;
-      const area = areaOf(task.parent.kind === "area" ? task.parent.areaId : project?.areaId);
-      const container = project ?? (task.parent.kind === "area" ? area : undefined);
-      if (container?.trashedAt === task.trashedAt) return [];
-      return [
-        {
-          kind: "task" as const,
-          id: task._id,
-          title: task.title,
-          trashedAt: task.trashedAt,
-          closed: task.status.kind !== "open",
-          context: project?.title ?? area?.title,
-          colour: area?.colour,
-        },
-      ];
-    });
-
-    const projectRows = await Promise.all(
-      projects.filter(isTrashed).flatMap((project) => {
-        const area = areaOf(project.areaId);
-        if (area?.trashedAt === project.trashedAt) return [];
-        return [
-          (async () => ({
-            kind: "project" as const,
-            id: project._id,
-            title: project.title,
-            trashedAt: project.trashedAt,
-            context: area?.title,
-            colour: area?.colour,
-            tasks: (await tasksOfProject(ctx, project._id)).filter(wentWith(project.trashedAt)).length,
-          }))(),
-        ];
-      }),
-    );
-
-    const areaRows = await Promise.all(
-      areas.filter(isTrashed).map(async (area) => {
-        const projectsWith = (await projectsOfArea(ctx, area._id)).filter(wentWith(area.trashedAt));
-        const nested = await Promise.all(projectsWith.map((project) => tasksOfProject(ctx, project._id)));
-        const own = (await tasksOfArea(ctx, area._id)).filter(wentWith(area.trashedAt)).length;
-        return {
-          kind: "area" as const,
-          id: area._id,
-          title: area.title,
-          trashedAt: area.trashedAt,
-          colour: area.colour,
-          icon: area.icon,
-          projects: projectsWith.length,
-          tasks: own + nested.flat().filter(wentWith(area.trashedAt)).length,
-        };
-      }),
-    );
-
-    return {
-      rows: [...areaRows, ...projectRows, ...taskRows].toSorted((a, b) => b.trashedAt - a.trashedAt),
-      truncated: tasks.length === LIST_LIMIT,
-    };
-  },
+  handler: () => reading(listTrash),
 });
 
-const restoreTask = async (ctx: MutationCtx, record: Recorder, task: Doc<"tasks">) => {
-  const home = await liveHome(ctx, task.parent);
-  if (home === task.parent) return record.patch("tasks", task._id, { trashedAt: undefined });
-  return record.patch("tasks", task._id, { trashedAt: undefined, parent: home, order: keyAfter(await lastTaskOrder(ctx, home)) });
-};
+const restoreTask = Effect.fn("trash.restoreTask")(function* (task: Doc<"tasks">) {
+  const home = yield* reading((ctx) => liveHome(ctx, task.parent));
+  if (home === task.parent) return yield* recording((record) => record.patch("tasks", task._id, { trashedAt: undefined }));
+  const order = keyAfter(yield* reading((ctx) => lastTaskOrder(ctx, home)));
+  return yield* recording((record) => record.patch("tasks", task._id, { trashedAt: undefined, parent: home, order }));
+});
 
-const restoreOrphanedProject = async (ctx: MutationCtx, record: Recorder, project: Doc<"projects">) => {
-  const area = project.areaId ? await ctx.db.get("areas", project.areaId) : null;
-  if (area && isTrashed(area)) await record.patch("projects", project._id, { areaId: undefined });
-  await restoreProject(ctx, record, project);
-};
+const restoreOrphanedProject = Effect.fn("trash.restoreOrphanedProject")(function* (project: Doc<"projects">) {
+  const areaId = project.areaId;
+  const area = areaId ? yield* reading((ctx) => ctx.db.get("areas", areaId)) : null;
+  if (area && isTrashed(area)) yield* recording((record) => record.patch("projects", project._id, { areaId: undefined }));
+  yield* restoreProject(project);
+});
 
 const loadItem = async (ctx: QueryCtx, item: Item) => {
   if (item.kind === "task") return { kind: item.kind, doc: await ctx.db.get("tasks", item.id) } as const;
@@ -171,29 +175,29 @@ const loadItem = async (ctx: QueryCtx, item: Item) => {
 
 const TABLE = { task: "tasks", project: "projects", area: "areas" } as const;
 
-const loadTrashed = async (ctx: QueryCtx, items: Item[]) => {
+const loadTrashed = Effect.fn("trash.loadTrashed")(function* (items: Item[]) {
   const loaded = [];
   for (const item of items) {
-    const found = await loadItem(ctx, item);
-    if (!found.doc) return err<never, PlannerError>({ kind: "not_found", table: TABLE[item.kind], id: item.id });
-    if (!isTrashed(found.doc)) return err<never, PlannerError>({ kind: "not_trashed", table: TABLE[item.kind], id: item.id });
+    const found = yield* reading((ctx) => loadItem(ctx, item));
+    if (!found.doc) return yield* new NotFound({ table: TABLE[item.kind], id: item.id });
+    if (!isTrashed(found.doc)) return yield* new NotTrashed({ table: TABLE[item.kind], id: item.id });
     loaded.push(found);
   }
-  return ok<typeof loaded, PlannerError>(loaded);
-};
+  return loaded;
+});
 
-export const restore = changeMutation({
+export const restore = plannerChange({
   action: "trash.restore",
   args: { items: v.array(vItem) },
-  handler: async (ctx, { items }, record) =>
-    (await loadTrashed(ctx, items)).asyncMap(async (loaded) => {
-      for (const found of loaded) {
-        if (found.kind === "task" && found.doc) await restoreTask(ctx, record, found.doc);
-        if (found.kind === "project" && found.doc) await restoreOrphanedProject(ctx, record, found.doc);
-        if (found.kind === "area" && found.doc) await restoreArea(ctx, record, found.doc);
-      }
-      return { restored: loaded.length };
-    }),
+  handler: Effect.fn("trash.restore")(function* ({ items }) {
+    const loaded = yield* loadTrashed(items);
+    for (const found of loaded) {
+      if (found.kind === "task" && found.doc) yield* restoreTask(found.doc);
+      if (found.kind === "project" && found.doc) yield* restoreOrphanedProject(found.doc);
+      if (found.kind === "area" && found.doc) yield* restoreArea(found.doc);
+    }
+    return { restored: loaded.length };
+  }),
 });
 
 const bury = async (ctx: MutationCtx, doc: { things?: { id: string } }) => {
@@ -276,31 +280,37 @@ const deleteArea = async (ctx: MutationCtx, record: Recorder, area: Doc<"areas">
   await record.remove("areas", area._id);
 };
 
-export const deleteForever = changeMutation({
+const deleteLoaded = async (ctx: MutationCtx, record: Recorder, loaded: Effect.Success<ReturnType<typeof loadTrashed>>) => {
+  for (const found of loaded) {
+    if (found.kind === "task" && found.doc) await deleteTask(ctx, record, found.doc);
+    if (found.kind === "project" && found.doc) await deleteProject(ctx, record, found.doc);
+    if (found.kind === "area" && found.doc) await deleteArea(ctx, record, found.doc);
+  }
+};
+
+export const deleteForever = plannerChange({
   action: "trash.delete",
   args: { items: v.array(vItem) },
-  handler: async (ctx, { items }, record) =>
-    (await loadTrashed(ctx, items)).asyncMap(async (loaded) => {
-      for (const found of loaded) {
-        if (found.kind === "task" && found.doc) await deleteTask(ctx, record, found.doc);
-        if (found.kind === "project" && found.doc) await deleteProject(ctx, record, found.doc);
-        if (found.kind === "area" && found.doc) await deleteArea(ctx, record, found.doc);
-      }
-      return { deleted: loaded.length };
-    }),
+  handler: Effect.fn("trash.deleteForever")(function* ({ items }) {
+    const loaded = yield* loadTrashed(items);
+    yield* changing((ctx, record) => deleteLoaded(ctx, record, loaded));
+    return { deleted: loaded.length };
+  }),
 });
 
-export const empty = changeMutation({
+const emptyBatch = async (ctx: MutationCtx, record: Recorder) => {
+  const tasks = (await trashedTasks(ctx, EMPTY_BATCH)) as Trashed<"tasks">[];
+  for (const task of tasks) await deleteTask(ctx, record, task);
+  const projects = tasks.length === 0 ? await trashedProjects(ctx, EMPTY_BATCH) : [];
+  for (const project of projects) await deleteProject(ctx, record, project);
+  const areas = tasks.length + projects.length === 0 ? await trashedAreas(ctx, EMPTY_BATCH) : [];
+  for (const area of areas) await deleteArea(ctx, record, area);
+  const deleted = tasks.length + projects.length + areas.length;
+  return { deleted, done: deleted === 0 };
+};
+
+export const empty = plannerChange({
   action: "trash.empty",
   args: {},
-  handler: async (ctx, _args, record) => {
-    const tasks = (await trashedTasks(ctx, EMPTY_BATCH)) as Trashed<"tasks">[];
-    for (const task of tasks) await deleteTask(ctx, record, task);
-    const projects = tasks.length === 0 ? await trashedProjects(ctx, EMPTY_BATCH) : [];
-    for (const project of projects) await deleteProject(ctx, record, project);
-    const areas = tasks.length + projects.length === 0 ? await trashedAreas(ctx, EMPTY_BATCH) : [];
-    for (const area of areas) await deleteArea(ctx, record, area);
-    const deleted = tasks.length + projects.length + areas.length;
-    return ok<{ deleted: number; done: boolean }, PlannerError>({ deleted, done: deleted === 0 });
-  },
+  handler: () => changing(emptyBatch),
 });

@@ -1,35 +1,25 @@
 import { v } from "convex/values";
 import type { WithoutSystemFields } from "convex/server";
-import { Result, err, ok } from "neverthrow";
-import type { MutationCtx } from "../_generated/server";
+import { Clock, Effect, Result } from "effect";
 import type { Doc, Id } from "../_generated/dataModel";
-import type { Recorder } from "../platform/activity";
-import { changeMutation } from "../platform/change";
+import { reading, recording } from "../platform/effect";
 import { closeProjectTasks, lastProjectOrder, reopenProjectTasks, restoreProject, trashProject } from "./containers";
 import { endFocusOnClosedTask } from "./focus";
-import { keyAfter, load, parseDeadline, parseOrder, parseTitle, parseWhen, type PlannerError } from "./model";
+import { changing, keyAfter, loadFx, parseDeadline, parseOrder, parseTitleFx, parseWhen, plannerChange } from "./model";
 import { vWhen } from "./tables";
 
 type ProjectFields = Partial<WithoutSystemFields<Doc<"projects">>>;
-type Changed = { changed: boolean };
 
-const parseArea = async (ctx: MutationCtx, areaId: Id<"areas"> | null) =>
-  areaId === null
-    ? ok<Id<"areas"> | undefined, PlannerError>(undefined)
-    : (await load(ctx, "areas", areaId)).andThen((area) => ok<Id<"areas"> | undefined, PlannerError>(area._id));
+const parseArea = (areaId: Id<"areas"> | null) =>
+  areaId === null ? Effect.succeed(undefined) : Effect.map(loadFx("areas", areaId), (area) => area._id);
 
-const edit = async (
-  ctx: MutationCtx,
-  record: Recorder,
-  projectId: Id<"projects">,
-  fields: Result<ProjectFields, PlannerError>,
-) => {
-  const valid = Result.combine([await load(ctx, "projects", projectId), fields]);
-  if (valid.isErr()) return err<Changed, PlannerError>(valid.error);
-  return ok<Changed, PlannerError>({ changed: await record.patch("projects", projectId, valid.value[1]) });
-};
+const edit = Effect.fn("projects.edit")(function* <E>(projectId: Id<"projects">, fields: Result.Result<ProjectFields, E>) {
+  yield* loadFx("projects", projectId);
+  const valid = yield* Effect.fromResult(fields);
+  return { changed: yield* recording((record) => record.patch("projects", projectId, valid)) };
+});
 
-export const create = changeMutation({
+export const create = plannerChange({
   action: "project.create",
   args: {
     title: v.string(),
@@ -38,110 +28,112 @@ export const create = changeMutation({
     when: v.optional(vWhen),
     deadline: v.optional(v.string()),
   },
-  handler: async (ctx, args, record) => {
-    const fields = Result.combine([
-      parseTitle(args.title),
-      await parseArea(ctx, args.areaId ?? null),
-      parseWhen(args.when ?? { kind: "anytime" }),
-      parseDeadline(args.deadline ?? null),
+  handler: Effect.fn("projects.create")(function* (args) {
+    const [title, areaId, when, deadline] = yield* Effect.all([
+      Effect.fromResult(parseTitleFx(args.title)),
+      parseArea(args.areaId ?? null),
+      Effect.fromResult(parseWhen(args.when ?? { kind: "anytime" })),
+      Effect.fromResult(parseDeadline(args.deadline ?? null)),
     ]);
-    if (fields.isErr()) return err<{ projectId: Id<"projects"> }, PlannerError>(fields.error);
-    const [title, areaId, when, deadline] = fields.value;
-    const projectId = await record.insert("projects", {
-      title,
-      notes: args.notes ?? "",
-      ...(areaId ? { areaId } : {}),
-      when,
-      ...(deadline ? { deadline } : {}),
-      labelIds: [],
-      status: { kind: "open" },
-      order: keyAfter(await lastProjectOrder(ctx, areaId)),
-    });
-    return ok<{ projectId: Id<"projects"> }, PlannerError>({ projectId });
-  },
+    const order = keyAfter(yield* reading((ctx) => lastProjectOrder(ctx, areaId)));
+    const projectId = yield* recording((record) =>
+      record.insert("projects", {
+        title,
+        notes: args.notes ?? "",
+        ...(areaId ? { areaId } : {}),
+        when,
+        ...(deadline ? { deadline } : {}),
+        labelIds: [],
+        status: { kind: "open" },
+        order,
+      }),
+    );
+    return { projectId };
+  }),
 });
 
-export const rename = changeMutation({
+export const rename = plannerChange({
   action: "project.rename",
   args: { projectId: v.id("projects"), title: v.string() },
-  handler: (ctx, { projectId, title }, record) =>
-    edit(ctx, record, projectId, parseTitle(title).map((valid) => ({ title: valid }))),
+  handler: ({ projectId, title }) => edit(projectId, Result.map(parseTitleFx(title), (valid) => ({ title: valid }))),
 });
 
-export const setNotes = changeMutation({
+export const setNotes = plannerChange({
   action: "project.setNotes",
   args: { projectId: v.id("projects"), notes: v.string() },
-  handler: (ctx, { projectId, notes }, record) => edit(ctx, record, projectId, ok({ notes })),
+  handler: ({ projectId, notes }) => edit(projectId, Result.succeed({ notes })),
 });
 
-export const setWhen = changeMutation({
+export const setWhen = plannerChange({
   action: "project.setWhen",
   args: { projectId: v.id("projects"), when: vWhen },
-  handler: (ctx, { projectId, when }, record) => edit(ctx, record, projectId, parseWhen(when).map((valid) => ({ when: valid }))),
+  handler: ({ projectId, when }) => edit(projectId, Result.map(parseWhen(when), (valid) => ({ when: valid }))),
 });
 
-export const setDeadline = changeMutation({
+export const setDeadline = plannerChange({
   action: "project.setDeadline",
   args: { projectId: v.id("projects"), deadline: v.union(v.string(), v.null()) },
-  handler: (ctx, { projectId, deadline }, record) =>
-    edit(ctx, record, projectId, parseDeadline(deadline).map((valid) => ({ deadline: valid }))),
+  handler: ({ projectId, deadline }) => edit(projectId, Result.map(parseDeadline(deadline), (valid) => ({ deadline: valid }))),
 });
 
-export const move = changeMutation({
+export const move = plannerChange({
   action: "project.move",
   args: { projectId: v.id("projects"), areaId: v.union(v.id("areas"), v.null()), order: v.optional(v.string()) },
-  handler: async (ctx, { projectId, areaId, order }, record) => {
-    const area = await parseArea(ctx, areaId);
-    if (area.isErr()) return err<Changed, PlannerError>(area.error);
-    const key = order === undefined ? ok<string, PlannerError>(keyAfter(await lastProjectOrder(ctx, area.value))) : parseOrder(order);
-    return edit(ctx, record, projectId, key.map((valid) => ({ areaId: area.value, order: valid })));
-  },
+  handler: Effect.fn("projects.move")(function* ({ projectId, areaId, order }) {
+    const area = yield* parseArea(areaId);
+    const key = order === undefined ? Result.succeed(keyAfter(yield* reading((ctx) => lastProjectOrder(ctx, area)))) : parseOrder(order);
+    return yield* edit(projectId, Result.map(key, (valid) => ({ areaId: area, order: valid })));
+  }),
 });
 
-export const complete = changeMutation({
+export const complete = plannerChange({
   action: "project.complete",
   args: { projectId: v.id("projects") },
-  handler: async (ctx, { projectId }, record) =>
-    (await load(ctx, "projects", projectId)).asyncMap(async (project) => {
-      if (project.status.kind !== "open") return { changed: false };
-      const at = Date.now();
-      await record.patch("projects", projectId, { status: { kind: "completed", at } });
+  handler: Effect.fn("projects.complete")(function* ({ projectId }) {
+    const project = yield* loadFx("projects", projectId);
+    if (project.status.kind !== "open") return { changed: false };
+    const at = yield* Clock.currentTimeMillis;
+    yield* recording((record) => record.patch("projects", projectId, { status: { kind: "completed", at } }));
+    yield* changing(async (ctx, record) => {
       await closeProjectTasks(ctx, record, projectId, at);
       await endFocusOnClosedTask(ctx, record, at);
-      return { changed: true };
-    }),
+    });
+    return { changed: true };
+  }),
 });
 
-export const reopen = changeMutation({
+export const reopen = plannerChange({
   action: "project.reopen",
   args: { projectId: v.id("projects") },
-  handler: async (ctx, { projectId }, record) =>
-    (await load(ctx, "projects", projectId)).asyncMap(async (project) => {
-      if (project.status.kind === "open") return { changed: false };
-      await record.patch("projects", projectId, { status: { kind: "open" } });
-      await reopenProjectTasks(ctx, record, projectId, project.status.at);
-      return { changed: true };
-    }),
+  handler: Effect.fn("projects.reopen")(function* ({ projectId }) {
+    const project = yield* loadFx("projects", projectId);
+    const status = project.status;
+    if (status.kind === "open") return { changed: false };
+    yield* recording((record) => record.patch("projects", projectId, { status: { kind: "open" } }));
+    const now = yield* Clock.currentTimeMillis;
+    yield* changing((ctx, record) => reopenProjectTasks(ctx, record, projectId, status.at, now));
+    return { changed: true };
+  }),
 });
 
-export const trash = changeMutation({
+export const trash = plannerChange({
   action: "project.trash",
   args: { projectId: v.id("projects") },
-  handler: async (ctx, { projectId }, record) =>
-    (await load(ctx, "projects", projectId)).asyncMap(async (project) => {
-      const at = Date.now();
-      await trashProject(ctx, record, project, at);
-      await endFocusOnClosedTask(ctx, record, at);
-      return { changed: project.trashedAt === undefined };
-    }),
+  handler: Effect.fn("projects.trash")(function* ({ projectId }) {
+    const project = yield* loadFx("projects", projectId);
+    const at = yield* Clock.currentTimeMillis;
+    yield* trashProject(project, at);
+    yield* changing((ctx, record) => endFocusOnClosedTask(ctx, record, at));
+    return { changed: project.trashedAt === undefined };
+  }),
 });
 
-export const restore = changeMutation({
+export const restore = plannerChange({
   action: "project.restore",
   args: { projectId: v.id("projects") },
-  handler: async (ctx, { projectId }, record) =>
-    (await load(ctx, "projects", projectId)).asyncMap(async (project) => {
-      await restoreProject(ctx, record, project);
-      return { changed: project.trashedAt !== undefined };
-    }),
+  handler: Effect.fn("projects.restore")(function* ({ projectId }) {
+    const project = yield* loadFx("projects", projectId);
+    yield* restoreProject(project);
+    return { changed: project.trashedAt !== undefined };
+  }),
 });

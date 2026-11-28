@@ -1,6 +1,8 @@
+import { Effect } from "effect";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { Recorder } from "../platform/activity";
+import { reading, recording } from "../platform/effect";
 import { followCompletion } from "./recurrence";
 import { colours } from "./tables";
 
@@ -45,41 +47,41 @@ const areaProjects = (ctx: QueryCtx, areaId: Id<"areas">) =>
     .withIndex("by_area_order", (q) => q.eq("areaId", areaId))
     .take(CONTAINER_LIMIT);
 
-const trashTasks = async (record: Recorder, tasks: Doc<"tasks">[], at: number) => {
-  for (const task of tasks) if (task.trashedAt === undefined) await record.patch("tasks", task._id, { trashedAt: at });
-};
+const trashTasks = Effect.fn("containers.trashTasks")(function* (tasks: Doc<"tasks">[], at: number) {
+  for (const task of tasks) if (task.trashedAt === undefined) yield* recording((record) => record.patch("tasks", task._id, { trashedAt: at }));
+});
 
-const restoreTasks = async (record: Recorder, tasks: Doc<"tasks">[], at: number) => {
-  for (const task of tasks) if (task.trashedAt === at) await record.patch("tasks", task._id, { trashedAt: undefined });
-};
+const restoreTasks = Effect.fn("containers.restoreTasks")(function* (tasks: Doc<"tasks">[], at: number) {
+  for (const task of tasks) if (task.trashedAt === at) yield* recording((record) => record.patch("tasks", task._id, { trashedAt: undefined }));
+});
 
-export const trashProject = async (ctx: MutationCtx, record: Recorder, project: Doc<"projects">, at: number) => {
+export const trashProject = Effect.fn("containers.trashProject")(function* (project: Doc<"projects">, at: number) {
   if (project.trashedAt !== undefined) return;
-  await record.patch("projects", project._id, { trashedAt: at });
-  await trashTasks(record, await projectTasks(ctx, project._id), at);
-};
+  yield* recording((record) => record.patch("projects", project._id, { trashedAt: at }));
+  yield* trashTasks(yield* reading((ctx) => projectTasks(ctx, project._id)), at);
+});
 
-export const restoreProject = async (ctx: MutationCtx, record: Recorder, project: Doc<"projects">) => {
+export const restoreProject = Effect.fn("containers.restoreProject")(function* (project: Doc<"projects">) {
   const at = project.trashedAt;
   if (at === undefined) return;
-  await record.patch("projects", project._id, { trashedAt: undefined });
-  await restoreTasks(record, await projectTasks(ctx, project._id), at);
-};
+  yield* recording((record) => record.patch("projects", project._id, { trashedAt: undefined }));
+  yield* restoreTasks(yield* reading((ctx) => projectTasks(ctx, project._id)), at);
+});
 
-export const trashArea = async (ctx: MutationCtx, record: Recorder, area: Doc<"areas">, at: number) => {
+export const trashArea = Effect.fn("containers.trashArea")(function* (area: Doc<"areas">, at: number) {
   if (area.trashedAt !== undefined) return;
-  await record.patch("areas", area._id, { trashedAt: at });
-  await trashTasks(record, await areaTasks(ctx, area._id), at);
-  for (const project of await areaProjects(ctx, area._id)) await trashProject(ctx, record, project, at);
-};
+  yield* recording((record) => record.patch("areas", area._id, { trashedAt: at }));
+  yield* trashTasks(yield* reading((ctx) => areaTasks(ctx, area._id)), at);
+  for (const project of yield* reading((ctx) => areaProjects(ctx, area._id))) yield* trashProject(project, at);
+});
 
-export const restoreArea = async (ctx: MutationCtx, record: Recorder, area: Doc<"areas">) => {
+export const restoreArea = Effect.fn("containers.restoreArea")(function* (area: Doc<"areas">) {
   const at = area.trashedAt;
   if (at === undefined) return;
-  await record.patch("areas", area._id, { trashedAt: undefined });
-  await restoreTasks(record, await areaTasks(ctx, area._id), at);
-  for (const project of await areaProjects(ctx, area._id)) if (project.trashedAt === at) await restoreProject(ctx, record, project);
-};
+  yield* recording((record) => record.patch("areas", area._id, { trashedAt: undefined }));
+  yield* restoreTasks(yield* reading((ctx) => areaTasks(ctx, area._id)), at);
+  for (const project of yield* reading((ctx) => areaProjects(ctx, area._id))) if (project.trashedAt === at) yield* restoreProject(project);
+});
 
 export const closeProjectTasks = async (ctx: MutationCtx, record: Recorder, projectId: Id<"projects">, at: number) => {
   const closing = (await projectTasks(ctx, projectId)).filter((task) => task.trashedAt === undefined && task.status.kind === "open");
@@ -87,8 +89,8 @@ export const closeProjectTasks = async (ctx: MutationCtx, record: Recorder, proj
   await followCompletion(ctx, record, closing.map((task) => task._id), at);
 };
 
-export const reopenProjectTasks = async (ctx: MutationCtx, record: Recorder, projectId: Id<"projects">, at: number) => {
+export const reopenProjectTasks = async (ctx: MutationCtx, record: Recorder, projectId: Id<"projects">, at: number, now: number) => {
   const reopening = (await projectTasks(ctx, projectId)).filter((task) => task.status.kind === "completed" && task.status.at === at);
   for (const task of reopening) await record.patch("tasks", task._id, { status: { kind: "open" } });
-  await followCompletion(ctx, record, reopening.map((task) => task._id), Date.now());
+  await followCompletion(ctx, record, reopening.map((task) => task._id), now);
 };
