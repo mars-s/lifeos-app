@@ -1,12 +1,17 @@
 "use client";
 
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import { useConvex, useConvexAuth } from "convex/react";
+import { useConvexAuth } from "convex/react";
+import { Effect, Exit } from "effect";
+import { AsyncResult, Atom } from "effect/reactivity";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@lifeos/backend/api";
+import { Backend } from "@lifeos/backend/client/backend";
 import type { IsoDate } from "@lifeos/backend/date";
 import { QuickCapturePanel } from "@/components/lifeos/quick-capture";
-import { captureArgs } from "@lifeos/backend/client/capture-model";
+import { captureArgs, type ResolvedCapture } from "@lifeos/backend/client/capture-model";
+import { atomRuntime } from "../../lib/runtime";
 import { useCapture } from "./command-bar/use-capture";
 import { useLocalDate, useQuietView, valueOf } from "./hooks";
 
@@ -16,11 +21,25 @@ const tell = (command: "hide_capture" | "show_capture") => {
   if (isTauri()) void invoke(command).catch(() => undefined);
 };
 
+const saveAtom = atomRuntime.fn<ResolvedCapture>()(
+  Effect.fnUntraced(function* (capture) {
+    const backend = yield* Backend;
+    const { taskId } = yield* backend.change(api.planner.tasks.create, captureArgs(capture));
+    yield* Effect.forEach(capture.freshLabels, (label) => backend.change(api.planner.labels.create, { ...label, taskId }).pipe(Effect.ignoreCause), {
+      concurrency: "unbounded",
+      discard: true,
+    });
+  }),
+  { concurrent: true },
+);
+
 const Capture = ({ today }: { today: IsoDate }) => {
-  const convex = useConvex();
   const sidebar = valueOf(useQuietView(api.planner.sidebar.get, { date: today }));
   const model = useCapture("", today, sidebar);
-  const [failed, setFailed] = useState(false);
+  const saved = useAtomValue(saveAtom);
+  const send = useAtomSet(saveAtom, { mode: "promiseExit" });
+  const forget = useAtomSet(saveAtom);
+  const failed = AsyncResult.isFailure(saved) && !saved.waiting;
   const [refused, setRefused] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const { setText } = model;
@@ -48,18 +67,11 @@ const Capture = ({ today }: { today: IsoDate }) => {
   const save = (another: boolean) => {
     const { capture, text } = model;
     if (capture.title.trim() === "") return setRefused(true);
-    const keep = () => {
+    void send(capture).then((exit) => {
+      if (Exit.isSuccess(exit) || Exit.hasInterrupts(exit)) return;
       setText(text);
-      setFailed(true);
       tell("show_capture");
-    };
-    convex.mutation(api.planner.tasks.create, captureArgs(capture)).then((result) => {
-      if (!result.ok) return keep();
-      for (const label of capture.freshLabels) {
-        void convex.mutation(api.planner.labels.create, { ...label, taskId: result.value.taskId }).catch(() => undefined);
-      }
-    }, keep);
-    setFailed(false);
+    });
     model.reset();
     if (!another) tell("hide_capture");
   };
@@ -69,7 +81,7 @@ const Capture = ({ today }: { today: IsoDate }) => {
       inputRef={input}
       value={model.text}
       onValueChange={(value) => {
-        setFailed(false);
+        if (failed) forget(Atom.Reset);
         setText(value);
       }}
       onSave={save}
