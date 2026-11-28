@@ -24,3 +24,5 @@ apps/web/art-source/**/*.png
 .direnv/
 devenv.local.nix
 devenv.local.yaml
+
+apps/web/dist-*/

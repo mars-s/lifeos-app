@@ -17,6 +17,8 @@
     "build:mobile": "pnpm --filter @lifeos/mobile export:ios",
     "build:desktop": "pnpm --filter @lifeos/desktop build",
     "check": "pnpm lint && pnpm lint:rust && pnpm typecheck && pnpm test && pnpm build",
+    "e2e": "pnpm --filter @lifeos/e2e e2e",
+    "e2e:perf": "pnpm --filter @lifeos/e2e e2e:perf",
     "lint:rust": "pnpm --filter @lifeos/desktop lint",
     "sync:things": "pnpm --filter @lifeos/things-sync sync",
     "sync:things:watch": "pnpm --filter @lifeos/things-sync watch",

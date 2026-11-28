@@ -470,6 +470,7 @@ export const NotesScreen = ({ docId, sidebar }: { docId: string | null; sidebar:
 
   return (
     <div className="flex h-[calc(100dvh-0.75rem)] max-md:h-[calc(100dvh-3rem)]">
+      <title>Notes · LifeOS</title>
       {docId ? (
         <>
           <NotePage

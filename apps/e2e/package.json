@@ -1,0 +1,19 @@
+{
+  "name": "@lifeos/e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "e2e": "playwright test",
+    "e2e:perf": "playwright test --config playwright.perf.config.ts",
+    "report": "playwright show-report out/report",
+    "typecheck": "tsc --noEmit",
+    "e2e:stop": "node src/stop.ts"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.1",
+    "@playwright/test": "1.65.1",
+    "@types/node": "^24",
+    "typescript": "~6.0.3",
+    "web-vitals": "6.2.3"
+  }
+}

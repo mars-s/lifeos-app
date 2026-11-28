@@ -54,11 +54,14 @@ const usedMotionFeatures = {
   },
 } satisfies VitePlugin;
 
+const reactProfiling: Record<string, string> = process.env.WAKU_REACT_PROFILING === "1" ? { "react-dom/client": "react-dom/profiling" } : {};
+
 export default defineConfig({
+  distDir: process.env.WAKU_DIST_DIR ?? "dist",
   vite: {
     plugins: [tailwindcss(), compiledClassHelper, usedPhosphorWeights, usedMotionFeatures],
     resolve: {
-      alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
+      alias: { "@": fileURLToPath(new URL("./src", import.meta.url)), ...reactProfiling },
     },
   },
 });

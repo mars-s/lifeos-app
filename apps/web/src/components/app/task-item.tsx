@@ -154,7 +154,6 @@ const EstimateEdit = ({ task, today }: { task: PlannerTask; today: string }) => 
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
-        aria-label={task.estimateMinutes === undefined ? `Set an Estimate for ${task.title}` : `Change the Estimate for ${task.title}`}
         onPointerDown={() => setViaKeyboard(false)}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") setViaKeyboard(true);
@@ -169,6 +168,7 @@ const EstimateEdit = ({ task, today }: { task: PlannerTask; today: string }) => 
         ) : (
           <TimeChip task={task} plain />
         )}
+        <span className="sr-only">{task.estimateMinutes === undefined ? `Set an Estimate for ${task.title}` : `Change the Estimate for ${task.title}`}</span>
       </button>
       {panel !== "unused" && (
         <EstimatePopover

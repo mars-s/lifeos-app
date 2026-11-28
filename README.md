@@ -121,6 +121,21 @@ pnpm dev:mobile
 
 Run `pnpm check` for lint, Clippy, type checks, tests and the web build. Set `LIFEOS_CONVEX_URL` and `WAKU_PUBLIC_CONVEX_URL` for the check in a fresh worktree.
 
+### End-to-end swarm and performance profiles
+
+`apps/e2e` is a Playwright Test harness (#89). It never touches the hosted deployment or the live Notes Relay: each run seeds its own throwaway local backend with `apps/web/scripts/local-backend.sh`, builds the web app against it into `apps/web/dist-e2e-<port>` and serves it with `waku start`.
+
+```sh
+pnpm e2e        # the swarm: every spec on every core, in parallel
+pnpm e2e:perf   # the profiles: one worker, Chromium slowed 4x, then WebKit
+```
+
+The swarm runs eight projects (Chromium and WebKit, 1440 px and iPhone width, light and dark) with `fullyParallel` and one worker per core. Each worker signs in with its own sessions (`scratch:signInMany`) and works on Tasks with unique names, so tests never collide. The specs cover the lists, Areas and Projects, Quick Capture, the Task card and each of its tools, the Planner (panes, tabs, a drag, the Timebox), the command bar, keyboard shortcuts, Notes and the mode switch, Settings and undo. `crawler.e2e.test.ts` visits every route, presses every visible button that is not destructive, tries the global shortcuts and runs axe. Every test fails on a console error, an uncaught exception, a failed request, an HTTP error or an error boundary. Known axe findings are skipped unless `E2E_AXE_STRICT=1`: faint text below 4.5:1 contrast (a design token), and `aria-hidden-focus` while a Radix menu or popover is open. Notes run without a relay, offline first.
+
+Failures keep a trace and a screenshot, and the retry records a video. The HTML report is in `apps/e2e/out/report` (`pnpm --filter @lifeos/e2e report`), and `node apps/e2e/src/failures.ts apps/e2e/out/results.json` prints each failure in a line or two. `E2E_PROJECTS=chromium-desktop` picks projects, `E2E_WORKERS` sets the workers, `E2E_KEEP=1` leaves the stack running after the run and `E2E_REUSE=1` reuses it (skip the 40 s of setup), and `pnpm --filter @lifeos/e2e e2e:stop` stops it. It is not part of `pnpm check`: a full swarm takes minutes, not seconds.
+
+`pnpm e2e:perf` needs a quiet machine. It seeds 2,400 extra Tasks (`scratch:seedBulk`), builds with the React profiling build and runs serially. For each interaction it records the time from the input to the frame that shows the result, the slowest input-to-paint (Event Timing, the number INP is built from), long tasks and blocking time, dropped frames (requestAnimationFrame gaps over 25 ms), and React commits with their render time. The first switch to a screen is reported as cold. Chromium also writes a performance trace per interaction to `apps/e2e/out/perf/profiles/traces` (open it in the DevTools Performance panel). The medians go to `out/perf/profiles/summary.md` and `summary.json`, and a run fails when an interaction is more than 1.5 times slower than `apps/e2e/perf/baseline.json` (plus a small allowance). `E2E_PERF_UPDATE=1` saves a new baseline. `E2E_ENGINES`, `E2E_PERF_RUNS` and `E2E_THROTTLE` change the run.
+
 ## Deploy the web app
 
 The web app is live at <https://lifeos.zephyrus.qzz.io>. Every page is static, so Cloudflare serves the Waku build (`apps/web/dist/public`) as a Worker with static assets only, on a Workers Custom Domain. `apps/web/wrangler.jsonc` holds the config. It turns off the `workers.dev` and preview URLs, so the custom domain is the only way in.

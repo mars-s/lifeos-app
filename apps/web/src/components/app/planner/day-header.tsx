@@ -160,15 +160,16 @@ export const DayHeader = ({
         trigger={
           <button
             type="button"
-            aria-label={`${longDay(day.date)}: ${summary(day)}`}
             onPointerEnter={onPointerEnter}
             onPointerLeave={onPointerLeave}
             className="group/meter block w-full space-y-1.5 rounded-lg px-3 py-1 text-left transition-[background-color,scale] duration-(--dur-press) ease-out outline-none hover:bg-foreground/[0.035] focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99]"
           >
+            <span className="sr-only">{`${longDay(day.date)}: `}</span>
             <DayMeter slices={day.slices} goal={day.goal} free={day.free} />
             <span className={cn("block text-micro text-muted-foreground")}>
               <LoadLine day={day} />
             </span>
+            <span className="sr-only">{`. ${summary(day)}`}</span>
           </button>
         }
         title={`${longDay(day.date)}`}

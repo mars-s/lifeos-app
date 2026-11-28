@@ -337,6 +337,26 @@ export const signIn = internalMutation({
       sessionMaxLifetimeSeconds: 86400,
     }),
 });
+
+export const signInMany = internalMutation({
+  args: { count: v.number() },
+  handler: async (ctx, { count }) => {
+    const sessions = [];
+    for (let index = 0; index < count; index += 1)
+      sessions.push(
+        await ctx.runMutation(components.auth.public._internal_dangerous_signUp, {
+          claims: { method: "github", profile: { id: "1001", login: "avi", emailVerified: false } },
+          componentPath: "authGithub",
+          createUserHandle: await createFunctionHandle(internal.platform.access.createUser),
+          onSignInHandle: await createFunctionHandle(internal.platform.access.onSignIn),
+          accessTokenTtlSeconds: 3600,
+          refreshInactivityTimeoutSeconds: 86400,
+          sessionMaxLifetimeSeconds: 86400,
+        }),
+      );
+    return sessions;
+  },
+});
 SCRATCH_TS
 
 cd "$SCRATCH"
