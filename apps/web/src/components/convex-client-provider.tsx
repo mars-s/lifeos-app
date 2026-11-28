@@ -1,14 +1,13 @@
 "use client";
 
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
-import { ConvexReactClient } from "convex/react";
+import { RegistryContext } from "@effect/atom-react";
 import type { ReactNode } from "react";
 import { useRouter } from "waku/router/client";
 import { api } from "@lifeos/backend/api";
+import { registry } from "@/lib/atoms";
+import { convexClient as client } from "@/lib/runtime";
 import { OwnerGate } from "./owner-gate";
-
-const convexUrl = import.meta.env.WAKU_PUBLIC_CONVEX_URL;
-const client = convexUrl ? new ConvexReactClient(convexUrl) : null;
 
 export const isConvexConfigured = client !== null;
 
@@ -19,7 +18,7 @@ const Gated = ({ children }: { children: ReactNode }) => {
   return publicPaths.has(path) ? children : <OwnerGate>{children}</OwnerGate>;
 };
 
-export const ConvexClientProvider = ({ children }: { children: ReactNode }) =>
+const Signed = ({ children }: { children: ReactNode }) =>
   client ? (
     <ConvexAuthProvider
       client={client}
@@ -34,3 +33,9 @@ export const ConvexClientProvider = ({ children }: { children: ReactNode }) =>
   ) : (
     children
   );
+
+export const ConvexClientProvider = ({ children }: { children: ReactNode }) => (
+  <RegistryContext.Provider value={registry}>
+    <Signed>{children}</Signed>
+  </RegistryContext.Provider>
+);
