@@ -28,7 +28,8 @@ const LISTS = ["Inbox", "Today", "Upcoming", "Anytime", "Someday", "Logbook", "T
 
 type Tab = typeof PLANNER;
 
-const link = (page: Page, tab: Tab) => page.locator(`nav[data-sidebar-mode] a[href="${tab.path}"]`).first();
+const link = (page: Page, tab: Tab) =>
+  page.locator(`#main [role=tab][href="${tab.path}"]`).or(page.locator(`nav[data-sidebar-mode] a[href="${tab.path}"]`)).first();
 
 const switchTo = async (page: Page, tab: Tab) => {
   await arm(page, tab.ready);
@@ -50,8 +51,6 @@ const save = (page: Page, interaction: string, cold: Sample | null, warm: Sample
   record(result);
   expect(regressions(result, readBaseline()), `${result.key} regressed against perf/baseline.json`).toEqual([]);
 };
-
-test.describe.configure({ mode: "serial" });
 
 for (const from of LISTS)
   test(`switch ${from.name} to the Planner and back`, async ({ page, browser }) => {

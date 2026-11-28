@@ -4,7 +4,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Plus, Repeat } from "@phosphor-icons/react";
 import { AnimatePresence } from "motion/react";
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { IsoDate } from "@lifeos/backend/date";
 import type { PlanGhost, PlannerTask } from "@lifeos/backend/types";
 import { AreaDot } from "@/components/lifeos/area";
@@ -24,6 +24,30 @@ import { usePlacedRows } from "./drag";
 import { INBOX, dayContainer, type PlanDay } from "./model";
 
 export const PLANNER_SLOT = "/planner";
+const COLUMN_PX = 280;
+const BESIDE_DAYS_PX = 600;
+const DAY_MS = 86_400_000;
+
+const useDrawnNearView = (column: RefObject<HTMLElement | null>, first: boolean) => {
+  const [drawn, setDrawn] = useState(first);
+  useEffect(() => {
+    const element = column.current;
+    if (drawn || !element) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) setDrawn(true);
+      },
+      { root: element.closest("[data-plan-strip]"), rootMargin: "0px 50% 0px 50%" },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [column, drawn]);
+  return drawn;
+};
+
+const inFirstView = (date: IsoDate, today: IsoDate) =>
+  (Date.parse(date) - Date.parse(today)) / DAY_MS < Math.max(1, Math.floor((window.innerWidth - BESIDE_DAYS_PX) / COLUMN_PX));
+
 const daySlot = (date: string) => `${PLANNER_SLOT}:${date}`;
 
 const AddTask = ({ label, onAdd, aside }: { label: string; onAdd: (title: string) => void; aside?: ReactNode }) => {
@@ -108,7 +132,9 @@ const PlanList = ({
   tileOn,
   label,
   empty,
+  drawn = true,
 }: {
+  drawn?: boolean;
   container: string;
   tasks: readonly PlannerTask[];
   ghosts?: readonly PlanGhost[];
@@ -124,6 +150,9 @@ const PlanList = ({
   const { openCard } = useShell();
   const list = useRef<HTMLUListElement>(null);
   const rowWindow = useRowWindow(list, rows, openCard?.key, tileShape);
+  const [drawnFirst] = useState(drawn);
+  const [drawnLater, setDrawnLater] = useState<ReadonlySet<string> | null>(null);
+  if (drawn && !drawnFirst && drawnLater === null) setDrawnLater(new Set(rows.map((row) => row.key)));
   return (
     <SortableContext id={container} items={rows.map((row) => row.key)} strategy={verticalListSortingStrategy}>
       <ul
@@ -141,7 +170,7 @@ const PlanList = ({
       >
         <AnimatePresence initial={false}>
           {rows.map((row, index) =>
-            rowWindow.shows(row, index) ? (
+            (drawn || row.key === openCard?.key) && rowWindow.shows(row, index) ? (
               <TaskItem
                 key={row.key}
                 itemKey={row.key}
@@ -151,7 +180,7 @@ const PlanList = ({
                 today={today}
                 card={cardOf(row.key)}
                 onCard={onCard}
-                settled={rowWindow.settled(row.key)}
+                settled={rowWindow.settled(row.key) || drawnLater?.has(row.key) === true}
               />
             ) : (
               <RowGap key={row.key} itemKey={row.key} task={row.task} height={rowWindow.gapHeight(row)} />
@@ -210,20 +239,27 @@ export const DayColumn = ({
 }) => {
   const over = day.planned + day.guessed - Math.max(0, day.free);
   const isToday = day.date === today;
+  const column = useRef<HTMLElement>(null);
+  const drawn = useDrawnNearView(column, inFirstView(day.date, today));
   return (
     <section
+      ref={column}
       aria-label={longDay(day.date)}
       data-plan-day={day.date}
       {...placeAttr({ slot: daySlot(day.date), when: { kind: "scheduled", date: day.date, evening: false } })}
       className="flex min-h-0 w-[17.5rem] shrink-0 snap-start flex-col [content-visibility:auto] @max-4xl/planner:w-full">
-      <header className="space-y-2 px-2 pb-2">
-        <DayHeader day={day} isToday={isToday} actions={actions} onSpread={onSpread} />
-        <AddTask
-          label={`Add a Task to ${longDay(day.date)}`}
-          onAdd={(title) => actions.addTask(title, { kind: "scheduled", date: day.date, evening: false }, daySlot(day.date))}
-          aside={day.planned + day.guessed > 0 && <TotalChip minutes={day.planned + day.guessed} over={over > 0} title="Planned time for this day" />}
-        />
-      </header>
+      {drawn ? (
+        <header className="space-y-2 px-2 pb-2">
+          <DayHeader day={day} isToday={isToday} actions={actions} onSpread={onSpread} />
+          <AddTask
+            label={`Add a Task to ${longDay(day.date)}`}
+            onAdd={(title) => actions.addTask(title, { kind: "scheduled", date: day.date, evening: false }, daySlot(day.date))}
+            aside={day.planned + day.guessed > 0 && <TotalChip minutes={day.planned + day.guessed} over={over > 0} title="Planned time for this day" />}
+          />
+        </header>
+      ) : (
+        <header aria-hidden="true" className="h-[5.75rem] shrink-0" />
+      )}
       <PlanList
         container={dayContainer(day.date)}
         tasks={day.tasks}
@@ -233,6 +269,7 @@ export const DayColumn = ({
         tileOn={day.date}
         label={`Day Plan for ${longDay(day.date)}`}
         empty={isToday ? "Drag a Task here to plan today." : "Nothing planned."}
+        drawn={drawn}
       />
     </section>
   );
