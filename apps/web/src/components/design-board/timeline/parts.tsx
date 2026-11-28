@@ -243,24 +243,28 @@ export const Rail = ({
       {hoursBetween(from, to).map((minute) => (
         <span
           key={minute}
-          className={cn("absolute -translate-y-1/2 font-mono whitespace-nowrap text-faint-foreground", compact ? "text-[0.5625rem]" : "text-[0.625rem]", live && Math.abs(minute - now) * scale < 13 && "opacity-0")}
-          style={{ top: (minute - from) * scale, right: 18 + lane }}
+          className={cn(
+            "absolute z-[1] -translate-y-1/2 rounded-[3px] bg-(--tl-ground) px-0.5 font-mono whitespace-nowrap text-muted-foreground",
+            compact ? "text-[0.5625rem] leading-3" : "text-[0.625rem] leading-3.5",
+            live && Math.abs(minute - now) * scale < 13 && "opacity-0",
+          )}
+          style={{ top: (minute - from) * scale, right: 10 }}
         >
           {hourLabel(minute)}
         </span>
       ))}
       <span
         className="tl-rail absolute inset-y-0 w-[5px] [--tl-dot:color-mix(in_oklab,var(--foreground)_38%,transparent)]"
-        style={{ right: 5 + lane, backgroundSize: `5px ${60 * scale}px, 5px ${15 * scale}px`, backgroundPosition: `0 ${-30 * scale - (from % 60) * scale}px, 0 ${-7.5 * scale - (from % 15) * scale}px` }}
+        style={{ right: 5, backgroundSize: `5px ${60 * scale}px, 5px ${15 * scale}px`, backgroundPosition: `0 ${-30 * scale - (from % 60) * scale}px, 0 ${-7.5 * scale - (from % 15) * scale}px` }}
       />
-      <span className="tl-now absolute top-0 w-px rounded-full bg-foreground/55" style={{ height: reached, right: 7 + lane }} />
-      {lane > 0 && <EnergyLane from={from} to={to} scale={scale} now={now} width={lane} quality={energy} mode={energyModeOf(now)} className="right-[3px]" />}
+      <span className="tl-now absolute top-0 w-px rounded-full bg-foreground/55" style={{ height: reached, right: 7 }} />
+      {lane > 0 && <EnergyLane from={from} to={to} scale={scale} now={now} quality={energy} mode={energyModeOf(now)} className="right-[7.5px]" />}
       {live && (
         <>
-          {lane === 0 && <span className="tl-now absolute right-[0.1875rem] size-[9px] -translate-y-1/2 rounded-full bg-brand shadow-[0_0_0_2px_var(--tl-ground)]" style={{ top: reached }} />}
+          <span className="tl-now absolute right-[0.1875rem] z-[2] size-[9px] -translate-y-1/2 rounded-full bg-brand shadow-[0_0_0_2px_var(--tl-ground)]" style={{ top: reached }} />
           <span
-            className={cn("tl-now absolute -translate-y-1/2 rounded-full bg-brand px-1.5 font-mono font-medium text-brand-foreground", compact ? "text-[0.5625rem] leading-[0.875rem]" : "text-[0.625rem] leading-4")}
-            style={{ top: reached, right: 16 + lane }}
+            className={cn("tl-now absolute z-[2] -translate-y-1/2 rounded-full bg-brand px-1.5 font-mono font-medium text-brand-foreground", compact ? "text-[0.5625rem] leading-[0.875rem]" : "text-[0.625rem] leading-4")}
+            style={{ top: reached, right: 14 }}
           >
             {clock(now, true)}
           </span>

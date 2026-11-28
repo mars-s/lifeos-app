@@ -2,7 +2,7 @@ import { Car, Check } from "lucide-react-native";
 import { useEffect, useEffectEvent, useMemo, useRef, useState, type ComponentRef } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
-import Svg, { Circle, Line, Path, Rect } from "react-native-svg";
+import Svg, { Circle, G, Line, Rect } from "react-native-svg";
 import { addDays, type IsoDate } from "@lifeos/backend/date";
 import { startOfWeek } from "@lifeos/backend/client/dates";
 import { useKit } from "@/lib/kit";
@@ -13,7 +13,10 @@ import { useLocalDate } from "@/lib/views";
 
 const MINUTE_PX = 1.25;
 const GUTTER = 74;
-const LANE = 22;
+const RAIL = 7;
+const MOST_DOTS = 6;
+const DOT_PITCH = 5;
+const LANE = MOST_DOTS * DOT_PITCH + DOT_PITCH / 2;
 const DAY_MINUTES = 24 * 60;
 const INK_MS = 360;
 const ink = { duration: INK_MS, easing: EASE_OUT, reduceMotion: ReduceMotion.System } as const;
@@ -24,6 +27,14 @@ type Trip = { place: string; minutes: number } | null;
 
 const alpha = (hex: string, amount: number) =>
   /^#[0-9a-f]{6}$/i.test(hex) ? `${hex}${Math.round(amount * 255).toString(16).padStart(2, "0")}` : hex;
+
+const channel = (hex: string, at: number) => Number.parseInt(hex.slice(at, at + 2), 16);
+
+const mix = (from: string, to: string, amount: number) =>
+  `#${[1, 3, 5].map((at) => Math.round(channel(from, at) + (channel(to, at) - channel(from, at)) * amount).toString(16).padStart(2, "0")).join("")}`;
+
+const leanOf = (level: number) => Math.max(0.04, (level - 0.22) / 0.78);
+
 
 const dayStart = (date: string) => {
   const [year, month, day] = date.split("-").map(Number);
@@ -232,53 +243,70 @@ const hint = (day: TimelineDay["energy"], minute: number) => {
 };
 
 const Rail = ({ day, today, nowMinute, tones }: { day: TimelineDay; today: string; nowMinute: number; tones: Tones }) => {
+  const { area } = usePlanner();
   const live = day.date === today;
   const reached = day.date < today ? DAY_MINUTES : live ? nowMinute : 0;
   const curve = curveOf(day.energy);
   const mode = day.date < today ? "past" : live && curve?.kind === "solid" ? "today" : "usual";
-  const lean = (level: number) => 1 + Math.max(0.04, (level - 0.22) / 0.78) * (LANE - 2);
   const points = (curve?.points ?? []).filter((point) => point.minute <= DAY_MINUTES);
-  const line = points.map((point, index) => `${index === 0 ? "M" : "L"}${lean(point.level).toFixed(1)} ${(point.minute * MINUTE_PX).toFixed(1)}`).join("");
   const first = points[0];
   const last = points.at(-1);
-  const area = first && last ? `M0 ${first.minute * MINUTE_PX}${line.replace(/^M/, "L")}L0 ${last.minute * MINUTE_PX}Z` : "";
+  const levelAt = (minute: number) => {
+    const after = points.findIndex((point) => point.minute >= minute);
+    const next = points[after];
+    const previous = points[after - 1];
+    if (!next) return last?.level ?? 0;
+    if (!previous) return next.level;
+    return previous.level + ((next.level - previous.level) * (minute - previous.minute)) / Math.max(1, next.minute - previous.minute);
+  };
+  const pale = mix(tones.ground, tones.foreground, 0.26);
+  const rows = first && last ? Array.from({ length: DAY_MINUTES / 15 }, (_, index) => index * 15).filter((minute) => minute > 0 && minute >= first.minute && minute <= last.minute) : [];
   const bead = useSharedValue(nowMinute * MINUTE_PX);
   useEffect(() => {
     bead.value = withTiming(nowMinute * MINUTE_PX, ink);
   }, [bead, nowMinute]);
   const beadStyle = useAnimatedStyle(() => ({ transform: [{ translateY: bead.value }] }));
-  const levelAtNow = points.reduce((best, point) => (Math.abs(point.minute - nowMinute) < Math.abs(best.minute - nowMinute) ? point : best), first ?? { minute: 0, level: 0 });
-  const onCurve = live && curve && first && last && nowMinute > first.minute && nowMinute < last.minute;
   return (
     <View pointerEvents="none" style={[styles.gutter, { height: DAY_MINUTES * MINUTE_PX }]}>
+      <Svg width={6} height={DAY_MINUTES * MINUTE_PX} style={[styles.dots, { right: RAIL - 3 }]}>
+        {Array.from({ length: DAY_MINUTES / 15 }, (_, index) => (
+          <Circle key={index} cx={3} cy={index * 15 * MINUTE_PX} r={index % 4 === 0 ? 1.8 : 0.95} fill={alpha(tones.foreground, 0.38)} />
+        ))}
+      </Svg>
+      <View style={[styles.reached, { right: RAIL - 0.5, height: reached * MINUTE_PX, backgroundColor: alpha(tones.foreground, 0.55) }]} />
+      {curve ? (
+        <Svg width={LANE} height={DAY_MINUTES * MINUTE_PX} style={[styles.dots, { right: RAIL }]}>
+          <Rect x={0} y={(curve.bedtime - 30) * MINUTE_PX} width={LANE} height={45 * MINUTE_PX} rx={3} fill={alpha(tones.sleep, 0.18)} />
+          {rows.map((minute) => {
+            const dots = Math.round(leanOf(levelAt(minute)) * MOST_DOTS);
+            const tint = mix(pale, area.green, Math.max(0, dots - 1) / (MOST_DOTS - 1));
+            return (
+              <G key={minute} opacity={mode === "past" ? 0.34 : mode === "today" && minute < nowMinute ? 0.4 : 1}>
+                {Array.from({ length: dots }, (_, index) => (
+                  <Circle
+                    key={index}
+                    cx={LANE - (index + 1) * DOT_PITCH}
+                    cy={minute * MINUTE_PX}
+                    r={mode === "usual" ? 1.35 : 1.6}
+                    fill={mode === "past" ? tones.foreground : mode === "usual" ? "none" : tint}
+                    stroke={mode === "usual" ? tint : undefined}
+                    strokeWidth={mode === "usual" ? 0.9 : undefined}
+                  />
+                ))}
+              </G>
+            );
+          })}
+        </Svg>
+      ) : null}
       {Array.from({ length: 23 }, (_, index) => (index + 1) * 60).map((minute) => (
-        <Text key={minute} style={[styles.hour, { top: minute * MINUTE_PX - 7, right: 16 + LANE, color: tones.faint, opacity: live && Math.abs(minute - nowMinute) < 14 ? 0 : 1 }]}>
+        <Text key={minute} style={[styles.hour, { top: minute * MINUTE_PX - 7, right: RAIL + 3, color: tones.muted, backgroundColor: tones.ground, opacity: live && Math.abs(minute - nowMinute) < 14 ? 0 : 1 }]}>
           {hourLabel(minute)}
         </Text>
       ))}
-      <Svg width={6} height={DAY_MINUTES * MINUTE_PX} style={[styles.dots, { right: 4 + LANE }]}>
-        {Array.from({ length: DAY_MINUTES / 15 }, (_, index) => (
-          <Circle key={index} cx={3} cy={(index * 15 + 7.5) * MINUTE_PX} r={index % 4 === 2 ? 1.8 : 0.95} fill={alpha(tones.foreground, 0.38)} />
-        ))}
-      </Svg>
-      <View style={[styles.reached, { right: 6.5 + LANE, height: reached * MINUTE_PX, backgroundColor: alpha(tones.foreground, 0.55) }]} />
-      {curve ? (
-        <Svg width={LANE} height={DAY_MINUTES * MINUTE_PX} style={[styles.dots, { right: 2 }]}>
-          <Rect x={0} y={(curve.bedtime - 30) * MINUTE_PX} width={LANE} height={45 * MINUTE_PX} rx={3} fill={alpha(tones.sleep, 0.22)} />
-          <Path d={area} fill={alpha(tones.foreground, mode === "past" ? 0.11 : mode === "usual" ? 0.06 : 0.15)} />
-          <Path d={line} fill="none" stroke={tones.foreground} strokeWidth={mode === "today" ? 1.5 : 1} strokeDasharray={mode === "usual" ? "3 3" : undefined} opacity={mode === "today" ? 0.72 : mode === "usual" ? 0.55 : 0.3} />
-          {mode !== "past"
-            ? [curve.peak, curve.dip].map((window, index) => {
-                const point = points.find((each) => each.minute >= window.start) ?? first;
-                return point ? <Circle key={index} cx={lean(point.level)} cy={point.minute * MINUTE_PX} r={2.4} fill={index === 0 ? tones.foreground : tones.ground} stroke={tones.foreground} strokeWidth={1} /> : null;
-              })
-            : null}
-        </Svg>
-      ) : null}
       {live ? (
         <Animated.View style={[styles.nowAnchor, beadStyle]}>
-          <View style={[styles.bead, { right: onCurve ? 2 + LANE - lean(levelAtNow.level) - 4 : 2 + LANE, backgroundColor: tones.accent, borderColor: tones.ground }]} />
-          <View style={[styles.pill, { right: 14 + LANE, backgroundColor: tones.accent }]}>
+          <View style={[styles.bead, { right: RAIL - 5, backgroundColor: tones.accent, borderColor: tones.ground }]} />
+          <View style={[styles.pill, { right: RAIL + 7, backgroundColor: tones.accent }]}>
             <Text style={[styles.pillText, { color: tones.accentText }]}>{clock(nowMinute, true)}</Text>
           </View>
         </Animated.View>
@@ -512,7 +540,7 @@ const styles = StyleSheet.create({
   keepAllText: { fontFamily: fonts.medium, fontSize: 14 },
   timelineContent: { paddingBottom: 200 },
   gutter: { position: "absolute", top: 0, left: 0, width: GUTTER },
-  hour: { position: "absolute", fontFamily: fonts.mono, fontSize: 10, lineHeight: 14 },
+  hour: { position: "absolute", fontFamily: fonts.mono, fontSize: 10, lineHeight: 14, paddingHorizontal: 2, borderRadius: 3, overflow: "hidden" },
   dots: { position: "absolute", top: 0 },
   reached: { position: "absolute", top: 0, width: 1, borderRadius: 1 },
   nowAnchor: { position: "absolute", top: 0, left: 0, right: 0, height: 0 },

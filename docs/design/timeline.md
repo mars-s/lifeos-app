@@ -10,7 +10,7 @@ Avi's request, 28 November 2026: bring in something like [Exoplan's day view](re
 2. **Three inks.** Hatched pencil for what LifeOS predicts, the Area colour for what Avi kept, graphite for what has passed.
 3. **Only now moves.** The line fills in as the day goes. Nothing glows, pulses or counts. A block changes ink once, when it is kept or when now passes it.
 
-From Exoplan it takes the time rail, blocks sized by their length, labelled gaps, travel folded into a block, and a week strip with the day's ring. It leaves the glow, the bending line, the dark glass and the icons on blocks. From LifeOS it takes warm paper and graphite, Geist Mono for every time, the rule that one dot is 15 minutes, Area colours, and the Capacity dots from the widgets.
+From Exoplan it takes the time rail, energy drawn to the left under the hour labels, blocks sized by their length, labelled gaps, travel folded into a block, and a week strip with the day's ring. It leaves the glow, the dark glass and the icons on blocks. From LifeOS it takes warm paper and graphite, Geist Mono for every time, the rule that one dot is 15 minutes, Area colours, and the Capacity dots from the widgets.
 
 ## What "predicted" means
 
@@ -69,16 +69,18 @@ A block of 20 minutes or less keeps one line: the box, the title and the start t
 
 Shots: `timeline-energy.png`, and the rail in every day and week shot. Added 28 November 2026, after Avi asked for the energy levels from the Exoplan shot, predicted from his Oura ring.
 
-The rail carries an estimate of Avi's energy through the day. It is a thin lane between the hour labels and the blocks. The line leans away from the dots when energy is high and back towards them when it is low, so the day has a shape you can read at a glance: a rise after waking, a peak late in the morning, a dip after lunch, a second wind, and a wind down towards Oura's bedtime. One graphite ink, no green and red.
+The rail carries an estimate of Avi's energy through the day, drawn as dots on the rail's own grid. Each 15-minute row of the rail gets a short run of small round dots going left from the rail into the hour-label column, never towards the blocks. The number of dots is the level, from none to six, so the day has a shape you can read at a glance: a rise after waking, a peak late in the morning, a dip after lunch, a second wind, and a wind down towards Oura's bedtime. The colour deepens with the count, from a pale neutral for one or two dots to a calm green at six (`--energy-low` and `--energy-high` in `styles.css`; `--energy-high` is the Area green, so it shifts for light and dark). One green family: no amber, no rose, no glow. The dots sit under the hour labels, which keep a paper backing so they stay readable. It matches the dot rail, the Capacity dots and the widgets' dot matrix.
+
+On 28 November 2026 Avi first asked for the curve to face left, sit under the labels and be coloured. A coloured line in green, amber and rose was built and rejected the same evening: "That looks absolutely hideous. Can we change up the colours a bit? Maybe instead of the graph have dots going to the left, and more dots means it's greener." The dots replace the line and its fill.
 
 | Day | Looks like | Comes from |
 | --- | --- | --- |
-| Today | A solid line. The area behind now is filled, so the rail still fills in as the day goes. The blue bead for now rides on the line | Last night's real sleep |
-| Coming days | A thin line over a hatched area, the same hatching as a predicted block | His usual pattern only |
-| Past days | A flat graphite area with a faint line | The estimate that day started with |
+| Today | Solid dots. Rows behind now are dimmed, so the day still reads as filling in. The blue bead for now stays on the rail | Last night's real sleep |
+| Coming days | Hollow ring dots in the same greens, like a predicted block's outline | His usual pattern only |
+| Past days | Graphite dots | The estimate that day started with |
 | No curve | The plain dot rail | No Oura, or fewer than five nights |
 
-A filled dot marks the peak and a hollow dot marks the dip. A soft band in the Sleep Window colour marks the half hour before Oura's bedtime. In the week view the shared rail carries today's curve, and each day's header has a small curve in its own ink (a dashed outline for coming days), so a short night shows as a low day.
+The peak reads as the longest, greenest rows and the dip as the shortest; the gap hints name them ("peak, good for deep work"). A soft band in the Sleep Window colour marks the half hour before Oura's bedtime. In the week view the shared rail carries today's curve, and each day's header has a row of tiny dot columns, one per hour, up to three dots high, in its own ink (solid today, dimmed behind now, rings for coming days, graphite for past days), so a short night shows as a low day.
 
 **How it helps planning.**
 
@@ -175,13 +177,13 @@ Taken by `apps/web/scripts/check-timeline-design.py` at 1440 px and double densi
 2. **How far ahead to predict.** Today and tomorrow only. Later days show only what is kept.
 3. **Where it lives on iPhone.** A second face of the Today tab.
 
-The Energy Curve lives only in the left rail, beside the dots. The blocks keep their normal widths and look.
+The Energy Curve lives only in the left rail, as rows of dots going left from the rail under the hour labels. The blocks keep their normal widths and look.
 
 ## Built
 
 - **Core.** `planner/timeline:days` returns each day's Work Blocks, External Commitments, predictions, Capacity, load in three inks and Energy Curve. `predictDay` in `packages/backend/shared/timeline.ts` places the predictions, and the web app runs the same function on the client so a keep or a drag answers in the same frame.
 - **Web and Mac day.** The Timebox pane (`components/lifeos/timebox.tsx`) draws the dotted rail, the solid line up to now, the Energy Curve (`components/lifeos/energy-curve.tsx`), the now bead and pill, the three inks, outlined External Commitments, Trips as drive bands with "leave by", and Buffer and Free gaps with the energy hint. A prediction is kept by a click, Enter, a drag or the arrow keys, and Keep all is Cmd+Enter or the button under the title; each keep is one undoable change. A block keeps its React key when it is kept, so the hatch thickens into the fill. The Spread command keeps all on today and tomorrow and still previews on later days. `apps/web/scripts/check-timeline.py` checks it (shots: `timeline-app-*.png`).
-- **Web and Mac week.** The Week switch gives the pane the room of the day columns, with the shared rail carrying today's curve. Each day's header has its Capacity dots (one dot is 30 minutes, in the three inks), the time left or "Nothing planned", and a small curve in its own ink (graphite past, solid today, dashed for coming days). Past days are graphite and today has a faint ground and the now line.
+- **Web and Mac week.** The Week switch gives the pane the room of the day columns, with the shared rail carrying today's curve. Each day's header has its Capacity dots (one dot is 30 minutes, in the three inks), the time left or "Nothing planned", and a row of tiny energy dot columns in its own ink (graphite past, solid today, rings for coming days). Past days are graphite and today has a faint ground and the now line.
 - **iPhone.** The Today tab's header gains a glass button that switches between the list and the timeline, remembered across launches (`apps/mobile/src/lib/timeline.ts`, `components/timeline-face.tsx`). The face reads `planner/timeline:days` for the week: the day's name and date, a Week and Day switch, the Capacity ring, the week strip with each day's load dots, the summary row (predicted and Keep all, or done and not done on past days, or what did not fit), and the timeline with the rail, the Energy Curve, the now bead and pill, the three inks, outlined External Commitments, Trips and named gaps. A tap keeps a prediction and the box completes the Task, each optimistic and undoable. The week is seven columns of shapes with each day's planned time; a tap opens that day. The + button is the app's capture button. Shots: `timeline-app-iphone-*.png`.
 - **Motion.** On web the hatch thickens into the fill on keep and a block drains to graphite as now passes it (360 ms through the registered properties; a 160 ms cross-fade under reduced motion), and now steps once a minute with a 360 ms ease. On iPhone the same moments are 360 ms Reanimated cross-fades that follow the system's Reduce Motion, and the bead eases to the new minute.
 - **Not yet.** Dragging a prediction on iPhone, the sideways week, the energy reading card on tap, the Low energy day line, the swatch on each Task card in the day columns, Backspace or swipe to move a prediction's Task to another day, and Smart Block fills as predictions.

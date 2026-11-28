@@ -19,7 +19,6 @@ export const EnergyLane = ({
   to: number;
   scale: number;
   now: number;
-  width: number;
   quality: number;
   mode: EnergyMode;
   className?: string;

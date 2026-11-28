@@ -18,7 +18,6 @@ export const SNAP_MINUTES = 15;
 const DAY_MINUTES = 24 * 60;
 const DRAG_START_PX = 4;
 const GUTTER_PX = 84;
-const LANE_PX = 26;
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 
 export const toPx = (minutes: number) => (minutes / 60) * HOUR_PX;
@@ -509,10 +508,7 @@ export const Timebox = ({
       (commitment) => !commitment.quiet && commitment.day === readout.day && readout.start < commitment.end && readout.start + readout.minutes > commitment.start,
     );
   const columns = { gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))` };
-  const lane = energy ? LANE_PX : 0;
   const scale = HOUR_PX / 60;
-  const curveSpan = energy ? { from: energy.curve.points[0]?.minute ?? 0, to: energy.curve.points.at(-1)?.minute ?? 0 } : null;
-  const onCurve = now !== null && energy?.mode === "today" && curveSpan !== null && now.minute > curveSpan.from && now.minute < curveSpan.to;
 
   const perTaskDay = new Map<string, number>();
   for (const block of blocks) perTaskDay.set(`${block.taskId}:${block.day}`, (perTaskDay.get(`${block.taskId}:${block.day}`) ?? 0) + 1);
@@ -587,10 +583,10 @@ export const Timebox = ({
               <span
                 key={hour}
                 className={cn(
-                  "absolute -translate-y-1/2 font-mono text-[0.625rem] whitespace-nowrap text-faint-foreground transition-opacity duration-(--dur-fast)",
+                  "absolute z-[1] -translate-y-1/2 rounded-[3px] bg-(--tl-ground) px-0.5 font-mono text-[0.625rem] leading-3.5 whitespace-nowrap text-muted-foreground transition-opacity duration-(--dur-fast)",
                   now && Math.abs(hour * 60 - now.minute) * scale < 13 && "opacity-0",
                 )}
-                style={{ top: toPx(hour * 60), right: 18 + lane }}
+                style={{ top: toPx(hour * 60), right: 10 }}
               >
                 {formatClock(hour * 60).replace(":00", "")}
               </span>
@@ -598,16 +594,16 @@ export const Timebox = ({
           )}
           <span
             className="tl-rail absolute inset-y-0 w-[5px] [--tl-dot:color-mix(in_oklab,var(--foreground)_38%,transparent)]"
-            style={{ right: 5 + lane, backgroundSize: `5px ${HOUR_PX}px, 5px ${15 * scale}px`, backgroundPosition: `0 ${-HOUR_PX / 2}px, 0 ${-7.5 * scale}px` }}
+            style={{ right: 5, backgroundSize: `5px ${HOUR_PX}px, 5px ${15 * scale}px`, backgroundPosition: `0 ${-HOUR_PX / 2}px, 0 ${-7.5 * scale}px` }}
           />
-          <span className="tl-now absolute top-0 w-px rounded-full bg-foreground/55" style={{ height: toPx(clamp(reached, 0, DAY_MINUTES)), right: 7 + lane }} />
-          {energy && <EnergyLane curve={energy.curve} from={0} to={DAY_MINUTES} scale={scale} now={now?.minute ?? 0} width={LANE_PX} mode={energy.mode} className="right-[3px]" />}
+          <span className="tl-now absolute top-0 w-px rounded-full bg-foreground/55" style={{ height: toPx(clamp(reached, 0, DAY_MINUTES)), right: 7 }} />
+          {energy && <EnergyLane curve={energy.curve} from={0} to={DAY_MINUTES} scale={scale} now={now?.minute ?? 0} mode={energy.mode} className="right-[7.5px]" />}
           {now && (
             <>
-              {!onCurve && <span className="tl-now absolute size-[9px] -translate-y-1/2 rounded-full bg-brand shadow-[0_0_0_2px_var(--tl-ground)]" style={{ top: toPx(now.minute), right: 3 + lane }} />}
+              <span className="tl-now absolute z-[2] size-[9px] -translate-y-1/2 rounded-full bg-brand shadow-[0_0_0_2px_var(--tl-ground)]" style={{ top: toPx(now.minute), right: 3 }} />
               <span
-                className="tl-now absolute -translate-y-1/2 rounded-full bg-brand px-1.5 font-mono text-[0.625rem] leading-4 font-medium text-brand-foreground"
-                style={{ top: toPx(now.minute), right: 16 + lane }}
+                className="tl-now absolute z-[2] -translate-y-1/2 rounded-full bg-brand px-1.5 font-mono text-[0.625rem] leading-4 font-medium text-brand-foreground"
+                style={{ top: toPx(now.minute), right: 14 }}
               >
                 {formatClock(now.minute).replace(/ (am|pm)$/, "")}
               </span>

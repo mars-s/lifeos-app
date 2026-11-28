@@ -62,6 +62,9 @@
   --sleep: light-dark(oklch(0.5 0.15 282), oklch(0.72 0.12 284));
   --sleep-ink: light-dark(oklch(0.44 0.12 282), oklch(0.8 0.08 284));
 
+  --energy-high: var(--area-green);
+  --energy-low: color-mix(in oklab, var(--foreground) 26%, var(--surface-inset));
+
   --button: linear-gradient(0deg, light-dark(#262422, #fff) 0%, light-dark(#4a4743, #ababab) 100%);
   --button-hover: linear-gradient(0deg, light-dark(#302e2b, #fff) 0%, light-dark(#56534e, #c2c2c2) 100%);
   --button-foreground: light-dark(#f7f5f0, #111111);

@@ -2,7 +2,6 @@
 
 import { EnergyLane } from "./energy";
 import { at, BEDTIME, clock, DIP_AT, hourLabel, PEAK_AT, WAKE, type EnergyMode } from "./model";
-import { NOW } from "./sample";
 
 const DAY = { from: at(6, 30), to: at(23, 15), scale: 0.52 } as const;
 const top = (minute: number) => (minute - DAY.from) * DAY.scale;
@@ -31,7 +30,7 @@ export const EnergyAnatomy = () => (
           {hourLabel(at(hour))}
         </span>
       ))}
-      <EnergyLane from={DAY.from} to={DAY.to} scale={DAY.scale} now={NOW} width={72} quality={0.95} mode="today" className="left-12" />
+      <EnergyLane from={DAY.from} to={DAY.to} scale={DAY.scale} now={DAY.from} quality={0.95} mode="today" className="left-12" />
       {NOTES.map((item) => (
         <p key={item.title} className="absolute left-[8.75rem] -translate-y-1/2 text-small leading-4" style={{ top: top(item.minute) }}>
           <span className="font-medium">{item.title}</span>
@@ -63,8 +62,8 @@ const MINI = { from: at(7), to: at(23), scale: 0.3, width: 44 } as const;
 
 const STATES: { name: string; note: string; mode?: EnergyMode; quality?: number }[] = [
   { name: "A good night", note: "7:20 asleep, readiness 84. Solid, from last night's real sleep.", mode: "today", quality: 0.95 },
-  { name: "A short night", note: "5:10 asleep, readiness 61. The whole curve sits lower, and the header says Low energy day.", mode: "today", quality: 0.64 },
-  { name: "Usual pattern", note: "Coming days, and today when Oura has not synced since last night. Hollow and hatched, like a predicted block.", mode: "usual", quality: 0.86 },
+  { name: "A short night", note: "5:10 asleep, readiness 61. Every row is shorter and paler, and the header says Low energy day.", mode: "today", quality: 0.64 },
+  { name: "Usual pattern", note: "Coming days, and today when Oura has not synced since last night. Hollow ring dots in the same greens, like the outline of a predicted block.", mode: "usual", quality: 0.86 },
   { name: "Past", note: "Graphite. The estimate that day started with.", mode: "past", quality: 0.9 },
   { name: "No curve", note: "No Oura, or fewer than five nights: the plain dot rail, and Learning your pattern, 3 of 5 nights.", },
 ];
@@ -75,10 +74,10 @@ export const EnergyStates = () => (
       <li key={state.name}>
         <div aria-hidden="true" className="relative" style={{ height: (MINI.to - MINI.from) * MINI.scale, width: MINI.width + 8 }}>
           <span
-            className="tl-rail absolute inset-y-0 left-0 w-[5px] [--tl-dot:color-mix(in_oklab,var(--foreground)_38%,transparent)]"
+            className="tl-rail absolute inset-y-0 right-0 w-[5px] [--tl-dot:color-mix(in_oklab,var(--foreground)_38%,transparent)]"
             style={{ backgroundSize: `5px ${60 * MINI.scale}px, 5px ${15 * MINI.scale}px`, backgroundPosition: `0 ${-30 * MINI.scale}px, 0 ${-7.5 * MINI.scale}px` }}
           />
-          {state.mode && <EnergyLane from={MINI.from} to={MINI.to} scale={MINI.scale} now={at(14)} width={MINI.width} quality={state.quality ?? 1} mode={state.mode} className="left-2" />}
+          {state.mode && <EnergyLane from={MINI.from} to={MINI.to} scale={MINI.scale} now={at(14)} quality={state.quality ?? 1} mode={state.mode} className="right-[2.5px]" />}
         </div>
         <p className="mt-3 text-small font-medium">{state.name}</p>
         <p className="text-small text-pretty text-muted-foreground">{state.note}</p>

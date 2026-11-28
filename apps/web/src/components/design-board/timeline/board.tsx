@@ -159,12 +159,12 @@ export const TimelineBoard = () => {
           <Section
             id="energy"
             title="Energy"
-            lede="The rail carries an estimate of Avi's energy through the day, worked out from his Oura sleep. The further the line leans from the rail, the more he has. It is drawn in the same three inks as the blocks."
+            lede="The rail carries an estimate of Avi's energy through the day, worked out from his Oura sleep. Each quarter hour is a row of dots going left from the rail, under the hour labels: more dots, more energy, and the greener the row. Graphite once the day is over."
           >
             <Specimen name="The day's shape" note="A rise after waking, a peak late in the morning, a dip after lunch, a second wind, then a wind down towards Oura's bedtime. A tap on the rail opens the reading." className="col-span-full">
               <EnergyAnatomy />
             </Specimen>
-            <Specimen name="Curve states" note="Solid when it comes from last night, hatched when it is only the usual pattern, graphite when the day is over, and absent when there is nothing honest to draw." className="col-span-full" stage="justify-start">
+            <Specimen name="Curve states" note="Solid dots when it comes from last night, rings when it is only the usual pattern, graphite when the day is over, and absent when there is nothing honest to draw." className="col-span-full" stage="justify-start">
               <EnergyStates />
             </Specimen>
           </Section>

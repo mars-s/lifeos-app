@@ -96,14 +96,14 @@ with sync_playwright() as playwright:
             if theme == "light":
                 heads = page.locator(f"{PANE} [data-week-head]").count()
                 expect(f"the week at {width} px has a header per day", heads, 7 if width >= 900 else 3)
-                expect(f"the week at {width} px carries a small curve per day", page.locator(f"{PANE} [data-week-head] svg").count(), heads)
+                expect(f"the week at {width} px carries a row of energy dots per day", page.locator(f"{PANE} [data-week-head] [data-energy-dots]").count(), heads)
             context.close()
 
     context, page = signed_in(browser, 1440, 900, "light", "08:00")
     pane = page.locator(PANE)
     predicted = page.locator(PREDICTION).count()
     expect("today or tomorrow has predictions", predicted > 0, True)
-    expect("the rail carries the Energy Curve", pane.locator("svg.pointer-events-none path").count() > 0, True)
+    expect("the rail carries the Energy Curve as rows of dots", pane.locator("[data-energy-lane] circle").count() > 0, True)
     expect("a gap after now is named", pane.locator("[data-gap]").count() > 0, True)
     expect("the header counts the predictions", pane.get_by_text(re.compile(r"^\d+ predicted")).count(), 1)
 
