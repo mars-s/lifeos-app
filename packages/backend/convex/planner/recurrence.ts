@@ -1,30 +1,31 @@
 import { v } from "convex/values";
-import { Result, err, ok } from "neverthrow";
+import { Clock, Effect, Result } from "effect";
 import { internal } from "../_generated/api";
-import { internalMutation, type MutationCtx, type QueryCtx } from "../_generated/server";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
-import { ownerQuery } from "../platform/access";
 import { sameValue, startRecording, type Recorder } from "../platform/activity";
-import { changeMutation } from "../platform/change";
+import { changeMutation, internalMutation, ownerQuery, Reads, reading, recording, writing } from "../platform/effect";
 import type { Actor } from "../platform/tables";
-import { addDays, laterOf, parseIsoDate, type IsoDate } from "../../shared/date";
+import { addDays, laterOf, type IsoDate } from "../../shared/date";
+import { effectFromNeverthrow } from "../../shared/effect/bridge";
+import { parseIsoDate } from "../../shared/effect/date";
+import { InvalidSchedule } from "../../shared/effect/errors";
+import { parseEnd, parseSchedule, parseTimeZone } from "../../shared/effect/recurrence";
+import { asWire } from "../../shared/effect/wire";
 import {
   afterCompletionDate,
   firstAfter,
   firstOnOrAfter,
   following,
   localDateIn,
-  parseEnd,
-  parseSchedule,
-  parseTimeZone,
   withinEnd,
   type AfterCompletion,
   type RepeatEnd,
   type RepeatNext,
   type Schedule,
 } from "../../shared/recurrence";
-import { serialise } from "../../shared/result";
-import { liveHome, load, type PlannerError } from "./model";
+import { StaleOccurrence } from "./errors";
+import { liveHome, load } from "./model";
 import { createFromShape, homeSummary, scheduledDate, snapshotTask } from "./shape";
 import { vRepeatEnd, vSchedule, type TaskShape, type When } from "./tables";
 
@@ -112,22 +113,32 @@ const settle = async (ctx: MutationCtx, record: Recorder, ruleId: Id<"recurrence
 export const generate = internalMutation({
   args: { cursor: v.optional(v.string()) },
   returns: v.null(),
-  handler: async (ctx, { cursor }) => {
-    const now = Date.now();
+  handler: Effect.fn("recurrence.generate")(function* ({ cursor }) {
+    const now = yield* Clock.currentTimeMillis;
     const horizon = addDays(localDateIn("UTC", now), 1);
-    const { page, isDone, continueCursor } = await ctx.db
-      .query("recurrenceRules")
-      .withIndex("by_next", (q) => q.eq("next.kind", "due").lte("next.date", horizon))
-      .paginate({ cursor: cursor ?? null, numItems: RULE_BATCH });
+    const { page, isDone, continueCursor } = yield* reading((ctx) =>
+      ctx.db
+        .query("recurrenceRules")
+        .withIndex("by_next", (q) => q.eq("next.kind", "due").lte("next.date", horizon))
+        .paginate({ cursor: cursor ?? null, numItems: RULE_BATCH }),
+    );
     for (const rule of page) {
-      const record = startRecording(ctx, RECURRENCE, "recurrence.generate");
-      await settle(ctx, record, rule._id, now);
-      await record.finish();
+      yield* writing(async (ctx) => {
+        const record = startRecording(ctx, RECURRENCE, "recurrence.generate");
+        await settle(ctx, record, rule._id, now);
+        await record.finish();
+      });
     }
-    if (!isDone) await ctx.scheduler.runAfter(0, internal.planner.recurrence.generate, { cursor: continueCursor });
+    if (!isDone)
+      yield* writing(async (ctx) => {
+        await ctx.scheduler.runAfter(0, internal.planner.recurrence.generate, { cursor: continueCursor });
+      });
     return null;
-  },
+  }),
 });
+
+const settling = (ruleId: Id<"recurrenceRules">, now: number) =>
+  Reads.use((ctx) => recording((record) => settle(ctx as MutationCtx, record, ruleId, now)));
 
 const afterCompletionStart = (schedule: AfterCompletion, { end, timeZone, today, task }: Terms) => ({
   anchor: today,
@@ -149,103 +160,95 @@ const calendarStart = (schedule: Schedule, { end, today, task }: Terms, evening:
     : null;
 };
 
-const startRule = async (ctx: MutationCtx, record: Recorder, terms: Terms) => {
+const startRule = Effect.fn("recurrence.startRule")(function* (terms: Terms) {
   const { schedule, end, timeZone, task, shape } = terms;
   const evening = task.when.kind === "scheduled" && task.when.evening;
   const plan = schedule.kind === "afterCompletion" ? afterCompletionStart(schedule, terms) : calendarStart(schedule, terms, evening);
-  if (!plan || !withinEnd(end, plan.date, 0)) {
-    return err<Id<"recurrenceRules">, PlannerError>({ kind: "invalid_schedule", reason: "end" });
-  }
+  if (!plan || !withinEnd(end, plan.date, 0)) return yield* new InvalidSchedule({ reason: "end" });
   const { anchor, date, when, next } = plan;
-  const ruleId = await record.insert("recurrenceRules", { schedule, end, task: shape, evening, timeZone, anchor, next, lastDate: date, count: 1 });
-  await record.patch("tasks", task._id, { when, repeat: { ruleId, date } });
-  return ok<Id<"recurrenceRules">, PlannerError>(ruleId);
-};
+  const ruleId = yield* recording((record) =>
+    record.insert("recurrenceRules", { schedule, end, task: shape, evening, timeZone, anchor, next, lastDate: date, count: 1 }),
+  );
+  yield* recording((record) => record.patch("tasks", task._id, { when, repeat: { ruleId, date } }));
+  return ruleId;
+});
 
-const reviseRule = async (ctx: MutationCtx, record: Recorder, rule: Rule, terms: Terms) => {
+const reviseRule = Effect.fn("recurrence.reviseRule")(function* (rule: Rule, terms: Terms) {
   const { schedule, end, timeZone, today, task, shape } = terms;
   const from = laterOf(today, addDays(rule.lastDate as IsoDate, 1));
   const anchor = sameValue(schedule, rule.schedule) ? (rule.anchor as IsoDate) : from;
   const next =
     schedule.kind === "afterCompletion"
-      ? nextAfterInstance(schedule, { ...rule, end, timeZone }, await instanceOn(ctx, rule._id, rule.lastDate), today)
+      ? nextAfterInstance(schedule, { ...rule, end, timeZone }, yield* reading((ctx) => instanceOn(ctx, rule._id, rule.lastDate)), today)
       : dueWithin(end, firstOnOrAfter(schedule, anchor, from), rule.count);
-  await record.patch("recurrenceRules", rule._id, {
-    schedule,
-    end,
-    task: shape,
-    evening: task.when.kind === "scheduled" && task.when.evening,
-    timeZone,
-    anchor,
-    next,
-  });
-  return ok<Id<"recurrenceRules">, PlannerError>(rule._id);
-};
+  yield* recording((record) =>
+    record.patch("recurrenceRules", rule._id, {
+      schedule,
+      end,
+      task: shape,
+      evening: task.when.kind === "scheduled" && task.when.evening,
+      timeZone,
+      anchor,
+      next,
+    }),
+  );
+  return rule._id;
+});
+
+const loaded = <T extends "tasks" | "recurrenceRules">(table: T, id: Id<T>) => Reads.use((ctx) => effectFromNeverthrow(() => load(ctx, table, id)));
 
 export const setRepeat = changeMutation({
   action: "recurrence.set",
   args: { taskId: v.id("tasks"), schedule: vSchedule, end: vRepeatEnd, timeZone: v.string() },
-  handler: async (ctx, args, record) => {
-    const task = await load(ctx, "tasks", args.taskId);
-    const terms = Result.combine([parseSchedule(args.schedule), parseEnd(args.end), parseTimeZone(args.timeZone)]);
-    if (task.isErr()) return err<{ ruleId: Id<"recurrenceRules"> }, PlannerError>(task.error);
-    if (terms.isErr()) return err<{ ruleId: Id<"recurrenceRules"> }, PlannerError>(terms.error);
-    const [schedule, end, timeZone] = terms.value;
-    const now = Date.now();
+  handler: Effect.fn("recurrence.setRepeat")(function* (args) {
+    const task = yield* loaded("tasks", args.taskId);
+    const [schedule, end, timeZone] = yield* Effect.fromResult(
+      Result.all([parseSchedule(args.schedule), parseEnd(args.end), parseTimeZone(args.timeZone)]),
+    );
+    const now = yield* Clock.currentTimeMillis;
     const today = localDateIn(timeZone, now);
-    const shape = await snapshotTask(ctx, task.value, today);
-    const full = { schedule, end, timeZone, today, task: task.value, shape };
-    const current = task.value.repeat ? await ctx.db.get("recurrenceRules", task.value.repeat.ruleId) : null;
-    const ruleId =
-      current && current.next.kind !== "ended"
-        ? await reviseRule(ctx, record, current, full)
-        : await startRule(ctx, record, full);
-    if (ruleId.isErr()) return err<{ ruleId: Id<"recurrenceRules"> }, PlannerError>(ruleId.error);
-    await settle(ctx, record, ruleId.value, now);
-    return ok<{ ruleId: Id<"recurrenceRules"> }, PlannerError>({ ruleId: ruleId.value });
-  },
+    const shape = yield* reading((ctx) => snapshotTask(ctx, task, today));
+    const full = { schedule, end, timeZone, today, task, shape };
+    const repeat = task.repeat;
+    const current = repeat ? yield* reading((ctx) => ctx.db.get("recurrenceRules", repeat.ruleId)) : null;
+    const ruleId = current && current.next.kind !== "ended" ? yield* reviseRule(current, full) : yield* startRule(full);
+    yield* settling(ruleId, now);
+    return { ruleId };
+  }),
 });
 
 export const stopRepeat = changeMutation({
   action: "recurrence.stop",
   args: { taskId: v.id("tasks") },
-  handler: async (ctx, { taskId }, record) => {
-    const task = await load(ctx, "tasks", taskId);
-    if (task.isErr()) return err<{ changed: boolean }, PlannerError>(task.error);
-    const ruleId = task.value.repeat?.ruleId;
-    return ok<{ changed: boolean }, PlannerError>({
-      changed: ruleId ? await record.patch("recurrenceRules", ruleId, { next: ENDED }) : false,
-    });
-  },
+  handler: Effect.fn("recurrence.stopRepeat")(function* ({ taskId }) {
+    const task = yield* loaded("tasks", taskId);
+    const ruleId = task.repeat?.ruleId;
+    return { changed: ruleId ? yield* recording((record) => record.patch("recurrenceRules", ruleId, { next: ENDED })) : false };
+  }),
 });
 
 export const stopRule = changeMutation({
   action: "recurrence.stop",
   args: { ruleId: v.id("recurrenceRules") },
-  handler: async (ctx, { ruleId }, record) => {
-    const rule = await load(ctx, "recurrenceRules", ruleId);
-    if (rule.isErr()) return err<{ changed: boolean }, PlannerError>(rule.error);
-    return ok<{ changed: boolean }, PlannerError>({
-      changed: await record.patch("recurrenceRules", ruleId, { next: ENDED }),
-    });
-  },
+  handler: Effect.fn("recurrence.stopRule")(function* ({ ruleId }) {
+    yield* loaded("recurrenceRules", ruleId);
+    return { changed: yield* recording((record) => record.patch("recurrenceRules", ruleId, { next: ENDED })) };
+  }),
 });
 
 export const skip = changeMutation({
   action: "recurrence.skip",
   args: { ruleId: v.id("recurrenceRules"), date: v.string() },
-  handler: async (ctx, { ruleId, date }, record) => {
-    const rule = await load(ctx, "recurrenceRules", ruleId);
-    if (rule.isErr()) return err<{ next: RepeatNext }, PlannerError>(rule.error);
-    const { next, schedule, anchor, end, count } = rule.value;
-    if (next.kind !== "due" || next.date !== date) {
-      return err<{ next: RepeatNext }, PlannerError>({ kind: "stale_occurrence", ruleId, date });
-    }
-    await record.patch("recurrenceRules", ruleId, { next: dueWithin(end, following(schedule, anchor as IsoDate, date as IsoDate), count) });
-    await settle(ctx, record, ruleId, Date.now());
-    const after = await ctx.db.get("recurrenceRules", ruleId);
-    return ok<{ next: RepeatNext }, PlannerError>({ next: after?.next ?? ENDED });
-  },
+  handler: Effect.fn("recurrence.skip")(function* ({ ruleId, date }) {
+    const { next, schedule, anchor, end, count } = yield* loaded("recurrenceRules", ruleId);
+    if (next.kind !== "due" || next.date !== date) return yield* new StaleOccurrence({ ruleId, date });
+    yield* recording((record) =>
+      record.patch("recurrenceRules", ruleId, { next: dueWithin(end, following(schedule, anchor as IsoDate, date as IsoDate), count) }),
+    );
+    yield* settling(ruleId, yield* Clock.currentTimeMillis);
+    const after = yield* reading((ctx) => ctx.db.get("recurrenceRules", ruleId));
+    return { next: after?.next ?? ENDED };
+  }),
 });
 
 export const followCompletion = async (ctx: MutationCtx, record: Recorder, taskIds: readonly Id<"tasks">[], now: number) => {
@@ -293,6 +296,11 @@ const loadUpcoming = async (ctx: QueryCtx, date: IsoDate, days: number) => {
 
 export const upcoming = ownerQuery({
   args: { date: v.string(), days: v.number() },
-  handler: async (ctx, { date, days }) =>
-    serialise(await parseIsoDate(date).asyncMap((day) => loadUpcoming(ctx, day, days))),
+  handler: ({ date, days }) =>
+    asWire(
+      Effect.gen(function* () {
+        const day = yield* Effect.fromResult(parseIsoDate(date));
+        return yield* reading((ctx) => loadUpcoming(ctx, day, days));
+      }),
+    ),
 });
