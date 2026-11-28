@@ -26,14 +26,20 @@ const applyChange = async <Args extends PropertyValidators, T extends object, E>
   return result.map((value) => ({ ...value, activityId }));
 };
 
-const changes = new WeakMap<object, ChangeSpec<PropertyValidators, object, unknown>>();
+type ChangeRun<Args> = (ctx: MutationCtx, actor: Actor, args: Args) => Promise<Result<unknown, unknown>>;
+
+const changes = new WeakMap<object, ChangeRun<never>>();
+
+export const registerChange = <Args>(registered: object, run: ChangeRun<Args>) => {
+  changes.set(registered, run as ChangeRun<never>);
+};
 
 export const changeMutation = <Args extends PropertyValidators, T extends object, E>(spec: ChangeSpec<Args, T, E>) => {
   const registered = ownerMutation({
     args: spec.args,
     handler: async (ctx, args, actor) => serialise(await applyChange(ctx, actor, spec, args)),
   });
-  changes.set(registered, spec as unknown as ChangeSpec<PropertyValidators, object, unknown>);
+  registerChange(registered, (ctx, actor, args: ObjectType<Args>) => applyChange(ctx, actor, spec, args));
   return registered;
 };
 
@@ -43,7 +49,7 @@ export const changeAs = async <Args extends DefaultFunctionArgs, T, E>(
   registered: RegisteredMutation<"public", Args, Promise<SerialisedResult<T, E>>>,
   args: Omit<Args, "agentRun">,
 ) => {
-  const spec = changes.get(registered);
-  if (!spec) throw new Error("changeAs needs a mutation built with changeMutation.");
-  return (await applyChange(ctx, actor, spec, args)) as Result<T, E>;
+  const run = changes.get(registered);
+  if (!run) throw new Error("changeAs needs a mutation built with changeMutation.");
+  return (await run(ctx, actor, args as never)) as Result<T, E>;
 };

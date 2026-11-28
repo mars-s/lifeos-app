@@ -5,10 +5,12 @@ import { register as registerMcp } from "@convex-dev/mcp/test";
 import { register as registerAgent } from "@convex-dev/agent/test";
 import { createFunctionHandle } from "convex/server";
 import { convexTest } from "convex-test";
+import { Effect } from "effect";
 import { vi } from "vitest";
 import { components, internal } from "./_generated/api";
 import { PROVIDERS } from "../shared/ai";
 import type { SerialisedResult } from "../shared/result";
+import { Reads, runAtEdge, Writes } from "./platform/effect";
 import { sha256Hex } from "./platform/workers";
 import schema from "./schema";
 import type { Capability } from "./platform/tables";
@@ -100,3 +102,6 @@ export const refusal = async (call: Promise<unknown>) => {
   const data = thrown && typeof thrown === "object" && "data" in thrown ? thrown.data : null;
   return data && typeof data === "object" && "kind" in data ? data.kind : thrown;
 };
+
+export const runIn = <A, E>(t: Pick<SignedOutBackend, "run">, effect: Effect.Effect<A, E, Reads | Writes>) =>
+  t.run((ctx) => runAtEdge(effect.pipe(Effect.orDie, Effect.provideService(Writes, ctx), Effect.provideService(Reads, ctx))));
