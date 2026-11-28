@@ -1,23 +1,16 @@
 "use client";
 
 import { AlertDialog } from "radix-ui";
-import { useSyncExternalStore } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/reactivity";
+import { registry } from "../../lib/atoms";
 import { haptic } from "@/lib/haptics";
 
 type Request = { title: string; body: string; action: string; onConfirm: () => void };
 
-let request: Request | null = null;
-const listeners = new Set<() => void>();
+const requestAtom = Atom.make<Request | null>(null).pipe(Atom.keepAlive);
 
-const set = (next: Request | null) => {
-  request = next;
-  listeners.forEach((listener) => listener());
-};
-
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  return () => void listeners.delete(listener);
-};
+const set = (next: Request | null) => registry.set(requestAtom, next);
 
 export const askToConfirm = (next: Request) => set(next);
 
@@ -25,7 +18,7 @@ const buttonClass =
   "h-9 rounded-full px-4 text-small font-medium transition-[background-color,scale] duration-(--dur-press) ease-out active:scale-[0.97]";
 
 export const ConfirmHost = () => {
-  const current = useSyncExternalStore(subscribe, () => request, () => null);
+  const current = useAtomValue(requestAtom);
   return (
     <AlertDialog.Root open={current !== null} onOpenChange={(open) => !open && set(null)}>
       <AlertDialog.Portal>
