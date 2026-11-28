@@ -1,11 +1,13 @@
+import { useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/reactivity";
 import { router } from "expo-router";
-import { useSyncExternalStore } from "react";
 import { api } from "@lifeos/backend/api";
 import { taskActions, quoted } from "@lifeos/backend/client/task-actions";
 import { completingTasks } from "@lifeos/backend/client/updaters";
 import type { Id } from "@lifeos/backend/dataModel";
 import type { PlannerTask } from "@lifeos/backend/types";
 import { Alert } from "react-native";
+import { registry } from "@/lib/atoms";
 import { change } from "@/lib/change";
 import { convex } from "@/lib/convex";
 import { haptic } from "@/lib/haptics";
@@ -29,24 +31,17 @@ export const useTask = (taskId: Id<"tasks">) => {
   return live === undefined ? seeds.get(taskId) : (live ?? undefined);
 };
 
-let lingering: ReadonlySet<string> = new Set();
-const listeners = new Set<() => void>();
+const lingeringAtom = Atom.make<ReadonlySet<string>>(new Set<string>()).pipe(Atom.keepAlive);
 const pending = new Map<string, ReturnType<typeof setTimeout>>();
 
 const setLingering = (id: string, on: boolean) => {
-  const next = new Set(lingering);
+  const next = new Set(registry.get(lingeringAtom));
   if (on) next.add(id);
   else next.delete(id);
-  lingering = next;
-  listeners.forEach((listener) => listener());
+  registry.set(lingeringAtom, next);
 };
 
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  return () => void listeners.delete(listener);
-};
-
-export const useLingering = (taskId: string) => useSyncExternalStore(subscribe, () => lingering.has(taskId));
+export const useLingering = (taskId: string) => useAtomValue(lingeringAtom, (lingering) => lingering.has(taskId));
 
 export const completeSoon = (task: PlannerTask) => {
   const taskId = task._id;
