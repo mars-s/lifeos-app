@@ -3,38 +3,29 @@
 import { ArrowsOut, Notebook, X } from "@phosphor-icons/react";
 import { useQuery } from "convex/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/reactivity";
+import { useEffect, useRef } from "react";
 import { titleKey } from "@lifeos/notes/markdown";
 import { api } from "@lifeos/backend/api";
 import type { Id } from "@lifeos/backend/dataModel";
 import type { SidebarView } from "@lifeos/backend/types";
 import { IconButton } from "@/components/ui/action-button";
+import { registry } from "../../lib/atoms";
 import { cn } from "@/lib/utils";
 import { useShell } from "../app/shell-context";
 import { useNoteItems } from "./data";
 import { newDocId, openNote, textOf } from "./library";
 import { NotePage } from "./notes-screen";
 
-let current: string | null = null;
-const listeners = new Set<() => void>();
+const besideAtom = Atom.make<string | null>(null).pipe(Atom.keepAlive);
 
-const set = (docId: string | null) => {
-  current = docId;
-  for (const listener of listeners) listener();
-};
+const set = (docId: string | null) => registry.set(besideAtom, docId);
 
 export const openBeside = (docId: string) => set(docId);
 export const closeBeside = () => set(null);
 
-const useBeside = () =>
-  useSyncExternalStore(
-    (listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    () => current,
-    () => null,
-  );
+const useBeside = () => useAtomValue(besideAtom);
 
 export const NoteBeside = ({ sidebar }: { sidebar: SidebarView | undefined }) => {
   const docId = useBeside();
