@@ -1,0 +1,8 @@
+<Data name=focus from=get_focus/>
+<Pick bind=minutes options="15,25,50" value=25 kind=segment label=Length/>
+<Meter value={focus.elapsed} max={minutes} kind=ring label=Elapsed unit=min/>
+<Row>
+<Button label=Start tool=start_focus minutes={minutes} tone=primary/>
+<Button label=Stop tool=stop_focus tone=quiet/>
+</Row>
+<Text tone=muted>{focus.task}</Text>

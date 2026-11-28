@@ -1,0 +1,26 @@
+{
+  "context": {
+    "reads": "list_tasks(view=today|inbox|upcoming) gives title, area, project, when, estimate (minutes), done. get_focus() gives task, minutes, elapsed, running (one row). get_day_plan() gives planned, free, goal, busy in minutes (one row).",
+    "tools": "start_focus(minutes), stop_focus(), create_task(title), set_task_status(id, status), stop_run()"
+  },
+  "requests": [
+    { "id": "sleep-chart", "title": "Sleep this week", "layer": [2], "ask": "Chart my sleep this week from this CSV:\nday,hours\nMon,7.2\nTue,6.5\nWed,8.1\nThu,7.0\nFri,5.9\nSat,8.4\nSun,7.6" },
+    { "id": "tasks-by-area", "title": "Today by Area", "layer": [2], "ask": "A table of today's Tasks grouped by Area, with the Estimate." },
+    { "id": "progress-ring", "title": "Thesis", "layer": [2], "ask": "A progress ring for my thesis: 62 of 100 pages written." },
+    { "id": "trip-summary", "title": "Hobart trip", "layer": [2], "ask": "Summarise my Hobart trip without a map. Fly out Thu 3 Dec 8:10 am on JQ705 from Melbourne, check in at Salamanca at 2 pm, MONA ferry Fri 9:30 am, fly home Sun 6 Dec 5:45 pm. The budget is $620 for 4 days." },
+    { "id": "pomodoro", "title": "Pomodoro", "layer": [2], "ask": "A pomodoro control: pick the length, start and stop, and show how far in I am." },
+    { "id": "summary-sparkline", "title": "Thesis notes", "layer": [2], "ask": "Summarise this note in three bullet points and show the words written per day as a sparkline. Note: 'Methods chapter. The interview protocol is settled at twelve semi-structured interviews. Coding uses two passes, open then axial, and a second coder checks one in five. Ethics approval came through on Tuesday.' Words written: Mon 320, Tue 540, Wed 410, Thu 760, Fri 905." },
+    { "id": "dice-roller", "title": "Random number", "layer": [3], "ask": "A dice roller for the random number workflow: roll a six-sided die and send the number out as roll." },
+    { "id": "spinning-logo", "title": "Logo", "layer": [3], "ask": "A 3D spinning LifeOS logo: a rounded square with a tick on it, slowly rotating." },
+    { "id": "palette-picker", "title": "Poster colour", "layer": [2], "ask": "A colour palette picker. Let me choose one of these five colours for the poster and send it out as colour: #2f6fed, #e4572e, #17b890, #f2c14e, #3d3a4b." },
+    { "id": "render-progress", "title": "Rendering the frames", "layer": [2], "sockets": ["frames"], "socketWords": "frames: done, total, eta (minutes left), last (image of the last frame). One row.", "ask": "Show the render progress for the film pipeline, with the last frame and a way to stop it." },
+    { "id": "week-load", "title": "This week", "layer": [2], "ask": "How full is my week? Planned hours per day: Mon 5.5, Tue 7, Wed 3, Thu 6.5, Fri 4. I have 8 free hours a day." },
+    { "id": "focus-by-area", "title": "Focus by Area", "layer": [2], "ask": "A stacked chart of focus minutes per day by Area from this data:\nday,area,minutes\nMon,University,90\nMon,Chemwatch,45\nTue,University,60\nTue,Personal,30\nWed,Chemwatch,120\nThu,University,75\nThu,Personal,20\nFri,University,50\nFri,Chemwatch,40" },
+    { "id": "water-settings", "title": "Water reminder", "layer": [2], "ask": "Controls for a water reminder: a switch to turn it on, how many glasses a day (4 to 12), and a field for its name." },
+    { "id": "breathing", "title": "Breathe", "layer": [3], "ask": "A breathing exercise: a circle that slowly grows for 4 seconds and shrinks for 4 seconds, with the word in or out." },
+    { "id": "reading-list", "title": "Reading list", "layer": [2], "ask": "My reading list, one entry per book with its author and how far through I am, from this data:\ntitle,author,read,pages\nThe Dispossessed,Ursula K. Le Guin,210,387\nHow Buildings Learn,Stewart Brand,88,243\nSeeing Like a State,James C. Scott,402,445" },
+    { "id": "noughts-and-crosses", "title": "Noughts and crosses", "layer": [3], "ask": "A game of noughts and crosses I can play against myself." },
+    { "id": "inbox-capture", "title": "Inbox", "layer": [2], "ask": "Show how many Tasks are in my Inbox and give me a button that adds a Task called Call the dentist." },
+    { "id": "signature", "title": "Sign here", "layer": [3], "ask": "A box I can sign in with my finger or the mouse, with a clear button." }
+  ]
+}

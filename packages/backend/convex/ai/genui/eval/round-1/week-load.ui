@@ -1,0 +1,14 @@
+<Data name=week>
+day,planned,free
+Mon,5.5,8
+Tue,7,8
+Wed,3,8
+Thu,6.5,8
+Fri,4,8
+</Data>
+<Row>
+<Num label=Planned value={week.planned.sum} unit=h/>
+<Num label=Free value={week.free.sum} unit=h/>
+</Row>
+<Meter value={week.planned.sum} max=40 kind=ring label="Of the week" unit=h/>
+<Chart mark=bar data=week x=day y=planned/>

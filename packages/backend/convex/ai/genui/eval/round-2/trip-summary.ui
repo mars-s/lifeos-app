@@ -1,0 +1,12 @@
+<Row>
+<Num label=Budget value=620 unit=$/>
+<Num label=Days value=4/>
+</Row>
+<Data name=trip>
+day,time,plan
+Thu 3 Dec,8:10 am,Fly out on JQ705 from Melbourne
+Thu 3 Dec,2 pm,Check in at Salamanca
+Fri 4 Dec,9:30 am,MONA ferry
+Sun 6 Dec,5:45 pm,Fly home
+</Data>
+<Table data=trip cols="day:Day,time:Time,plan:Plan"/>

@@ -1,0 +1,2 @@
+<Data name=tasks from=list_tasks view=today/>
+<Table data=tasks cols="title:Task,estimate:Estimate" group=area/>

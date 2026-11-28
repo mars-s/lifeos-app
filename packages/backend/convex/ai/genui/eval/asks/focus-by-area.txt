@@ -1,0 +1,15 @@
+A stacked chart of focus minutes per day by Area from this data:
+day,area,minutes
+Mon,University,90
+Mon,Chemwatch,45
+Tue,University,60
+Tue,Personal,30
+Wed,Chemwatch,120
+Thu,University,75
+Thu,Personal,20
+Fri,University,50
+Fri,Chemwatch,40
+
+Reads: list_tasks(view=today|inbox|upcoming) gives title, area, project, when, estimate (minutes), done. get_focus() gives task, minutes, elapsed, running (one row). get_day_plan() gives planned, free, goal, busy in minutes (one row).
+Tools: start_focus(minutes), stop_focus(), create_task(title), set_task_status(id, status), stop_run()
+Sockets: none

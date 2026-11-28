@@ -1,0 +1,2 @@
+<Meter value=62 max=100 kind=ring label="Thesis pages" unit=pages/>
+<Text size=small tone=muted>62 of 100 pages written</Text>

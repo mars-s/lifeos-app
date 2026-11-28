@@ -1,0 +1,15 @@
+<Data name=focus>
+day,area,minutes
+Mon,University,90
+Mon,Chemwatch,45
+Tue,University,60
+Tue,Personal,30
+Wed,Chemwatch,120
+Thu,University,75
+Thu,Personal,20
+Fri,University,50
+Fri,Chemwatch,40
+</Data>
+<Card title="Focus minutes by Area">
+<Chart mark=bar data=focus x=day y=minutes series=area/>
+</Card>

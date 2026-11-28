@@ -1,0 +1,20 @@
+<Frame>
+<style>
+.stage{display:grid;place-items:center;width:100%;height:100%;perspective:700px}
+.logo{width:150px;height:150px;position:relative;transform-style:preserve-3d;transform:rotateX(-12deg);animation:spin 28s linear infinite}
+.slab{position:absolute;inset:0;border-radius:34px;background:var(--ink);transform:translateZ(10px)}
+.tick{position:absolute;inset:0;width:150px;height:150px;transform:translateZ(12px)}
+@keyframes spin{to{transform:rotateX(-12deg) rotateY(360deg)}}
+</style>
+<div class="stage">
+<div class="logo" id="logo">
+<div class="slab"></div>
+<svg class="tick" viewBox="0 0 150 150" aria-label="LifeOS logo">
+<path d="M42 80 L66 102 L110 52" fill="none" style="stroke:var(--paper)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+</div>
+</div>
+<script>
+if (ui.reduced) document.getElementById("logo").style.animation = "none"
+</script>
+</Frame>

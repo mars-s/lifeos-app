@@ -1,0 +1,30 @@
+<Frame>
+<style>
+.breath { display: grid; place-items: center; padding: 24px 16px; }
+.stage { position: relative; display: grid; place-items: center; width: min(64vw, 240px); aspect-ratio: 1; }
+.orb { width: 100%; aspect-ratio: 1; border-radius: 50%; background: var(--good); opacity: 0.4; transform: scale(0.5); }
+.word { position: absolute; font-size: 22px; color: var(--ink); }
+</style>
+<div class="breath">
+<div class="stage">
+<div class="orb" id="orb"></div>
+<span class="word" id="word">in</span>
+</div>
+</div>
+<script>
+const orb = document.getElementById("orb")
+const word = document.getElementById("word")
+const cycle = 8000
+const start = performance.now()
+let last = "in"
+function draw(now) {
+  const t = (now - start) % cycle
+  const p = (1 - Math.cos(2 * Math.PI * t / cycle)) / 2
+  const label = t < cycle / 2 ? "in" : "out"
+  orb.style.transform = `scale(${ui.reduced ? 1 : 0.5 + 0.5 * p})`
+  if (label !== last) { word.textContent = label; last = label }
+  requestAnimationFrame(draw)
+}
+requestAnimationFrame(draw)
+</script>
+</Frame>

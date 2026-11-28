@@ -1,0 +1,10 @@
+<Card title="Render progress">
+<Row>
+<Num label=Done value={frames.done} unit=frames/>
+<Num label="Time left" value={frames.eta} unit=min/>
+</Row>
+<Meter kind=bar value={frames.done} max={frames.total} label="Frames"/>
+<Image src={frames.last} alt="Last frame" ratio=16/9/>
+<Text tone=muted>{frames.done} of {frames.total} frames rendered.</Text>
+<Button label="Stop render" tool=stop_run tone=quiet/>
+</Card>

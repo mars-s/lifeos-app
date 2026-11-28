@@ -1,0 +1,5 @@
+<Data name=inbox from=list_tasks view=inbox/>
+<Row align=center>
+<Num label=Inbox value={inbox.count} unit=tasks/>
+<Button label="Add task" tool=create_task title="Call the dentist" tone=primary/>
+</Row>

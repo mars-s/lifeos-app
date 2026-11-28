@@ -1,0 +1,5 @@
+<Row align=between>
+<Toggle bind=reminderOn label="Water reminder"/>
+</Row>
+<Slider bind=glasses min=4 max=12 step=1 value=8 label="Glasses a day" unit=glasses/>
+<Input bind=reminderName label="Name" placeholder="Water reminder"/>

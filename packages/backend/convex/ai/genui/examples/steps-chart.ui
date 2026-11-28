@@ -1,0 +1,11 @@
+<Data name=steps>
+day,steps
+Mon,4200
+Tue,8100
+Wed,6500
+</Data>
+<Row>
+<Num label=Average value={steps.steps.avg} unit=steps/>
+<Num label=Best value={steps.steps.max} unit=steps/>
+</Row>
+<Chart mark=bar data=steps x=day y=steps/>

@@ -1,0 +1,16 @@
+<Data name=books>
+title,author,read,pages
+The Dispossessed,Ursula K. Le Guin,210,387
+How Buildings Learn,Stewart Brand,88,243
+Seeing Like a State,James C. Scott,402,445
+</Data>
+<Row>
+<Num label="Pages read" value={books.read.sum} unit=pages/>
+<Num label="Pages in total" value={books.pages.sum} unit=pages/>
+</Row>
+<List data=books>
+<Card title={title}>
+<Text size=small tone=muted>{author}</Text>
+<Meter value={read} max={pages} kind=bar unit=pages/>
+</Card>
+</List>

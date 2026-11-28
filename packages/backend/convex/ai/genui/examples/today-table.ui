@@ -1,0 +1,4 @@
+<Data name=tasks from=list_tasks view=today/>
+<Text tone=muted>{tasks.count} Tasks, {tasks.estimate.sum} min planned</Text>
+<Table data=tasks cols="title:Task,estimate:Min" group=area/>
+<Button label="Focus for 25 min" tool=start_focus minutes=25 tone=primary/>

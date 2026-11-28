@@ -1,0 +1,164 @@
+[
+  {
+    "id": "sleep-chart",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 300
+  },
+  {
+    "id": "tasks-by-area",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 113
+  },
+  {
+    "id": "progress-ring",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 127
+  },
+  {
+    "id": "trip-summary",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 459
+  },
+  {
+    "id": "pomodoro",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 420
+  },
+  {
+    "id": "summary-sparkline",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 492
+  },
+  {
+    "id": "dice-roller",
+    "valid": true,
+    "layer": 3,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 264
+  },
+  {
+    "id": "spinning-logo",
+    "valid": true,
+    "layer": 3,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 895
+  },
+  {
+    "id": "palette-picker",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 168
+  },
+  {
+    "id": "render-progress",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 410
+  },
+  {
+    "id": "week-load",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 321
+  },
+  {
+    "id": "focus-by-area",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 301
+  },
+  {
+    "id": "water-settings",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 243
+  },
+  {
+    "id": "breathing",
+    "valid": true,
+    "layer": 3,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 793
+  },
+  {
+    "id": "reading-list",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 468
+  },
+  {
+    "id": "noughts-and-crosses",
+    "valid": true,
+    "layer": 3,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 1468
+  },
+  {
+    "id": "inbox-capture",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 190
+  },
+  {
+    "id": "signature",
+    "valid": true,
+    "layer": 3,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 1276
+  }
+]

@@ -1,0 +1,21 @@
+<Card title="Methods chapter">
+<Text>
+- The interview protocol is settled at twelve semi-structured interviews.
+- Coding uses two passes, open then axial, and a second coder checks one in five.
+- Ethics approval came through on Tuesday.
+</Text>
+</Card>
+<Card title="Words written per day">
+<Data name=words>
+day,words
+Mon,320
+Tue,540
+Wed,410
+Thu,760
+Fri,905
+</Data>
+<Row align=between>
+<Text size=small tone=muted>Mon to Fri</Text>
+<Chart mark=spark data=words x=day y=words/>
+</Row>
+</Card>

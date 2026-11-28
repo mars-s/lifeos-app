@@ -1,0 +1,60 @@
+<Frame>
+<p id="info">X to play</p>
+<div id="board"></div>
+<button class=primary onclick="reset()">New game</button>
+<style>
+#board { display: grid; grid-template-columns: repeat(3, 72px); gap: 6px; margin: 12px 0; }
+#board button { height: 72px; font-size: 28px; font-family: var(--mono); }
+</style>
+<script>
+const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]]
+const cells = Array(9).fill("")
+const info = document.getElementById("info")
+const board = document.getElementById("board")
+const buttons = []
+let turn = "X", over = false
+
+for (let i = 0; i < 9; i++) {
+  const b = document.createElement("button")
+  b.onclick = () => play(i)
+  board.appendChild(b)
+  buttons.push(b)
+}
+
+const winningLine = () => lines.find(([a, b, c]) => cells[a] && cells[a] === cells[b] && cells[a] === cells[c])
+
+function render() {
+  cells.forEach((v, i) => { buttons[i].textContent = v })
+}
+
+function play(i) {
+  if (over || cells[i]) return
+  cells[i] = turn
+  ui.haptic("toggle")
+  render()
+  if (winningLine()) {
+    over = true
+    info.textContent = turn + " wins"
+    ui.haptic("complete")
+    return
+  }
+  if (cells.every(Boolean)) {
+    over = true
+    info.textContent = "Draw"
+    return
+  }
+  turn = turn === "X" ? "O" : "X"
+  info.textContent = turn + " to play"
+}
+
+function reset() {
+  cells.fill("")
+  turn = "X"
+  over = false
+  render()
+  info.textContent = "X to play"
+}
+
+reset()
+</script>
+</Frame>

@@ -1,0 +1,12 @@
+<Data name=focus from=get_focus/>
+<Card title=Pomodoro>
+<Col gap=loose>
+<Text size=small tone=muted>{focus.task}</Text>
+<Meter value={focus.elapsed} max={length} kind=ring label=Elapsed unit=min/>
+<Pick bind=length options="15,25,45" value=25 kind=segment label=Length/>
+<Row>
+<Button label="Start" tool=start_focus minutes={length} tone=primary/>
+<Button label="Stop" tool=stop_focus tone=quiet/>
+</Row>
+</Col>
+</Card>

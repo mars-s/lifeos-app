@@ -1,0 +1,7 @@
+<Image src={frames.last} alt="Last frame" ratio=16/9/>
+<Meter value={frames.done} max={frames.total} kind=bar label=Frames/>
+<Row>
+<Num label=Done value={frames.done}/>
+<Num label=Left value={frames.eta} unit=min/>
+</Row>
+<Button label=Stop tool=stop_run tone=quiet/>

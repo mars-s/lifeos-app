@@ -1,0 +1,15 @@
+<Data name=sleep>
+day,hours
+Mon,7.2
+Tue,6.5
+Wed,8.1
+Thu,7.0
+Fri,5.9
+Sat,8.4
+Sun,7.6
+</Data>
+<Row>
+<Num label=Average value={sleep.hours.avg} unit=h/>
+<Num label=Best value={sleep.hours.max} unit=h/>
+</Row>
+<Chart mark=bar data=sleep x=day y=hours/>

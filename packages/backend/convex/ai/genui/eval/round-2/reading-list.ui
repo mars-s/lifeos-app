@@ -1,0 +1,10 @@
+<Data name=books>
+title,author,read,pages
+The Dispossessed,Ursula K. Le Guin,210,387
+How Buildings Learn,Stewart Brand,88,243
+Seeing Like a State,James C. Scott,402,445
+</Data>
+<Text tone=muted>{books.read.sum} of {books.pages.sum} pages read</Text>
+<List data=books>
+<Item title={title} detail={author} value="{read} of {pages} pages"/>
+</List>

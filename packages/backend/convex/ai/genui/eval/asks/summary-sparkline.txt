@@ -1,0 +1,5 @@
+Summarise this note in three bullet points and show the words written per day as a sparkline. Note: 'Methods chapter. The interview protocol is settled at twelve semi-structured interviews. Coding uses two passes, open then axial, and a second coder checks one in five. Ethics approval came through on Tuesday.' Words written: Mon 320, Tue 540, Wed 410, Thu 760, Fri 905.
+
+Reads: list_tasks(view=today|inbox|upcoming) gives title, area, project, when, estimate (minutes), done. get_focus() gives task, minutes, elapsed, running (one row). get_day_plan() gives planned, free, goal, busy in minutes (one row).
+Tools: start_focus(minutes), stop_focus(), create_task(title), set_task_status(id, status), stop_run()
+Sockets: none

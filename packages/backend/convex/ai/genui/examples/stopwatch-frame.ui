@@ -1,0 +1,13 @@
+<Frame>
+<Num label=Stopwatch value={t} unit=s/>
+<Row>
+<button class=primary onclick="go()">Start</button>
+<button onclick="stop()">Stop</button>
+</Row>
+<script>
+let id, n = 0
+ui.set("t", 0)
+const stop = () => clearInterval(id)
+const go = () => { stop(); id = setInterval(() => ui.set("t", ++n), 1000) }
+</script>
+</Frame>

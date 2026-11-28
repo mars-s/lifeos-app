@@ -1,0 +1,164 @@
+[
+  {
+    "id": "sleep-chart",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 249
+  },
+  {
+    "id": "tasks-by-area",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 108
+  },
+  {
+    "id": "progress-ring",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 68
+  },
+  {
+    "id": "trip-summary",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 312
+  },
+  {
+    "id": "pomodoro",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 355
+  },
+  {
+    "id": "summary-sparkline",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 390
+  },
+  {
+    "id": "dice-roller",
+    "valid": true,
+    "layer": 3,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 204
+  },
+  {
+    "id": "spinning-logo",
+    "valid": true,
+    "layer": 3,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 774
+  },
+  {
+    "id": "palette-picker",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 120
+  },
+  {
+    "id": "render-progress",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 268
+  },
+  {
+    "id": "week-load",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 243
+  },
+  {
+    "id": "focus-by-area",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 256
+  },
+  {
+    "id": "water-settings",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 231
+  },
+  {
+    "id": "breathing",
+    "valid": true,
+    "layer": 3,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 1046
+  },
+  {
+    "id": "reading-list",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 346
+  },
+  {
+    "id": "noughts-and-crosses",
+    "valid": true,
+    "layer": 3,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 1427
+  },
+  {
+    "id": "inbox-capture",
+    "valid": true,
+    "layer": 2,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 204
+  },
+  {
+    "id": "signature",
+    "valid": true,
+    "layer": 3,
+    "right": true,
+    "issues": [],
+    "clean": true,
+    "chars": 1125
+  }
+]

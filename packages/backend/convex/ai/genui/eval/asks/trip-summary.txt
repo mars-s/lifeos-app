@@ -1,0 +1,5 @@
+Summarise my Hobart trip without a map. Fly out Thu 3 Dec 8:10 am on JQ705 from Melbourne, check in at Salamanca at 2 pm, MONA ferry Fri 9:30 am, fly home Sun 6 Dec 5:45 pm. The budget is $620 for 4 days.
+
+Reads: list_tasks(view=today|inbox|upcoming) gives title, area, project, when, estimate (minutes), done. get_focus() gives task, minutes, elapsed, running (one row). get_day_plan() gives planned, free, goal, busy in minutes (one row).
+Tools: start_focus(minutes), stop_focus(), create_task(title), set_task_status(id, status), stop_run()
+Sockets: none

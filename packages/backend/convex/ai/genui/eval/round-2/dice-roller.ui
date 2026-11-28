@@ -1,0 +1,7 @@
+<Frame>
+<Num label="Last roll" value={roll}/>
+<button class=primary onclick="throwDie()">Roll</button>
+<script>
+const throwDie = () => ui.set("roll", Math.floor(Math.random() * 6) + 1)
+</script>
+</Frame>

@@ -1,0 +1,9 @@
+<Col>
+<Row align=between>
+<Toggle bind=on label="Water reminder"/>
+</Row>
+<Card title="Glasses a day">
+<Slider bind=glasses min=4 max=12 step=1 value=8 label="Glasses a day"/>
+</Card>
+<Input bind=name label="Name" placeholder="Water"/>
+</Col>

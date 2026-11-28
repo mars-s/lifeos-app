@@ -1,0 +1,5 @@
+A progress ring for my thesis: 62 of 100 pages written.
+
+Reads: list_tasks(view=today|inbox|upcoming) gives title, area, project, when, estimate (minutes), done. get_focus() gives task, minutes, elapsed, running (one row). get_day_plan() gives planned, free, goal, busy in minutes (one row).
+Tools: start_focus(minutes), stop_focus(), create_task(title), set_task_status(id, status), stop_run()
+Sockets: none

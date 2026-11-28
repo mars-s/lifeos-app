@@ -1,0 +1,9 @@
+<Frame>
+<Num label=Die value={roll}/>
+<p>Roll a six-sided die.</p>
+<button class=primary onclick="rollDie()">Roll</button>
+<script>
+ui.set("roll", 1)
+const rollDie = () => { ui.set("roll", 1 + Math.floor(Math.random() * 6)); ui.haptic("snap") }
+</script>
+</Frame>
