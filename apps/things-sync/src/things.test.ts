@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { findThingsDatabase, readThingsRows } from "./things.ts";
+import { Effect } from "effect";
+import { PermissionDenied, ThingsNotFound, ThingsSource, findThingsDatabase, readThingsRows } from "./things.ts";
 
 const run = promisify(execFile);
 
@@ -42,7 +43,7 @@ const scratchDirs = async () => (await readdir(tmpdir())).filter((name) => name.
 
 test("finds the Things database inside the Group Containers folder", async () => {
   const { root, database } = await thingsFixture();
-  assert.equal((await findThingsDatabase(root))._unsafeUnwrap(), database);
+  assert.equal(await Effect.runPromise(findThingsDatabase(root)), database);
   await rm(root, { recursive: true, force: true });
 });
 
@@ -50,7 +51,7 @@ test("reads the rows from a copy, leaves the original alone and removes the copy
   const { root, database } = await thingsFixture();
   const before = await readFile(join(database, "main.sqlite"));
   const scratchBefore = await scratchDirs();
-  const rows = (await readThingsRows(database))._unsafeUnwrap();
+  const rows = await Effect.runPromise(readThingsRows(database));
   assert.deepEqual(rows.areas, [{ uuid: "a1", title: "University", index: 0 }]);
   assert.deepEqual(rows.items[0], {
     uuid: "t1",
@@ -83,14 +84,22 @@ test("reads the rows from a copy, leaves the original alone and removes the copy
 test("an unreadable folder names the folder macOS refused", async () => {
   const { root } = await thingsFixture();
   await chmod(root, 0o000);
-  const found = await findThingsDatabase(root);
+  const found = await Effect.runPromise(Effect.flip(findThingsDatabase(root)));
   await chmod(root, 0o700);
-  assert.deepEqual(found._unsafeUnwrapErr(), { kind: "permission_denied", path: root });
+  assert.deepEqual(found, new PermissionDenied({ path: root }));
   await rm(root, { recursive: true, force: true });
 });
 
 test("a Mac without Things says where it looked", async () => {
   const root = await mkdtemp(join(tmpdir(), "no-things-"));
-  assert.deepEqual((await findThingsDatabase(root))._unsafeUnwrapErr(), { kind: "things_not_found", path: root });
+  assert.deepEqual(await Effect.runPromise(Effect.flip(findThingsDatabase(root))), new ThingsNotFound({ path: root }));
   await rm(root, { recursive: true, force: true });
+});
+
+test("the test Layer serves the fixture rows", async () => {
+  const fixture = { areas: [{ uuid: "a1", title: "University", index: 0 }], tags: [], items: [], checklistItems: [] };
+  const rows = await Effect.runPromise(
+    ThingsSource.use((source) => source.rows()).pipe(Effect.provide(ThingsSource.layerTest(fixture))),
+  );
+  assert.deepEqual(rows, fixture);
 });

@@ -1,16 +1,21 @@
-import { setTimeout as sleep } from "node:timers/promises";
 import { parseArgs } from "node:util";
 import { ConvexHttpClient } from "convex/browser";
-import { ResultAsync } from "neverthrow";
+import { Clock, Console, Duration, Effect, Schema } from "effect";
 import { api } from "@lifeos/backend/api";
-import { localIsoDate } from "@lifeos/backend/date";
-import { deserialise } from "@lifeos/backend/result";
+import { wireToEffect } from "@lifeos/backend/effect/wire";
 import { dryRunCounts, importLines, readErrorLine, retiredLine } from "./report.ts";
-import { findThingsDatabase, readSyncToken, readThingsRows } from "./things.ts";
+import { ThingsSource, readSyncToken } from "./things.ts";
 
-const WATCH_EVERY_MS = 5 * 60_000;
+const WATCH_EVERY = Duration.minutes(5);
 
-type ConvexError = { readonly kind: "convex_rejected"; readonly detail: string };
+export class ConvexRejected extends Schema.TaggedError<ConvexRejected>()("ConvexRejected", {
+  kind: Schema.tag("convex_rejected"),
+  detail: Schema.String,
+}) {}
+
+class MissingConvexUrl extends Schema.TaggedError<MissingConvexUrl>()("MissingConvexUrl", {
+  kind: Schema.tag("missing_convex_url"),
+}) {}
 
 const { values } = parseArgs({
   options: {
@@ -20,94 +25,115 @@ const { values } = parseArgs({
   },
 });
 
-const clock = () => new Date().toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" });
+const failed = Effect.sync(() => {
+  process.exitCode = 1;
+});
 
-const readRows = () => findThingsDatabase().andThen(readThingsRows);
+const clock = Effect.map(Clock.currentTimeMillis, (now) =>
+  new Date(now).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" }),
+);
 
-const dryRun = async () => {
-  const rows = await readRows();
-  if (rows.isErr()) {
-    console.error(readErrorLine(rows.error));
-    process.exitCode = 1;
-    return;
-  }
-  console.log("Things, as read now (nothing was sent to LifeOS):");
-  for (const [label, count] of dryRunCounts(rows.value, localIsoDate(new Date()))) console.log(`  ${label}: ${count}`);
-};
+const dryRun = Effect.gen(function* () {
+  const things = yield* ThingsSource;
+  const rows = yield* things.rows();
+  yield* Console.log("Things, as read now (nothing was sent to LifeOS):");
+  for (const [label, count] of dryRunCounts(rows, new Date(yield* Clock.currentTimeMillis).toLocaleDateString("en-CA"))) yield* Console.log(`  ${label}: ${count}`);
+}).pipe(Effect.catch((error) => Effect.andThen(Console.error(readErrorLine(error)), failed)));
 
-const convexUrl = process.env.CONVEX_URL;
+const convexClient = Effect.gen(function* () {
+  const url = process.env.CONVEX_URL;
+  if (!url) return yield* new MissingConvexUrl();
+  return new ConvexHttpClient(url);
+});
 
-const convex = () => {
-  if (!convexUrl) {
-    console.error("Set CONVEX_URL in apps/things-sync/.env.local (see .env.example).");
-    process.exit(1);
-  }
-  return new ConvexHttpClient(convexUrl);
-};
+const rejected = (error: unknown) => new ConvexRejected({ detail: error instanceof Error ? error.message : String(error) });
 
-const rejected = (error: unknown) =>
-  ({ kind: "convex_rejected", detail: error instanceof Error ? error.message : String(error) }) satisfies ConvexError;
-
-const importOnce = async (client: ConvexHttpClient, token: string) => {
-  const rows = await readRows();
-  if (rows.isErr()) {
-    console.error(`${clock()} ${readErrorLine(rows.error)}`);
-    process.exitCode = 1;
-    return "failed" as const;
-  }
-  const sent = await ResultAsync.fromPromise(client.action(api.planner.things.importRows, { token, rows: rows.value }), rejected);
-  if (sent.isErr()) {
-    console.error(`${clock()} LifeOS refused the import: ${sent.error.detail}`);
-    process.exitCode = 1;
-    return "failed" as const;
-  }
-  const imported = deserialise(sent.value);
-  if (imported.isErr()) {
-    console.log(retiredLine(imported.error.retiredAt));
+const importOnce = Effect.fn("thingsSync.importOnce")(function* (client: ConvexHttpClient, token: string) {
+  const things = yield* ThingsSource;
+  const rows = yield* things.rows().pipe(
+    Effect.catch((error) =>
+      Effect.gen(function* () {
+        yield* Console.error(`${yield* clock} ${readErrorLine(error)}`);
+        yield* failed;
+        return null;
+      }),
+    ),
+  );
+  if (rows === null) return "failed" as const;
+  const sent = yield* Effect.tryPromise({
+    try: () => client.action(api.planner.things.importRows, { token, rows }),
+    catch: rejected,
+  }).pipe(
+    Effect.catch((error) =>
+      Effect.gen(function* () {
+        yield* Console.error(`${yield* clock} LifeOS refused the import: ${error.detail}`);
+        yield* failed;
+        return null;
+      }),
+    ),
+  );
+  if (sent === null) return "failed" as const;
+  const imported = yield* wireToEffect(sent).pipe(Effect.catch((error) => Effect.succeed(error)));
+  if ("retiredAt" in imported) {
+    yield* Console.log(retiredLine(imported.retiredAt));
     process.exitCode = 0;
     return "retired" as const;
   }
-  console.log(`${clock()} Imported from Things into LifeOS:`);
-  for (const line of importLines(imported.value)) console.log(line);
+  yield* Console.log(`${yield* clock} Imported from Things into LifeOS:`);
+  for (const line of importLines(imported)) yield* Console.log(line);
   return "imported" as const;
-};
+});
 
-const switchDay = async (client: ConvexHttpClient, token: string) => {
-  const outcome = await importOnce(client, token);
+const switchDay = Effect.fn("thingsSync.switchDay")(function* (client: ConvexHttpClient, token: string) {
+  const outcome = yield* importOnce(client, token);
   if (outcome !== "imported") return;
-  const retired = await ResultAsync.fromPromise(client.mutation(api.planner.things.retire, { token }), rejected);
-  if (retired.isErr()) {
-    console.error(`LifeOS could not retire Things: ${retired.error.detail}`);
-    process.exitCode = 1;
-    return;
-  }
-  deserialise(retired.value).match(
-    ({ retiredAt }) => {
-      console.log(retiredLine(retiredAt));
-      console.log("That was the final import. Every Task now lives in LifeOS, and nothing is read from Things again.");
-    },
-    () => {
-      console.error("LifeOS has no import from Things yet, so there is nothing to retire.");
-      process.exitCode = 1;
-    },
+  const retired = yield* Effect.tryPromise({
+    try: () => client.mutation(api.planner.things.retire, { token }),
+    catch: rejected,
+  }).pipe(
+    Effect.catch((error) =>
+      Effect.gen(function* () {
+        yield* Console.error(`LifeOS could not retire Things: ${error.detail}`);
+        yield* failed;
+        return null;
+      }),
+    ),
   );
-};
+  if (retired === null) return;
+  yield* wireToEffect(retired).pipe(
+    Effect.matchEffect({
+      onSuccess: ({ retiredAt }) =>
+        Effect.gen(function* () {
+          yield* Console.log(retiredLine(retiredAt));
+          yield* Console.log("That was the final import. Every Task now lives in LifeOS, and nothing is read from Things again.");
+        }),
+      onFailure: () =>
+        Effect.andThen(Console.error("LifeOS has no import from Things yet, so there is nothing to retire."), failed),
+    }),
+  );
+});
 
-const main = async () => {
-  if (values["dry-run"]) return dryRun();
-  const client = convex();
-  const token = await readSyncToken();
-  if (token.isErr()) {
-    console.error(readErrorLine(token.error));
-    process.exitCode = 1;
-    return;
-  }
-  if (values.switch) return switchDay(client, token.value);
+const syncLoop = Effect.fn("thingsSync.syncLoop")(function* (client: ConvexHttpClient, token: string) {
   for (;;) {
-    const outcome = await importOnce(client, token.value);
+    const outcome = yield* importOnce(client, token);
     if (!values.watch || outcome === "retired") return;
-    await sleep(WATCH_EVERY_MS);
+    yield* Effect.sleep(WATCH_EVERY);
   }
-};
+});
 
-await main();
+const program = Effect.gen(function* () {
+  if (values["dry-run"]) return yield* dryRun;
+  const client = yield* convexClient;
+  const token = yield* readSyncToken();
+  if (values.switch) return yield* switchDay(client, token);
+  return yield* syncLoop(client, token);
+}).pipe(
+  Effect.catch((error) =>
+    error.kind === "missing_convex_url"
+      ? Effect.andThen(Console.error("Set CONVEX_URL in apps/things-sync/.env.local (see .env.example)."), failed)
+      : Effect.andThen(Console.error(readErrorLine(error)), failed),
+  ),
+  Effect.provide(ThingsSource.layer),
+);
+
+await Effect.runPromise(program);
