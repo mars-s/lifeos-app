@@ -719,9 +719,8 @@ export const Timebox = ({
               const movable: Movable = block ?? { ...thing, inert: false, done: false };
               const meta = item.kind === "prediction" ? `${item.prediction.guess ? "~" : ""}${formatSpan(item.prediction.minutes)}${item.prediction.fit ? ` · at your ${item.prediction.fit}` : ""}` : "";
               const drive = thing.trip ? `, ${thing.trip.minutes} min drive each way, leave by ${formatClock(thing.start - thing.trip.minutes)}` : "";
-              const shownText = tall ? `${thing.title} ${liveRange}${tight ? "" : ` · ${meta}`}` : thing.title;
               const label = predicted
-                ? `${shownText}, predicted, ${range}${drive}${item.kind === "prediction" && item.prediction.fit ? `, at your ${item.prediction.fit}` : ""}. Click or press Enter to keep it, drag or use the arrow keys to keep it at another time.`
+                ? `, predicted, ${range}${drive}${item.kind === "prediction" && item.prediction.fit ? `, at your ${item.prediction.fit}` : ""}. Click or press Enter to keep it, drag or use the arrow keys to keep it at another time.`
                 : `Work Block, ${thing.title}, ${range}${drive}${done ? ", done" : look === "missed" ? ", not done" : ""}. Arrow keys move it, Shift and arrow keys resize it, Backspace removes it.`;
               return (
                 <motion.div
@@ -732,7 +731,7 @@ export const Timebox = ({
                   data-prediction-id={predicted ? thing.id : undefined}
                   data-look={look}
                   data-no-select=""
-                  aria-label={label}
+                  aria-label={predicted ? undefined : label}
                   onPointerDown={begin(movable, "move")}
                   onPointerMove={track(movable)}
                   onPointerUp={finish(movable)}
@@ -798,6 +797,7 @@ export const Timebox = ({
                     )}
                   </span>
                   {thing.trip && <TripBand trip={thing.trip} start={thing.start} height={toPx(travel)} back ruled={!tight} />}
+                  {predicted && <span className="sr-only">{label}</span>}
                   {block && !block.inert && (
                     <span
                       aria-hidden="true"
