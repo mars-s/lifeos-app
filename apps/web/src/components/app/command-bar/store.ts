@@ -1,7 +1,9 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/reactivity";
 import type { PlannerTask } from "@lifeos/backend/types";
+import { registry } from "../../../lib/atoms";
 
 export type BarState =
   | { kind: "closed" }
@@ -11,22 +13,14 @@ export type BarState =
 
 const CLOSED: BarState = { kind: "closed" };
 
-let current: BarState = CLOSED;
+const barAtom = Atom.make<BarState>(CLOSED).pipe(Atom.keepAlive);
+
 let opened = 0;
-const listeners = new Set<() => void>();
 
-const publish = (next: BarState) => {
-  current = next;
-  listeners.forEach((listener) => listener());
-};
-
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  return () => void listeners.delete(listener);
-};
+const publish = (next: BarState) => registry.set(barAtom, next);
 
 export const bar = {
-  state: () => current,
+  state: () => registry.get(barAtom),
   commands: (targets: readonly PlannerTask[]) => publish({ kind: "commands", targets }),
   capture: (text = "", failed = false) => {
     opened += 1;
@@ -34,13 +28,8 @@ export const bar = {
   },
   shortcuts: () => publish({ kind: "shortcuts" }),
   close: () => {
-    if (current.kind !== "closed") publish(CLOSED);
+    if (registry.get(barAtom).kind !== "closed") publish(CLOSED);
   },
 };
 
-export const useBar = () =>
-  useSyncExternalStore(
-    subscribe,
-    () => current,
-    () => CLOSED,
-  );
+export const useBar = () => useAtomValue(barAtom);
