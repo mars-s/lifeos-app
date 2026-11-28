@@ -3,6 +3,7 @@ import { type EditorState, type Extension, type Range, RangeSetBuilder, StateEff
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import { ySyncAnnotation } from "y-codemirror.next";
 import { entityLinkPattern, labelPattern, noteLinkPattern, type EntityTable } from "@lifeos/notes/markdown";
+import { mathField } from "./math-preview";
 
 export type ChipInfo = {
   id: string;
@@ -244,6 +245,9 @@ const build = (view: EditorView) => {
   const isActive = (pos: number) => active.has(state.doc.lineAt(pos).number);
   const taken: [number, number][] = [];
   const overlaps = (from: number, to: number) => taken.some(([a, b]) => from < b && to > a);
+  const maths = state.field(mathField).spans;
+  const inMath = (from: number, to: number) => maths.some((span) => from >= span.from && to <= span.to);
+  for (const span of maths) taken.push([span.from, span.to]);
 
   const firstLine = state.doc.line(1);
   const titled = state.facet(titledFacet);
@@ -257,6 +261,7 @@ const build = (view: EditorView) => {
       enter: (node) => {
         const name = node.name;
         if (HEADING_CLASS[name]) addLine(node.from, HEADING_CLASS[name]);
+        if (STYLE_CLASS[name] && inMath(node.from, node.to)) return false;
         if (STYLE_CLASS[name]) ranges.push(Decoration.mark({ class: STYLE_CLASS[name] }).range(node.from, node.to));
         if (name === "FencedCode") {
           for (let pos = node.from; pos <= node.to; ) {
@@ -415,4 +420,4 @@ const mergeTimer = ViewPlugin.fromClass(
   },
 );
 
-export const notePreview = () => [chipField, previewPlugin, mergeField, mergeTimer] satisfies Extension;
+export const notePreview = () => [chipField, mathField, previewPlugin, mergeField, mergeTimer] satisfies Extension;

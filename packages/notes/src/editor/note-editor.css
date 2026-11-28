@@ -508,3 +508,63 @@
     transition: none;
   }
 }
+
+.note-editor .cm-math {
+  --math-error: var(--muted-foreground);
+  color: inherit;
+  cursor: text;
+}
+
+.note-editor .cm-math .katex {
+  font-size: 1.1em;
+}
+
+.note-editor .cm-math.is-loading,
+.note-editor .cm-math-source,
+.note-editor .cm-math .katex-error {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+}
+
+.note-editor .cm-math.is-loading {
+  color: var(--muted-foreground);
+}
+
+.note-editor .cm-math .katex-error,
+.note-editor .cm-math.is-error {
+  color: var(--muted-foreground);
+  text-decoration: underline wavy color-mix(in oklab, var(--muted-foreground) 55%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  cursor: help;
+}
+
+.note-editor .cm-math-display:not(.cm-math-block) {
+  display: inline-block;
+  width: 100%;
+  contain: inline-size;
+  overflow-x: auto;
+  overflow-y: hidden;
+  vertical-align: middle;
+}
+
+.note-editor .cm-math-block {
+  display: block;
+  contain: inline-size;
+  padding: 10px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  text-align: center;
+}
+
+.note-editor .cm-math-display .katex-display {
+  margin: 0;
+}
+
+.note-editor .cm-math-block.is-preview {
+  padding-top: 6px;
+  color: var(--muted-foreground);
+  cursor: default;
+}

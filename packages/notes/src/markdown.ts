@@ -1,3 +1,5 @@
+import { findMath } from "./math";
+
 export type EntityTable = "tasks" | "projects" | "areas";
 
 export type EntityLink = { readonly table: EntityTable; readonly id: string; readonly alias?: string };
@@ -32,11 +34,23 @@ export const labelPattern = /(^|[\s(])#([\p{L}\p{N}_/-]*[\p{L}_/-][\p{L}\p{N}_/-
 export const formatEntityLink = (link: EntityLink) =>
   `[[${entityKindOf(link.table)}:${link.id}${link.alias ? `|${link.alias.replaceAll(/[\]|\n]/g, " ").trim()}` : ""}]]`;
 
+const mathSlot = /\uE000(\d+)\uE001/g;
+
+const keepingMath = (text: string, transform: (masked: string) => string) => {
+  const spans = findMath(text);
+  if (spans.length === 0) return transform(text);
+  const raw = spans.map((span) => text.slice(span.from, span.to).replaceAll(/\s+/g, " "));
+  const masked = spans.reduceRight((rest, span, index) => `${rest.slice(0, span.from)}\uE000${index}\uE001${rest.slice(span.to)}`, text);
+  return transform(masked).replaceAll(mathSlot, (_m, index: string) => raw[Number(index)] ?? "");
+};
+
+const withoutMath = (text: string) => findMath(text).reduceRight((rest, span) => `${rest.slice(0, span.from)} ${rest.slice(span.to)}`, text);
+
 const withoutCode = (text: string) => text.replaceAll(/```[\s\S]*?(```|$)/g, " ").replaceAll(/`[^`\n]*`/g, " ");
 
 export const titleOf = (text: string) => {
   const first = text.split("\n").find((line) => line.trim().length > 0) ?? "";
-  const plain = plainInline(first.replace(/^\s*#{1,6}\s+/, "")).trim();
+  const plain = keepingMath(first.replace(/^\s*#{1,6}\s+/, ""), plainInline).trim();
   return plain.length > 0 ? plain.slice(0, 200) : UNTITLED;
 };
 
@@ -74,14 +88,11 @@ export const projectNote = (text: string) => {
   const lines = text.split("\n");
   const titleIndex = lines.findIndex((line) => line.trim().length > 0);
   const body = withoutCode(lines.slice(titleIndex + 1).join("\n"));
-  const excerpt = body
-    .split("\n")
-    .map(plainLine)
-    .join(" ")
+  const excerpt = keepingMath(body, (masked) => masked.split("\n").map(plainLine).join(" "))
     .replaceAll(/\s+/g, " ")
     .trim()
     .slice(0, EXCERPT_LENGTH);
-  const searchable = withoutCode(text);
+  const searchable = withoutMath(withoutCode(text));
   const entities = unique(
     [...searchable.matchAll(entityLinkPattern)].map((m) => ({
       table: entityKinds[m[1] as EntityKind],

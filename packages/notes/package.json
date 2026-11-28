@@ -5,6 +5,7 @@
   "exports": {
     "./protocol": "./src/protocol.ts",
     "./markdown": "./src/markdown.ts",
+    "./math": "./src/math.ts",
     "./client": "./src/client.ts",
     "./editor": "./src/editor/note-editor.tsx",
     "./catchup": "./src/catchup.ts",
@@ -12,7 +13,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:katex": "node scripts/build-katex-style.ts"
   },
   "dependencies": {
     "lib0": "0.2.120",
@@ -26,6 +28,7 @@
     "@codemirror/view": "^6.44.2",
     "@lezer/highlight": "^1.2.5",
     "@lezer/markdown": "^1.8.2",
+    "katex": "0.19.1",
     "y-codemirror.next": "0.3.6"
   },
   "devDependencies": {
