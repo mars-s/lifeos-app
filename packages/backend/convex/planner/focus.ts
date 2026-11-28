@@ -266,27 +266,29 @@ export const choosePlan = changeMutation({
   },
 });
 
+export const currentFocus = async (ctx: QueryCtx) => {
+  const session = await activeSession(ctx);
+  const task = session && (await ctx.db.get("tasks", session.taskId));
+  if (!session || !task) return null;
+  const project = task.parent.kind === "project" ? await ctx.db.get("projects", task.parent.projectId) : null;
+  const areaId = task.parent.kind === "area" ? task.parent.areaId : project?.areaId;
+  const area = areaId ? await ctx.db.get("areas", areaId) : null;
+  const { _id, taskId, kind, start: startedAt, pausedMs, plannedMinutes, state, pomodoro } = session;
+  return {
+    _id,
+    taskId,
+    kind,
+    start: startedAt,
+    pausedMs,
+    state,
+    title: task.title,
+    ...(plannedMinutes === undefined ? {} : { plannedMinutes }),
+    ...(pomodoro ? { pomodoro } : {}),
+    ...(area ? { colour: area.colour } : {}),
+  };
+};
+
 export const current = ownerQuery({
   args: {},
-  handler: async (ctx) => {
-    const session = await activeSession(ctx);
-    const task = session && (await ctx.db.get("tasks", session.taskId));
-    if (!session || !task) return null;
-    const project = task.parent.kind === "project" ? await ctx.db.get("projects", task.parent.projectId) : null;
-    const areaId = task.parent.kind === "area" ? task.parent.areaId : project?.areaId;
-    const area = areaId ? await ctx.db.get("areas", areaId) : null;
-    const { _id, taskId, kind, start: startedAt, pausedMs, plannedMinutes, state, pomodoro } = session;
-    return {
-      _id,
-      taskId,
-      kind,
-      start: startedAt,
-      pausedMs,
-      state,
-      title: task.title,
-      ...(plannedMinutes === undefined ? {} : { plannedMinutes }),
-      ...(pomodoro ? { pomodoro } : {}),
-      ...(area ? { colour: area.colour } : {}),
-    };
-  },
+  handler: currentFocus,
 });

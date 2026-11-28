@@ -79,6 +79,7 @@ import type * as planner_thingsImport from "../planner/thingsImport.js";
 import type * as planner_thingsRows from "../planner/thingsRows.js";
 import type * as planner_today from "../planner/today.js";
 import type * as planner_trash from "../planner/trash.js";
+import type * as planner_widgets from "../planner/widgets.js";
 import type * as planner_workBlocks from "../planner/workBlocks.js";
 import type * as platform_access from "../platform/access.js";
 import type * as platform_activity from "../platform/activity.js";
@@ -172,6 +173,7 @@ declare const fullApi: ApiFromModules<{
   "planner/thingsRows": typeof planner_thingsRows;
   "planner/today": typeof planner_today;
   "planner/trash": typeof planner_trash;
+  "planner/widgets": typeof planner_widgets;
   "planner/workBlocks": typeof planner_workBlocks;
   "platform/access": typeof platform_access;
   "platform/activity": typeof platform_activity;

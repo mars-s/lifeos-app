@@ -72,7 +72,7 @@ const ghostsBetween = async (ctx: QueryCtx, from: IsoDate, last: IsoDate) => {
   );
 };
 
-const loadWeek = async (ctx: QueryCtx, from: IsoDate, days: number, timeZone: string) => {
+export const loadWeek = async (ctx: QueryCtx, from: IsoDate, days: number, timeZone: string) => {
   const dates = Array.from({ length: days }, (_, index) => addDays(from, index));
   const last = dates.at(-1) ?? from;
   const starts = [...dates, addDays(last, 1)].map((date) => zonedMoment(date, 0, timeZone));
@@ -111,7 +111,7 @@ const loadWeek = async (ctx: QueryCtx, from: IsoDate, days: number, timeZone: st
       const goal = goals.get(date);
       const goalMinutes = goalMinutesOf(freeMinutes, goal);
       const dayGhosts = ghosts.filter((ghost) => ghost.date === date);
-      const { plannedMinutes, guessedMinutes, unestimated } = dayLoad(
+      const { slices, plannedMinutes, guessedMinutes, unestimated } = dayLoad(
         [...tasks, ...dayGhosts.map((ghost) => ({ _id: ghost.key, estimateMinutes: ghost.estimateMinutes }))],
         dayBlocks,
         (taskId) => guessed.get(taskId),
@@ -121,6 +121,7 @@ const loadWeek = async (ctx: QueryCtx, from: IsoDate, days: number, timeZone: st
         date,
         tasks,
         ghosts: dayGhosts,
+        slices,
         plannedMinutes,
         guessedMinutes,
         unestimated,
