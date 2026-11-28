@@ -28,6 +28,7 @@ import {
   type SidebarArea,
 } from "./container-actions";
 import { Folding } from "./fold";
+import { useInApp } from "./window-drag-strip";
 import { NotesColumn, useNotesNav } from "../notes/notes-screen";
 import { SyncIndicator } from "../notes/sync-indicator";
 import { useNotesStatus } from "../notes/use-note";
@@ -525,6 +526,7 @@ export const Sidebar = ({ view, via, notice }: { view: SidebarView | undefined; 
   const actions = useContainerActions(shell);
   const { draft, mode } = shell;
   const looseDraft = draft?.kind === "project" && draft.areaId === null;
+  const inApp = useInApp();
   return (
     <nav
       aria-label={mode === "notes" ? "Notes" : "Lists"}
@@ -532,7 +534,7 @@ export const Sidebar = ({ view, via, notice }: { view: SidebarView | undefined; 
       data-sidebar-mode={mode}
       className={cn("flex h-full flex-col gap-4 overscroll-contain px-2 pb-2", mode === "notes" ? "overflow-hidden" : "overflow-y-auto")}
     >
-      <div data-tauri-drag-region className="flex h-12 shrink-0 items-center justify-between gap-2 pl-2.5">
+      <div data-tauri-drag-region className={cn("flex shrink-0 items-center justify-between gap-2 pl-2.5", inApp ? "h-7" : "h-12")}>
         <span className="flex items-center gap-2 text-small font-semibold md:hidden">
           <LifeosMark fill="enter" />
           <span translate="no">LifeOS</span>
