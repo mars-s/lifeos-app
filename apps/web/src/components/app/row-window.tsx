@@ -1,8 +1,11 @@
 "use client";
 
-import { memo, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/reactivity";
+import { memo, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { flushSync } from "react-dom";
 import type { PlannerTask } from "@lifeos/backend/types";
+import { registry } from "../../lib/atoms";
 import { isDraftTask } from "./drafts";
 import { useRegisteredTask } from "./selection";
 
@@ -18,22 +21,13 @@ type Row = { key: string; task: PlannerTask };
 
 type Near = { keys: ReadonlySet<string>; heights: ReadonlyMap<string, number>; samples: ReadonlyMap<string, number> };
 
-let revealed: string | null = null;
-const listeners = new Set<() => void>();
-
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  return () => void listeners.delete(listener);
-};
+const revealedAtom = Atom.make<string | null>(null).pipe(Atom.keepAlive);
 
 const rowSelector = (key: string) => `#main [data-task-key="${CSS.escape(key)}"]`;
 
 export const revealRow = (key: string) => {
   if (!document.querySelector(`${rowSelector(key)}[data-row-gap]`)) return;
-  flushSync(() => {
-    revealed = key;
-    listeners.forEach((listener) => listener());
-  });
+  flushSync(() => registry.set(revealedAtom, key));
 };
 
 export const arrowTarget = (item: HTMLElement | undefined) => {
@@ -84,10 +78,9 @@ export const useRowWindow = (
   const width = useRef(0);
   const anchor = useRef<{ key: string; top: number } | null>(null);
   const byKey = useMemo(() => new Map(rows.map((row) => [row.key, row.task])), [rows]);
-  const wanted = useSyncExternalStore(
-    subscribe,
-    () => (revealed !== null && byKey.has(revealed) ? revealed : null),
-    () => null,
+  const wanted = useAtomValue(
+    revealedAtom,
+    useCallback((revealed: string | null) => (revealed !== null && byKey.has(revealed) ? revealed : null), [byKey]),
   );
 
   const look = useEffectEvent((commit: (update: () => void) => void) => {
