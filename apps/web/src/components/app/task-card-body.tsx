@@ -201,10 +201,12 @@ export const TaskCardBody = ({ task, today }: { task: PlannerTask; today: string
 
   return (
     <div data-arrow-scope className="space-y-3 px-3 pt-1 pb-3">
-      <div className="space-y-3 pl-[1.875rem]">
+      <div className="space-y-3 pl-[1.875rem] empty:hidden">
         <TitleLinks title={task.title} />
         {saved && <TaskNotes taskId={task._id} />}
-        <NotesField notes={task.notes} onSave={actions.setNotes} />
+      </div>
+      <NotesField notes={task.notes} onSave={actions.setNotes} />
+      <div className="space-y-3 pl-[1.875rem] empty:hidden">
         <AnimatePresence initial={false}>
           {hasChecklist && (
             <motion.div

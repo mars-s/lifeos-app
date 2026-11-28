@@ -3,7 +3,7 @@
 Seeds the Task from Avi's screenshot (long notes with a raw link, a Work Block that has passed, a Trip,
 one best-guess Estimate), opens it in the narrow Planner column, the wide Today list and at iPhone width,
 in light and dark, and checks the layout: the glyphs of the fact rows sit in one column under the checkbox,
-their text starts on the title's edge, the left and right insets match, nothing overflows the card, the
+their text starts on the title's edge, the notes run as wide as the map, the left and right insets match, nothing overflows the card, the
 tool row spans the card when it is narrow and sits on the When line when it is wide, a passed Work Block
 reads as passed, and the only brand blue left is the Today star. It also opens a second, fuller Task
 (Checklist, Labels, Deadline) so its screenshot can be looked at.
@@ -79,6 +79,8 @@ MEASURE = """(card) => {
     passed: card.querySelector('[data-passed]')?.textContent ?? null,
     linkLines: Math.round((box(card.querySelector('p[aria-label=Notes] a'))?.height ?? 0) / 20),
     linkHttp: (card.querySelector('p[aria-label=Notes] a')?.textContent ?? 'http').startsWith('http'),
+    notesEdges: [box(card.querySelector('p[aria-label=Notes]'))].map((rect) => [Math.round(rect.left), Math.round(rect.right)])[0],
+    mapEdges: [box(card.querySelector('.trip-map'))].map((rect) => [Math.round(rect.left), Math.round(rect.right)])[0],
   };
 }"""
 
@@ -142,6 +144,7 @@ def check(page, surface, theme):
     expect(f"{name}: nothing spills out of the card", measured["spill"], [])
     expect(f"{name}: the only brand blue is the Today star", measured["blue"], lambda blue: set(blue) <= {"when"})
     expect(f"{name}: the passed Work Block says so", measured["passed"], lambda text: text is not None and text.startswith("Was "))
+    expect(f"{name}: the notes run as wide as the map", measured["notesEdges"], measured["mapEdges"])
     expect(f"{name}: the link is one line without its scheme", (measured["linkLines"], measured["linkHttp"]), (1, False))
     if narrow:
         expect(f"{name}: the tool row spans the card evenly", abs(measured["toolsLeft"] - measured["toolsRight"]) <= 1 and measured["toolsBelowWhen"], True)
