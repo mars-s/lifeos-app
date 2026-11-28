@@ -1,11 +1,11 @@
 import { v } from "convex/values";
-import { err, ok, type Result } from "neverthrow";
+import { Clock, Effect, Result } from "effect";
 import type { WithoutSystemFields } from "convex/server";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
-import { ownerQuery } from "../platform/access";
 import type { Recorder } from "../platform/activity";
-import { changeMutation } from "../platform/change";
+import { changeMutation, ownerQuery, Reads, reading, recording } from "../platform/effect";
+import { effectFromNeverthrow } from "../../shared/effect/bridge";
 import {
   DEFAULT_FOCUS_PLAN,
   MAX_EXTEND_MINUTES,
@@ -21,25 +21,27 @@ import {
   type FocusPlanChoice,
   type Pomodoro,
 } from "../../shared/focus";
-import { load, type PlannerError } from "./model";
+import { InvalidFocus, NotFound } from "./errors";
+import { load } from "./model";
 import { vFocusPlan, vFocusPlanChoice } from "./tables";
 
 type Session = Doc<"focusSessions">;
 type SessionFields = Partial<WithoutSystemFields<Session>>;
-type FocusRefusal = Extract<PlannerError, { kind: "invalid_focus" }>["reason"];
-type Changed = { changed: boolean };
-type Started = { sessionId: Id<"focusSessions">; replaced: Id<"focusSessions"> | null };
+type FocusRefusal = (typeof InvalidFocus.fields.reason)["Type"];
 
-const refuse = <T>(reason: FocusRefusal) => err<T, PlannerError>({ kind: "invalid_focus", reason });
+const refuse = (reason: FocusRefusal) => Result.fail(new InvalidFocus({ reason }));
 
 const isMinutes = (minutes: number, max: number) => Number.isInteger(minutes) && minutes > 0 && minutes <= max;
 
 const isLength = (minutes: number | undefined) => minutes === undefined || isMinutes(minutes, MAX_FOCUS_MINUTES);
 
-const parsePlan = (plan: FocusPlan) =>
-  plan.kind === "open" || (isMinutes(plan.focusMinutes, MAX_FOCUS_MINUTES) && isLength(plan.breakMinutes) && isLength(plan.longBreakMinutes))
-    ? ok<FocusPlan, PlannerError>(plan)
-    : refuse<FocusPlan>("minutes");
+const parsePlan = (plan: FocusPlan) => {
+  const parsed: Result.Result<FocusPlan, InvalidFocus> =
+    plan.kind === "open" || (isMinutes(plan.focusMinutes, MAX_FOCUS_MINUTES) && isLength(plan.breakMinutes) && isLength(plan.longBreakMinutes))
+      ? Result.succeed(plan)
+      : refuse("minutes");
+  return parsed;
+};
 
 const lengthsOf = ({ focusMinutes, breakMinutes, longBreakMinutes }: Pomodoro) =>
   ({ focusMinutes, breakMinutes, ...(longBreakMinutes === undefined ? {} : { longBreakMinutes }) }) satisfies Pomodoro;
@@ -64,29 +66,33 @@ export const endFocusOnClosedTask = async (ctx: MutationCtx, record: Recorder, n
   if (!task || task.status.kind !== "open" || task.trashedAt !== undefined) await end(record, session, now);
 };
 
-const loadOpenTask = async (ctx: QueryCtx, taskId: Id<"tasks">) =>
-  (await load(ctx, "tasks", taskId)).andThen((task) =>
-    task.status.kind === "open" && task.trashedAt === undefined
-      ? ok<Doc<"tasks">, PlannerError>(task)
-      : refuse<Doc<"tasks">>("task_closed"),
-  );
+const ending = (session: Session, now: number) => recording((record) => end(record, session, now));
 
-const loadSession = async (ctx: QueryCtx, sessionId: Id<"focusSessions">) =>
-  (await load(ctx, "focusSessions", sessionId)).andThen((session) =>
-    session.removedAt === undefined
-      ? ok<Session, PlannerError>(session)
-      : err<Session, PlannerError>({ kind: "not_found", table: "focusSessions", id: sessionId }),
-  );
+const loaded = <T extends "tasks" | "focusSessions">(table: T, id: Id<T>) => Reads.use((ctx) => effectFromNeverthrow(() => load(ctx, table, id)));
 
-const loadActive = async (ctx: QueryCtx, sessionId: Id<"focusSessions">) =>
-  (await loadSession(ctx, sessionId)).andThen((session) =>
-    session.state.kind === "ended" ? refuse<Session>("not_active") : ok<Session, PlannerError>(session),
-  );
+const loadOpenTask = Effect.fn("focus.loadOpenTask")(function* (taskId: Id<"tasks">) {
+  const task = yield* loaded("tasks", taskId);
+  if (task.status.kind !== "open" || task.trashedAt !== undefined) return yield* new InvalidFocus({ reason: "task_closed" });
+  return task;
+});
 
-const loadEnded = async (ctx: QueryCtx, sessionId: Id<"focusSessions">) =>
-  (await loadSession(ctx, sessionId)).andThen((session) =>
-    session.state.kind === "ended" ? ok<Session, PlannerError>(session) : refuse<Session>("not_ended"),
-  );
+const loadSession = Effect.fn("focus.loadSession")(function* (sessionId: Id<"focusSessions">) {
+  const session = yield* loaded("focusSessions", sessionId);
+  if (session.removedAt !== undefined) return yield* new NotFound({ table: "focusSessions", id: sessionId });
+  return session;
+});
+
+const loadActive = Effect.fn("focus.loadActive")(function* (sessionId: Id<"focusSessions">) {
+  const session = yield* loadSession(sessionId);
+  if (session.state.kind === "ended") return yield* new InvalidFocus({ reason: "not_active" });
+  return session;
+});
+
+const loadEnded = Effect.fn("focus.loadEnded")(function* (sessionId: Id<"focusSessions">) {
+  const session = yield* loadSession(sessionId);
+  if (session.state.kind !== "ended") return yield* new InvalidFocus({ reason: "not_ended" });
+  return session;
+});
 
 const sessionFor = (taskId: Id<"tasks">, pomodoro: Pomodoro | undefined, kind: Session["kind"], now: number) =>
   ({
@@ -101,52 +107,45 @@ const sessionFor = (taskId: Id<"tasks">, pomodoro: Pomodoro | undefined, kind: S
 export const start = changeMutation({
   action: "focus.start",
   args: { taskId: v.id("tasks"), plan: vFocusPlan },
-  handler: async (ctx, { taskId, plan }, record) => {
-    const task = await loadOpenTask(ctx, taskId);
-    if (task.isErr()) return err<Started, PlannerError>(task.error);
-    const valid = parsePlan(plan);
-    if (valid.isErr()) return err<Started, PlannerError>(valid.error);
-    const now = Date.now();
-    const current = await activeSession(ctx);
-    if (current?.taskId === taskId && current.kind === "focus" && !isTimeUp(current, now))
-      return ok<Started, PlannerError>({ sessionId: current._id, replaced: null });
-    if (current) await end(record, current, now);
-    const pomodoro = valid.value.kind === "pomodoro" ? { ...lengthsOf(valid.value), round: 1 } : undefined;
-    const sessionId = await record.insert("focusSessions", sessionFor(taskId, pomodoro, "focus", now));
-    return ok<Started, PlannerError>({ sessionId, replaced: current?._id ?? null });
-  },
+  handler: Effect.fn("focus.start")(function* ({ taskId, plan }) {
+    yield* loadOpenTask(taskId);
+    const valid = yield* Effect.fromResult(parsePlan(plan));
+    const now = yield* Clock.currentTimeMillis;
+    const current = yield* reading(activeSession);
+    if (current?.taskId === taskId && current.kind === "focus" && !isTimeUp(current, now)) return { sessionId: current._id, replaced: null };
+    if (current) yield* ending(current, now);
+    const pomodoro = valid.kind === "pomodoro" ? { ...lengthsOf(valid), round: 1 } : undefined;
+    const sessionId = yield* recording((record) => record.insert("focusSessions", sessionFor(taskId, pomodoro, "focus", now)));
+    return { sessionId, replaced: current?._id ?? null };
+  }),
 });
 
-const patchActive = async (
-  ctx: MutationCtx,
-  record: Recorder,
+const patchActive = Effect.fn("focus.patchActive")(function* (
   sessionId: Id<"focusSessions">,
-  fieldsFor: (session: Session, now: number) => Result<SessionFields, PlannerError>,
-) => {
-  const session = await loadActive(ctx, sessionId);
-  if (session.isErr()) return err<Changed, PlannerError>(session.error);
-  const fields = fieldsFor(session.value, Date.now());
-  if (fields.isErr()) return err<Changed, PlannerError>(fields.error);
-  return ok<Changed, PlannerError>({ changed: await record.patch("focusSessions", sessionId, fields.value) });
-};
+  fieldsFor: (session: Session, now: number) => Result.Result<SessionFields, InvalidFocus>,
+) {
+  const session = yield* loadActive(sessionId);
+  const fields = yield* Effect.fromResult(fieldsFor(session, yield* Clock.currentTimeMillis));
+  return { changed: yield* recording((record) => record.patch("focusSessions", sessionId, fields)) };
+});
+
+const unchanged = (fields: SessionFields) => Result.succeed(fields);
 
 export const pause = changeMutation({
   action: "focus.pause",
   args: { sessionId: v.id("focusSessions") },
-  handler: (ctx, { sessionId }, record) =>
-    patchActive(ctx, record, sessionId, (session, now) =>
-      ok<SessionFields, PlannerError>(
-        session.state.kind === "running" ? { state: { kind: "paused", at: endInstant(session, now) } } : {},
-      ),
+  handler: ({ sessionId }) =>
+    patchActive(sessionId, (session, now) =>
+      unchanged(session.state.kind === "running" ? { state: { kind: "paused", at: endInstant(session, now) } } : {}),
     ),
 });
 
 export const resume = changeMutation({
   action: "focus.resume",
   args: { sessionId: v.id("focusSessions") },
-  handler: (ctx, { sessionId }, record) =>
-    patchActive(ctx, record, sessionId, (session, now) =>
-      ok<SessionFields, PlannerError>(
+  handler: ({ sessionId }) =>
+    patchActive(sessionId, (session, now) =>
+      unchanged(
         session.state.kind === "paused"
           ? { state: { kind: "running" }, pausedMs: session.pausedMs + Math.max(0, now - session.state.at) }
           : {},
@@ -157,28 +156,28 @@ export const resume = changeMutation({
 export const extend = changeMutation({
   action: "focus.extend",
   args: { sessionId: v.id("focusSessions"), minutes: v.number() },
-  handler: (ctx, { sessionId, minutes }, record) =>
-    patchActive(ctx, record, sessionId, (session, now) => {
-      if (session.plannedMinutes === undefined) return refuse<SessionFields>("not_timed");
+  handler: ({ sessionId, minutes }) =>
+    patchActive(sessionId, (session, now) => {
+      if (session.plannedMinutes === undefined) return refuse("not_timed");
       const planned = session.plannedMinutes + minutes;
-      if (!isMinutes(minutes, MAX_EXTEND_MINUTES) || planned > MAX_FOCUS_MINUTES) return refuse<SessionFields>("minutes");
-      return ok<SessionFields, PlannerError>({ plannedMinutes: planned, pausedMs: session.pausedMs + overtimeMs(session, now) });
+      if (!isMinutes(minutes, MAX_EXTEND_MINUTES) || planned > MAX_FOCUS_MINUTES) return refuse("minutes");
+      return unchanged({ plannedMinutes: planned, pausedMs: session.pausedMs + overtimeMs(session, now) });
     }),
 });
 
 export const setPlan = changeMutation({
   action: "focus.setPlan",
   args: { sessionId: v.id("focusSessions"), plan: vFocusPlan },
-  handler: (ctx, { sessionId, plan }, record) =>
-    patchActive(ctx, record, sessionId, (session, now) => {
-      if (session.kind === "break") return refuse<SessionFields>("on_break");
+  handler: ({ sessionId, plan }) =>
+    patchActive(sessionId, (session, now) => {
+      if (session.kind === "break") return refuse("on_break");
       const valid = parsePlan(plan);
-      if (valid.isErr()) return refuse<SessionFields>("minutes");
-      if (valid.value.kind === "open") return ok<SessionFields, PlannerError>({ plannedMinutes: undefined, pomodoro: undefined });
+      if (Result.isFailure(valid)) return refuse("minutes");
+      if (valid.success.kind === "open") return unchanged({ plannedMinutes: undefined, pomodoro: undefined });
       const worked = Math.ceil(focusedMs({ ...session, plannedMinutes: undefined }, now) / MINUTE_MS);
-      return ok<SessionFields, PlannerError>({
-        plannedMinutes: Math.max(valid.value.focusMinutes, worked),
-        pomodoro: { ...lengthsOf(valid.value), round: session.pomodoro?.round ?? 1 },
+      return unchanged({
+        plannedMinutes: Math.max(valid.success.focusMinutes, worked),
+        pomodoro: { ...lengthsOf(valid.success), round: session.pomodoro?.round ?? 1 },
       });
     }),
 });
@@ -186,59 +185,52 @@ export const setPlan = changeMutation({
 export const stop = changeMutation({
   action: "focus.stop",
   args: { sessionId: v.id("focusSessions") },
-  handler: async (ctx, { sessionId }, record) => {
-    const session = await loadSession(ctx, sessionId);
-    if (session.isErr()) return err<Changed, PlannerError>(session.error);
-    if (session.value.state.kind === "ended") return ok<Changed, PlannerError>({ changed: false });
-    return ok<Changed, PlannerError>({ changed: await end(record, session.value, Date.now()) });
-  },
+  handler: Effect.fn("focus.stop")(function* ({ sessionId }) {
+    const session = yield* loadSession(sessionId);
+    if (session.state.kind === "ended") return { changed: false };
+    return { changed: yield* ending(session, yield* Clock.currentTimeMillis) };
+  }),
 });
 
 export const advance = changeMutation({
   action: "focus.advance",
   args: { sessionId: v.id("focusSessions") },
-  handler: async (ctx, { sessionId }, record) => {
-    const session = await loadActive(ctx, sessionId);
-    if (session.isErr()) return err<Started, PlannerError>(session.error);
-    const { taskId, kind, pomodoro } = session.value;
-    if (!pomodoro) return refuse<Started>("not_pomodoro");
+  handler: Effect.fn("focus.advance")(function* ({ sessionId }) {
+    const session = yield* loadActive(sessionId);
+    const { taskId, kind, pomodoro } = session;
+    if (!pomodoro) return yield* new InvalidFocus({ reason: "not_pomodoro" });
     const next = nextStep(pomodoro, kind);
-    const task = next.kind === "focus" ? await loadOpenTask(ctx, taskId) : await load(ctx, "tasks", taskId);
-    if (task.isErr()) return err<Started, PlannerError>(task.error);
-    const now = Date.now();
-    await end(record, session.value, now);
-    const nextId = await record.insert("focusSessions", sessionFor(taskId, next.pomodoro, next.kind, now));
-    return ok<Started, PlannerError>({ sessionId: nextId, replaced: sessionId });
-  },
+    yield* next.kind === "focus" ? loadOpenTask(taskId) : loaded("tasks", taskId);
+    const now = yield* Clock.currentTimeMillis;
+    yield* ending(session, now);
+    const nextId = yield* recording((record) => record.insert("focusSessions", sessionFor(taskId, next.pomodoro, next.kind, now)));
+    return { sessionId: nextId, replaced: sessionId };
+  }),
 });
 
 export const setMinutes = changeMutation({
   action: "focus.setMinutes",
   args: { sessionId: v.id("focusSessions"), minutes: v.number() },
-  handler: async (ctx, { sessionId, minutes }, record) => {
-    const session = await loadEnded(ctx, sessionId);
-    if (session.isErr()) return err<Changed, PlannerError>(session.error);
-    if (!isMinutes(minutes, MAX_FOCUS_MINUTES)) return refuse<Changed>("minutes");
-    const { state } = session.value;
-    const at = state.kind === "ended" ? state.at : Date.now();
-    return ok<Changed, PlannerError>({
-      changed: await record.patch("focusSessions", sessionId, {
-        start: at - minutes * MINUTE_MS,
-        pausedMs: 0,
-        plannedMinutes: undefined,
-      }),
-    });
-  },
+  handler: Effect.fn("focus.setMinutes")(function* ({ sessionId, minutes }) {
+    const { state } = yield* loadEnded(sessionId);
+    if (!isMinutes(minutes, MAX_FOCUS_MINUTES)) return yield* new InvalidFocus({ reason: "minutes" });
+    const at = state.kind === "ended" ? state.at : yield* Clock.currentTimeMillis;
+    return {
+      changed: yield* recording((record) =>
+        record.patch("focusSessions", sessionId, { start: at - minutes * MINUTE_MS, pausedMs: 0, plannedMinutes: undefined }),
+      ),
+    };
+  }),
 });
 
 export const remove = changeMutation({
   action: "focus.remove",
   args: { sessionId: v.id("focusSessions") },
-  handler: async (ctx, { sessionId }, record) => {
-    const session = await loadEnded(ctx, sessionId);
-    if (session.isErr()) return err<Changed, PlannerError>(session.error);
-    return ok<Changed, PlannerError>({ changed: await record.patch("focusSessions", sessionId, { removedAt: Date.now() }) });
-  },
+  handler: Effect.fn("focus.remove")(function* ({ sessionId }) {
+    yield* loadEnded(sessionId);
+    const removedAt = yield* Clock.currentTimeMillis;
+    return { changed: yield* recording((record) => record.patch("focusSessions", sessionId, { removedAt })) };
+  }),
 });
 
 export const planChoiceOf = async (ctx: QueryCtx) => {
@@ -250,20 +242,20 @@ export const planChoiceOf = async (ctx: QueryCtx) => {
 
 export const plan = ownerQuery({
   args: {},
-  handler: planChoiceOf,
+  handler: () => reading(planChoiceOf),
 });
 
 export const choosePlan = changeMutation({
   action: "focus.choosePlan",
   args: vFocusPlanChoice.fields,
-  handler: async (ctx, choice, record) => {
+  handler: Effect.fn("focus.choosePlan")(function* (choice) {
     const lengths = [choice.focusMinutes, choice.breakMinutes, choice.longBreakMinutes];
-    if (!lengths.every((minutes) => isMinutes(minutes, MAX_FOCUS_MINUTES))) return refuse<Changed>("minutes");
-    const row = await ctx.db.query("focusPlan").first();
-    if (row) return ok<Changed, PlannerError>({ changed: await record.patch("focusPlan", row._id, choice) });
-    await record.insert("focusPlan", choice);
-    return ok<Changed, PlannerError>({ changed: true });
-  },
+    if (!lengths.every((minutes) => isMinutes(minutes, MAX_FOCUS_MINUTES))) return yield* new InvalidFocus({ reason: "minutes" });
+    const row = yield* reading((ctx) => ctx.db.query("focusPlan").first());
+    if (row) return { changed: yield* recording((record) => record.patch("focusPlan", row._id, choice)) };
+    yield* recording((record) => record.insert("focusPlan", choice));
+    return { changed: true };
+  }),
 });
 
 export const currentFocus = async (ctx: QueryCtx) => {
@@ -290,5 +282,5 @@ export const currentFocus = async (ctx: QueryCtx) => {
 
 export const current = ownerQuery({
   args: {},
-  handler: currentFocus,
+  handler: () => reading(currentFocus),
 });
