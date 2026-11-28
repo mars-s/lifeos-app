@@ -2,7 +2,8 @@ import { describe, expect, it } from "@effect/vitest";
 import { Effect } from "effect";
 import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 import type { Id } from "../../../convex/_generated/dataModel";
-import { Backend, renameTaskAtom, selectedAtom, selectedCountAtom, toggleSelectedAtom } from "./atoms";
+import { Backend } from "../../client/backend";
+import { renameTaskAtom, selectedAtom, selectedCountAtom, toggleSelectedAtom } from "./atoms";
 
 const taskId = "task1" as Id<"tasks">;
 
