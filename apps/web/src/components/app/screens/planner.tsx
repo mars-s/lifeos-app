@@ -224,9 +224,15 @@ const Panes = ({
     planCommands.reveal = revealDay;
     planCommands.spread = startSpread;
     planCommands.smartBlock = startSmartBlock;
+    const { pending, pendingSmartBlock } = planCommands;
     planCommands.pending = null;
     planCommands.pendingSmartBlock = null;
+    const resume = requestAnimationFrame(() => {
+      if (pending) startSpread(pending);
+      if (pendingSmartBlock) startSmartBlock(pendingSmartBlock);
+    });
     return () => {
+      cancelAnimationFrame(resume);
       planCommands.addBlock = null;
       planCommands.reveal = null;
       planCommands.spread = null;

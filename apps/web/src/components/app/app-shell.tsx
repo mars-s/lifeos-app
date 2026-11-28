@@ -2,7 +2,7 @@
 
 import { List as MenuIcon } from "@phosphor-icons/react";
 import { getFunctionName, type FunctionReference } from "convex/server";
-import { addTransitionType, startTransition, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Activity, addTransitionType, startTransition, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "waku";
 import { api } from "@lifeos/backend/api";
 import type { IsoDate } from "@lifeos/backend/date";
@@ -28,6 +28,8 @@ import { arrowTarget } from "./row-window";
 import { LISTS, parseRoute, routeHref, screenKey, type Route, type Via } from "./route";
 import { UPCOMING_DAYS } from "./dates";
 import { failedScreen, Screen } from "./screens";
+import { PlannerScreen } from "./screens/planner";
+import { plannerViews } from "./planner/model";
 import { SelectionBar } from "./selection-bar";
 import { Onboarding } from "./settings/onboarding";
 import { useSelectionGestures } from "./selection-gestures";
@@ -44,7 +46,7 @@ const moveFocus = (step: 1 | -1, main: HTMLElement | null) => {
   const active = document.activeElement;
   const scope = (active instanceof HTMLElement && active.closest<HTMLElement>("[data-arrow-scope]")) || main;
   if (!scope) return false;
-  const items = [...scope.querySelectorAll<HTMLElement>("[data-arrow-item], [data-row-gap]")];
+  const items = [...scope.querySelectorAll<HTMLElement>("[data-arrow-item], [data-row-gap]")].filter((item) => item.checkVisibility());
   const current = active instanceof HTMLElement ? items.indexOf(active) : -1;
   const next = arrowTarget(items[current === -1 ? (step === 1 ? 0 : items.length - 1) : current + step]);
   if (!next) return items.length > 0;
@@ -66,6 +68,7 @@ const warmViews = (today: IsoDate) =>
     { query: api.planner.lists.someday, args: {} },
     { query: api.planner.labels.list, args: {} },
     { query: api.planner.templates.list, args: {} },
+    ...plannerViews(today),
   ] satisfies { query: FunctionReference<"query">; args: Record<string, unknown> }[];
 
 const WarmView = ({ view, onArrived }: { view: ReturnType<typeof warmViews>[number]; onArrived: () => void }) => {
@@ -77,7 +80,7 @@ const WarmView = ({ view, onArrived }: { view: ReturnType<typeof warmViews>[numb
   return null;
 };
 
-const WarmLists = ({ today, after }: { today: IsoDate; after: boolean }) => {
+const WarmLists = ({ today, after, onWarm }: { today: IsoDate; after: boolean; onWarm: () => void }) => {
   const [warmed, setWarmed] = useState(0);
   const views = useMemo(() => warmViews(today), [today]);
   const next = useCallback(() => setWarmed((count) => count + 1), []);
@@ -86,6 +89,9 @@ const WarmLists = ({ today, after }: { today: IsoDate; after: boolean }) => {
     const timer = setTimeout(next, WARM_AFTER_MS);
     return () => clearTimeout(timer);
   }, [after, next]);
+  useEffect(() => {
+    if (warmed > views.length) onWarm();
+  }, [warmed, views.length, onWarm]);
   return views.slice(0, warmed).map((view, index) => (
     <WarmView key={getFunctionName(view.query)} view={view} onArrived={index === warmed - 1 ? next : nothing} />
   ));
@@ -112,6 +118,10 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
   const sidebarState = useViewState(api.planner.sidebar.get, { date: today });
   const sidebar = valueOf(sidebarState.value);
   const { mode, placeOf } = useModes(route, href);
+  const onPlanner = route.kind === "planner" || route.kind === "upcoming";
+  const [plannerKept, setPlannerKept] = useState(false);
+  if (onPlanner && !plannerKept) setPlannerKept(true);
+  const keepPlanner = useCallback(() => setPlannerKept(true), []);
 
   const shell = useMemo(() => {
     const navigate = (to: Route, how: Via, depth?: Depth) => {
@@ -152,6 +162,10 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
       },
     } satisfies ShellState;
   }, [route, via, today, card, href, actual, router, renaming, draft, mode, placeOf]);
+
+  const [hiddenShell, setHiddenShell] = useState<ShellState | null>(null);
+  if (onPlanner && hiddenShell) setHiddenShell(null);
+  if (!onPlanner && !hiddenShell) setHiddenShell({ ...shell, openCard: null });
 
   useEffect(() => {
     latest.current = shell;
@@ -212,7 +226,7 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
   return (
     <ShellContext value={shell}>
       <FocusProvider>
-      <WarmLists today={today} after={sidebar !== undefined || sidebarState.error !== null} />
+      <WarmLists today={today} after={sidebar !== undefined || sidebarState.error !== null} onWarm={keepPlanner} />
       <PanelBoundary panel="list" fallback={() => children}>
       <AppMenu sidebar={sidebar}>
       <div className="flex h-dvh bg-surface select-none [-webkit-touch-callout:none]">
@@ -271,11 +285,24 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
                 <MenuIcon weight="bold" className="size-5" aria-hidden="true" />
               </button>
             </div>
-            <div key={screenKey(route)} className={cn(via === "pointer" && "animate-screen-in")}>
-              <PanelBoundary panel="list" fallback={failedScreen(route, sidebar)}>
-                <Screen route={route} sidebar={sidebar} sidebarFailed={sidebarState.error !== null} />
-              </PanelBoundary>
-            </div>
+            {!onPlanner && (
+              <div key={screenKey(route)} className={cn(via === "pointer" && "animate-screen-in")}>
+                <PanelBoundary panel="list" fallback={failedScreen(route, sidebar)}>
+                  <Screen route={route} sidebar={sidebar} sidebarFailed={sidebarState.error !== null} />
+                </PanelBoundary>
+              </div>
+            )}
+            {plannerKept && (
+              <Activity mode={onPlanner ? "visible" : "hidden"}>
+                <ShellContext value={onPlanner || !hiddenShell ? shell : hiddenShell}>
+                  <div className={cn(onPlanner && via === "pointer" && "animate-screen-in")}>
+                    <PanelBoundary panel="list" fallback={failedScreen({ kind: "planner" }, sidebar)}>
+                      <PlannerScreen tab={route.kind === "upcoming" ? "upcoming" : "planner"} />
+                    </PanelBoundary>
+                  </div>
+                </ShellContext>
+              </Activity>
+            )}
             {children}
           </main>
           <PanelBoundary panel="bar" fallback={() => null}>

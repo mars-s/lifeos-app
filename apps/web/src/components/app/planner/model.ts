@@ -59,11 +59,20 @@ const areasOf = (slices: readonly (MeterSlice & { title: string | undefined })[]
   return [...byKey.values()].toSorted((a, b) => (a.key === NO_AREA ? 1 : b.key === NO_AREA ? -1 : b.minutes + b.guessed - (a.minutes + a.guessed)));
 };
 
+const windowArgs = (from: IsoDate, days: number) => ({ from: startOfLocalDay(from), to: startOfLocalDay(addDays(from, days)) });
+const weekArgs = (today: IsoDate) => ({ from: today, days: PLAN_DAYS, timeZone: localZone() });
+
+export const plannerViews = (today: IsoDate) =>
+  [
+    { query: api.planner.plan.week, args: weekArgs(today) },
+    { query: api.planner.workBlocks.range, args: windowArgs(today, PLAN_DAYS) },
+    { query: api.calendar.commitments.range, args: windowArgs(today, PLAN_DAYS) },
+  ] as const;
+
 const useWindow = (from: IsoDate, days: number) => {
-  const start = startOfLocalDay(from);
-  const end = startOfLocalDay(addDays(from, days));
-  const blocks = valueOf(useQuietView(api.planner.workBlocks.range, { from: start, to: end })) ?? NO_BLOCKS;
-  const commitments = valueOf(useQuietView(api.calendar.commitments.range, { from: start, to: end })) ?? NO_COMMITMENTS;
+  const args = windowArgs(from, days);
+  const blocks = valueOf(useQuietView(api.planner.workBlocks.range, args)) ?? NO_BLOCKS;
+  const commitments = valueOf(useQuietView(api.calendar.commitments.range, args)) ?? NO_COMMITMENTS;
   return { blocks, commitments };
 };
 
@@ -76,7 +85,7 @@ const clipTo = (row: { start: number; end: number }, date: IsoDate) => {
 
 export const usePlanner = (today: IsoDate) => {
   const inbox = useView(api.planner.lists.inbox, {});
-  const week = valueOf(useView(api.planner.plan.week, { from: today, days: PLAN_DAYS, timeZone: localZone() }));
+  const week = valueOf(useView(api.planner.plan.week, weekArgs(today)));
   const { blocks, commitments } = useWindow(today, PLAN_DAYS);
 
   return useMemo(() => {

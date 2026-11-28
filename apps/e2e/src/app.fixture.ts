@@ -54,7 +54,7 @@ export class App {
 
   async ready() {
     await expect(this.main).toBeVisible();
-    await expect(this.page.locator('#main [role=status][aria-label="Loading…"]')).toHaveCount(0, { timeout: 15_000 });
+    await expect(this.page.locator('#main [role=status][aria-label="Loading…"]').filter({ visible: true })).toHaveCount(0, { timeout: 15_000 });
   }
 
   async go(path: string) {
@@ -94,15 +94,22 @@ export class App {
   async newTask(label: string) {
     await this.go("/inbox");
     const title = await this.capture(this.uniq(label));
+    await this.toBottom();
     await expect(this.row(title)).toHaveCount(1);
     return title;
   }
 
   row(title: string) {
-    return this.main.locator("li", { hasText: title }).first();
+    return this.main.locator("li", { hasText: title }).filter({ visible: true }).first();
+  }
+
+  async toBottom() {
+    await this.main.evaluate((main) => main.scrollTo({ top: main.scrollHeight }));
+    await this.page.waitForTimeout(100);
   }
 
   async reveal(title: string) {
+    if ((await this.row(title).count()) === 0) await this.toBottom();
     const row = this.row(title);
     await row.scrollIntoViewIfNeeded();
     await expect(row.locator("[data-arrow-item]").first()).toBeVisible();

@@ -1,141 +1,141 @@
 {
   "chromium:anytime → planner": {
-    "inputToReady": 214,
-    "blockingMs": 213,
-    "dropped": 4.5,
-    "commitMs": 145.1
+    "inputToReady": 156.8,
+    "blockingMs": 136.5,
+    "dropped": 5,
+    "commitMs": 98.6
   },
   "chromium:drag a Task between days": {
-    "inputToReady": 486.1,
-    "blockingMs": 213.5,
-    "dropped": 6,
-    "commitMs": 327.8
+    "inputToReady": 476.4,
+    "blockingMs": 185,
+    "dropped": 5,
+    "commitMs": 306.8
   },
   "chromium:inbox → planner": {
-    "inputToReady": 198.2,
-    "blockingMs": 187,
-    "dropped": 4,
-    "commitMs": 132.1
+    "inputToReady": 172.2,
+    "blockingMs": 166.5,
+    "dropped": 5,
+    "commitMs": 120.3
   },
   "chromium:logbook → planner": {
-    "inputToReady": 192.1,
-    "blockingMs": 169.5,
-    "dropped": 4,
-    "commitMs": 132.5
+    "inputToReady": 159.1,
+    "blockingMs": 145,
+    "dropped": 5,
+    "commitMs": 104.1
   },
   "chromium:open a Task card": {
-    "inputToReady": 68.4,
-    "blockingMs": 15.5,
-    "dropped": 1,
-    "commitMs": 26.1
+    "inputToReady": 69.8,
+    "blockingMs": 16.5,
+    "dropped": 2,
+    "commitMs": 57
   },
   "chromium:open the command bar": {
-    "inputToReady": 67.2,
-    "blockingMs": 12,
+    "inputToReady": 64.8,
+    "blockingMs": 7,
     "dropped": 1,
-    "commitMs": 9.1
+    "commitMs": 8.7
   },
   "chromium:planner → anytime": {
-    "inputToReady": 89.7,
-    "blockingMs": 38,
+    "inputToReady": 79.9,
+    "blockingMs": 28,
     "dropped": 1,
-    "commitMs": 36.3
+    "commitMs": 60.5
   },
   "chromium:planner → inbox": {
-    "inputToReady": 96.4,
-    "blockingMs": 44,
+    "inputToReady": 119.9,
+    "blockingMs": 68,
     "dropped": 1,
-    "commitMs": 38.9
+    "commitMs": 70.1
   },
   "chromium:planner → logbook": {
-    "inputToReady": 109.4,
+    "inputToReady": 103.3,
     "blockingMs": 0,
     "dropped": 1,
-    "commitMs": 28
+    "commitMs": 57.2
   },
   "chromium:planner → someday": {
-    "inputToReady": 70,
-    "blockingMs": 18,
+    "inputToReady": 61.8,
+    "blockingMs": 9,
     "dropped": 1,
-    "commitMs": 25.5
+    "commitMs": 50.7
   },
   "chromium:planner → today": {
-    "inputToReady": 138.2,
-    "blockingMs": 86,
+    "inputToReady": 116.6,
+    "blockingMs": 64,
     "dropped": 1,
-    "commitMs": 53.8
+    "commitMs": 70.8
   },
   "chromium:planner → trash": {
-    "inputToReady": 50,
+    "inputToReady": 39.6,
     "blockingMs": 0,
-    "dropped": 1,
-    "commitMs": 15.9
+    "dropped": 0,
+    "commitMs": 38
   },
   "chromium:planner → upcoming": {
-    "inputToReady": 234.3,
-    "blockingMs": 181,
-    "dropped": 2,
-    "commitMs": 126.5
+    "inputToReady": 213.4,
+    "blockingMs": 161,
+    "dropped": 1,
+    "commitMs": 112.2
   },
   "chromium:someday → planner": {
-    "inputToReady": 216.3,
-    "blockingMs": 209,
-    "dropped": 4,
-    "commitMs": 143.7
+    "inputToReady": 147.4,
+    "blockingMs": 138.5,
+    "dropped": 5,
+    "commitMs": 121.5
   },
   "chromium:today → planner": {
-    "inputToReady": 219.4,
-    "blockingMs": 227,
+    "inputToReady": 173.8,
+    "blockingMs": 161.5,
     "dropped": 4.5,
-    "commitMs": 136.3
+    "commitMs": 102.5
   },
   "chromium:trash → planner": {
-    "inputToReady": 248.2,
-    "blockingMs": 260,
-    "dropped": 4.5,
-    "commitMs": 157.4
+    "inputToReady": 146.3,
+    "blockingMs": 126.5,
+    "dropped": 4,
+    "commitMs": 105.5
   },
   "chromium:type in a note": {
-    "inputToReady": 1868.3,
+    "inputToReady": 1883.9,
     "blockingMs": 0,
     "dropped": 0,
-    "commitMs": 46.7
+    "commitMs": 48
   },
   "chromium:upcoming → planner": {
-    "inputToReady": 257.9,
-    "blockingMs": 263.5,
-    "dropped": 4,
-    "commitMs": 143.6
+    "inputToReady": 210.3,
+    "blockingMs": 200.5,
+    "dropped": 5,
+    "commitMs": 116.3
   },
   "webkit:anytime → planner": {
-    "inputToReady": 137.5,
+    "inputToReady": 85,
     "blockingMs": 0,
     "dropped": 4,
-    "commitMs": 37
+    "commitMs": 22.5
   },
   "webkit:drag a Task between days": {
-    "inputToReady": 156,
+    "inputToReady": 134,
     "blockingMs": 0,
-    "dropped": 4,
-    "commitMs": 81
+    "dropped": 2,
+    "commitMs": 69.5
   },
   "webkit:inbox → planner": {
-    "inputToReady": 139.5,
+    "inputToReady": 82.5,
     "blockingMs": 0,
     "dropped": 4,
-    "commitMs": 39.5
+    "commitMs": 21
   },
   "webkit:logbook → planner": {
-    "inputToReady": 139,
+    "inputToReady": 82.5,
     "blockingMs": 0,
     "dropped": 4,
-    "commitMs": 38.5
+    "commitMs": 21.5
   },
   "webkit:open a Task card": {
-    "inputToReady": 34,
+    "inputToReady": 63,
     "blockingMs": 0,
-    "dropped": 0,
-    "commitMs": 6
+    "dropped": 1,
+    "commitMs": 9
   },
   "webkit:open the command bar": {
     "inputToReady": 37,
@@ -144,75 +144,75 @@
     "commitMs": 4
   },
   "webkit:planner → anytime": {
-    "inputToReady": 41,
+    "inputToReady": 40,
     "blockingMs": 0,
     "dropped": 0,
-    "commitMs": 10
+    "commitMs": 16
   },
   "webkit:planner → inbox": {
-    "inputToReady": 53,
+    "inputToReady": 54,
+    "blockingMs": 0,
+    "dropped": 0,
+    "commitMs": 18
+  },
+  "webkit:planner → logbook": {
+    "inputToReady": 69,
+    "blockingMs": 0,
+    "dropped": 0,
+    "commitMs": 15
+  },
+  "webkit:planner → someday": {
+    "inputToReady": 32,
+    "blockingMs": 0,
+    "dropped": 0,
+    "commitMs": 14
+  },
+  "webkit:planner → today": {
+    "inputToReady": 51,
+    "blockingMs": 0,
+    "dropped": 3,
+    "commitMs": 20
+  },
+  "webkit:planner → trash": {
+    "inputToReady": 28,
     "blockingMs": 0,
     "dropped": 0,
     "commitMs": 11
   },
-  "webkit:planner → logbook": {
-    "inputToReady": 58,
-    "blockingMs": 0,
-    "dropped": 1,
-    "commitMs": 8
-  },
-  "webkit:planner → someday": {
-    "inputToReady": 34,
-    "blockingMs": 0,
-    "dropped": 0,
-    "commitMs": 7
-  },
-  "webkit:planner → today": {
-    "inputToReady": 61,
-    "blockingMs": 0,
-    "dropped": 3,
-    "commitMs": 13
-  },
-  "webkit:planner → trash": {
-    "inputToReady": 25,
-    "blockingMs": 0,
-    "dropped": 0,
-    "commitMs": 4
-  },
   "webkit:planner → upcoming": {
-    "inputToReady": 119,
+    "inputToReady": 114,
     "blockingMs": 0,
     "dropped": 2,
-    "commitMs": 29
+    "commitMs": 27
   },
   "webkit:someday → planner": {
-    "inputToReady": 133.5,
+    "inputToReady": 84,
     "blockingMs": 0,
     "dropped": 4,
-    "commitMs": 37
+    "commitMs": 21.5
   },
   "webkit:today → planner": {
-    "inputToReady": 140,
+    "inputToReady": 80.5,
     "blockingMs": 0,
     "dropped": 4,
-    "commitMs": 37.5
+    "commitMs": 20
   },
   "webkit:trash → planner": {
-    "inputToReady": 142,
+    "inputToReady": 81,
     "blockingMs": 0,
     "dropped": 4,
-    "commitMs": 43
+    "commitMs": 21.5
   },
   "webkit:type in a note": {
-    "inputToReady": 1808,
+    "inputToReady": 1813,
     "blockingMs": 0,
     "dropped": 0,
-    "commitMs": 21
+    "commitMs": 16
   },
   "webkit:upcoming → planner": {
-    "inputToReady": 163.5,
+    "inputToReady": 194,
     "blockingMs": 0,
     "dropped": 4,
-    "commitMs": 31
+    "commitMs": 29
   }
 }

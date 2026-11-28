@@ -14,11 +14,11 @@ const test = base.extend({
   },
 });
 
-const notLoading = `!document.querySelector('#main [role=status][aria-label="Loading…"]')`;
+const notLoading = `![...document.querySelectorAll('#main [role=status][aria-label="Loading…"]')].some((node) => node.checkVisibility())`;
 const PLANNER = {
   name: "planner",
   path: "/planner",
-  ready: `document.title.startsWith("Planner") && ${notLoading} && !!document.querySelector('#main [role=group][aria-label=Days]') && !!document.querySelector('#main section[aria-label=Timebox]')`,
+  ready: `document.title.startsWith("Planner") && ${notLoading} && !!document.querySelector('#main [role=group][aria-label=Days]')?.checkVisibility() && !!document.querySelector('#main section[aria-label=Timebox]')?.checkVisibility()`,
 };
 const LISTS = ["Inbox", "Today", "Upcoming", "Anytime", "Someday", "Logbook", "Trash"].map((title) => ({
   name: title.toLowerCase(),
@@ -85,7 +85,7 @@ test("open a Task card", async ({ page, browser }) => {
   const samples: Sample[] = [];
   const open = async () => {
     await arm(page, `!!document.querySelector('#main li[data-open-card]')`);
-    await page.locator("#main [data-task-key] [data-arrow-item]").nth(2).dblclick();
+    await page.locator("#main [data-task-key] [data-arrow-item]").filter({ visible: true }).nth(2).dblclick();
     const sample = await collect(page, SETTLE_MS);
     await page.keyboard.press("Escape");
     await expect(page.locator("#main li[data-open-card]")).toHaveCount(0);
