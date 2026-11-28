@@ -1,32 +1,23 @@
 import { v } from "convex/values";
-import { err, errAsync, ok, okAsync, ResultAsync, type Result } from "neverthrow";
+import { Clock, Effect, Result } from "effect";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import { internalAction, internalMutation, internalQuery, type MutationCtx, type QueryCtx } from "../_generated/server";
+import { internalMutation, internalQuery, type MutationCtx, type QueryCtx } from "../_generated/server";
 import { TRIP_LOOK_LIMIT_MS, type TravelMode } from "../../shared/features";
-import { ownerMutation, ownerQuery } from "../platform/access";
-import { changeMutation } from "../platform/change";
+import { effectFromNeverthrow } from "../../shared/effect/bridge";
+import { wireError } from "../../shared/effect/wire";
+import { acting, changeMutation, internalAction, ownerMutation, ownerQuery, reading, recording, writing } from "../platform/effect";
 import { attemptsFor, capabilityChain } from "../ai/capabilities";
 import { askChoice } from "../ai/transport";
 import { featureReady, featureState } from "../platform/features";
 import { sha256Hex } from "../platform/workers";
-import { USER_AGENT, type ModelId } from "../../shared/ai";
+import type { ModelId } from "../../shared/ai";
 import { canonicalJson } from "../planner/smartEstimateModel";
-import {
-  nearestPlaces,
-  OVERPASS_URL,
-  overpassQuery,
-  parseTripDecision,
-  placePhrases,
-  roundedPosition,
-  routingUrl,
-  TRIP_THRESHOLD,
-  tripAsk,
-  withTravel,
-  type TripDecision,
-} from "./model";
+import { NoTrip, UnknownPlace } from "./errors";
+import { parseTripDecision, placePhrases, roundedPosition, TRIP_THRESHOLD, tripAsk, type TripDecision } from "./model";
+import { Places } from "./provider";
 import { homeOf } from "./saved";
-import { vTripOutcome, type Place, type PlacesError, type Position, type TripOutcome } from "./tables";
+import { vTripOutcome, type Position, type TripOutcome } from "./tables";
 
 export const DEBOUNCE_MS = 2_000;
 
@@ -66,7 +57,9 @@ export const requestTrip = async (ctx: MutationCtx, taskId: Id<"tasks">, { onlyF
 
 export const request = ownerMutation({
   args: { taskId: v.id("tasks") },
-  handler: async (ctx, { taskId }) => ({ requested: await requestTrip(ctx, taskId, { onlyFirst: true }) }),
+  handler: Effect.fn("trips.request")(function* ({ taskId }) {
+    return { requested: yield* writing((ctx) => requestTrip(ctx, taskId, { onlyFirst: true })) };
+  }),
 });
 
 const chosenOf = (row: Doc<"taskTrips">) => {
@@ -85,9 +78,9 @@ export const chosenTrip = async (ctx: QueryCtx, taskId: Id<"tasks">) => {
 
 export const forTask = ownerQuery({
   args: { taskId: v.id("tasks") },
-  handler: async (ctx, { taskId }) => {
-    if (!(await featureReady(ctx, "places"))) return null;
-    const row = await tripRow(ctx, taskId);
+  handler: Effect.fn("trips.forTask")(function* ({ taskId }) {
+    if (!(yield* reading((ctx) => featureReady(ctx, "places")))) return null;
+    const row = yield* reading((ctx) => tripRow(ctx, taskId));
     if (!row) return null;
     if (row.outcome.kind === "unfound") return { kind: "unfound" as const, query: row.outcome.query, mode: row.outcome.mode };
     if (row.outcome.kind === "waiting" && row.outcome.query !== undefined) return { kind: "looking" as const, query: row.outcome.query, since: row.requestedAt };
@@ -96,34 +89,32 @@ export const forTask = ownerQuery({
     if (!trip) return null;
     const { query, mode, from } = trip.outcome;
     return { kind: "trip" as const, query, mode, from, chosen: trip.chosen, places: trip.places };
-  },
+  }),
 });
 
-const foundRow = async (ctx: QueryCtx, taskId: Id<"tasks">) => {
-  const row = await tripRow(ctx, taskId);
-  return row && row.outcome.kind === "found" ? ok(row) : err<Doc<"taskTrips">, TripError>({ kind: "no_trip" });
-};
+const foundRow = Effect.fn("trips.foundRow")(function* (taskId: Id<"tasks">) {
+  const row = yield* reading((ctx) => tripRow(ctx, taskId));
+  if (!row || row.outcome.kind !== "found") return yield* new NoTrip();
+  return { row, places: row.outcome.places };
+});
 
 export const choose = changeMutation({
   action: "trip.choose",
   args: { taskId: v.id("tasks"), key: v.string() },
-  handler: async (ctx, { taskId, key }, record) => {
-    const row = await foundRow(ctx, taskId);
-    if (row.isErr()) return err(row.error);
-    const places = row.value.outcome.kind === "found" ? row.value.outcome.places : [];
-    if (!places.some((place) => place.key === key)) return err<{ changed: boolean }, TripError>({ kind: "unknown_place" });
-    return ok({ changed: await record.patch("taskTrips", row.value._id, { choice: { kind: "picked", key } }) });
-  },
+  handler: Effect.fn("trips.choose")(function* ({ taskId, key }) {
+    const { row, places } = yield* foundRow(taskId);
+    if (!places.some((place) => place.key === key)) return yield* new UnknownPlace();
+    return { changed: yield* recording((record) => record.patch("taskTrips", row._id, { choice: { kind: "picked", key } })) };
+  }),
 });
 
 export const dismiss = changeMutation({
   action: "trip.dismiss",
   args: { taskId: v.id("tasks") },
-  handler: async (ctx, { taskId }, record) => {
-    const row = await foundRow(ctx, taskId);
-    if (row.isErr()) return err(row.error);
-    return ok({ changed: await record.patch("taskTrips", row.value._id, { choice: { kind: "dismissed" } }) });
-  },
+  handler: Effect.fn("trips.dismiss")(function* ({ taskId }) {
+    const { row } = yield* foundRow(taskId);
+    return { changed: yield* recording((record) => record.patch("taskTrips", row._id, { choice: { kind: "dismissed" } })) };
+  }),
 });
 
 export type TripPlan =
@@ -188,75 +179,65 @@ export const forget = internalMutation({
   },
 });
 
-const failureOf = (response: Response) => {
-  if (response.status === 401 || response.status === 403) return { kind: "unauthorised" } satisfies PlacesError;
-  if (response.status === 429) return { kind: "rate_limited" } satisfies PlacesError;
-  return { kind: "unavailable", status: response.status } satisfies PlacesError;
-};
-
-const UNREACHABLE: PlacesError = { kind: "unavailable" };
-const UNREADABLE: PlacesError = { kind: "invalid_response" };
-
-const jsonFrom = (pending: Promise<Response>) =>
-  ResultAsync.fromPromise(pending, () => UNREACHABLE).andThen((response) =>
-    response.ok
-      ? ResultAsync.fromPromise(response.json() as Promise<unknown>, () => UNREADABLE)
-      : errAsync<unknown, PlacesError>(failureOf(response)),
-  );
-
-const searchNear = (query: string, from: Position) =>
-  jsonFrom(
-    fetch(OVERPASS_URL, {
-      method: "POST",
-      headers: { "user-agent": USER_AGENT, "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ data: overpassQuery(query, from) }).toString(),
-    }),
-  ).andThen((body) => nearestPlaces(body, from));
-
-const timed = (mode: TravelMode, from: Position, places: Place[]) =>
-  jsonFrom(fetch(routingUrl(mode, from, places), { headers: { "user-agent": USER_AGENT } }))
-    .andThen((body) => withTravel(body, places))
-    .orElse(() => okAsync<Place[], PlacesError>(places));
-
 type Found = Extract<TripOutcome, { kind: "none" | "unfound" | "found" }> extends infer O ? (O extends unknown ? Omit<O, "inputsHash" | "at"> : never) : never;
 
 const placeWanted = (decision: TripDecision) => (decision.trip < TRIP_THRESHOLD || !decision.place ? null : decision.place);
 
-const tripFor = (query: string | null, from: Position, mode: TravelMode) => {
-  if (!query) return okAsync<Found, PlacesError>({ kind: "none" });
-  return searchNear(query, from).andThen((nearest) =>
-    nearest.length === 0
-      ? okAsync<Found, PlacesError>({ kind: "unfound", query, mode, from })
-      : timed(mode, from, nearest).map((places) => {
-          const found: Found = { kind: "found", query, mode, from, places };
-          return found;
-        }),
-  );
-};
+const tripFor = Effect.fn("trips.tripFor")(function* (query: string | null, from: Position, mode: TravelMode) {
+  if (!query) return { kind: "none" } satisfies Found;
+  const places = yield* Places;
+  const nearest = yield* places.nearest(query, from);
+  if (nearest.length === 0) return { kind: "unfound", query, mode, from } satisfies Found;
+  const timed = yield* places.routed(mode, from, nearest).pipe(Effect.catch(() => Effect.succeed(nearest)));
+  return { kind: "found", query, mode, from, places: [...timed] } satisfies Found;
+});
+
+const planOf = (args: { taskId: Id<"tasks">; requestedAt: number }) =>
+  acting((ctx) => {
+    const plan: Promise<TripPlan> = ctx.runQuery(internal.places.trips.planFor, args);
+    return plan;
+  });
+
+const forgetTrip = (taskId: Id<"tasks">) =>
+  acting((ctx) => {
+    const forgotten: Promise<null> = ctx.runMutation(internal.places.trips.forget, { taskId });
+    return forgotten;
+  });
+
+const markSearching = (args: { taskId: Id<"tasks">; requestedAt: number; query: string }) =>
+  acting((ctx) => {
+    const marked: Promise<null> = ctx.runMutation(internal.places.trips.searching, args);
+    return marked;
+  });
+
+const recordOutcome = (args: { taskId: Id<"tasks">; requestedAt: number; outcome: TripOutcome }) =>
+  acting((ctx) => {
+    const recorded: Promise<null> = ctx.runMutation(internal.places.trips.record, args);
+    return recorded;
+  });
 
 export const locate = internalAction({
   args: { taskId: v.id("tasks"), requestedAt: v.number() },
   returns: v.null(),
-  handler: async (ctx, args) => {
-    const plan: TripPlan = await ctx.runQuery(internal.places.trips.planFor, args);
-    if (plan.kind === "gone") await ctx.runMutation(internal.places.trips.forget, { taskId: args.taskId });
+  handler: Effect.fn("trips.locate")(function* (args) {
+    const plan = yield* planOf(args);
+    if (plan.kind === "gone") yield* forgetTrip(args.taskId);
     if (plan.kind !== "ask") return null;
     const { title, from, mode } = plan;
     const phrases = placePhrases(title);
-    const inputsHash = await sha256Hex(canonicalJson({ model: plan.chain[0], title, phrases, from, mode }));
+    const inputsHash = yield* Effect.promise(() => sha256Hex(canonicalJson({ model: plan.chain[0], title, phrases, from, mode })));
     if (plan.cachedHash === inputsHash) return null;
-    const decided = await askChoice(await attemptsFor(ctx, plan.chain), tripAsk(title, phrases), parseTripDecision);
-    const query = decided.isOk() ? placeWanted(decided.value.value) : null;
-    if (query) await ctx.runMutation(internal.places.trips.searching, { ...args, query });
-    const result: Result<Found & { answeredBy?: string }, PlacesError> = decided.isErr()
-      ? err(decided.error)
-      : await tripFor(query, from, mode).map((found) => ({ ...found, answeredBy: decided.value.answeredBy }));
-    const at = Date.now();
-    const outcome: TripOutcome = result.match(
-      (found) => ({ ...found, inputsHash, at }),
-      (error) => ({ kind: "failed" as const, error, inputsHash, at, ...(query ? { query } : {}) }),
-    );
-    await ctx.runMutation(internal.places.trips.record, { ...args, outcome });
+    const attempts = yield* acting((ctx) => attemptsFor(ctx, plan.chain));
+    const decided = yield* Effect.result(effectFromNeverthrow(() => askChoice(attempts, tripAsk(title, phrases), parseTripDecision)));
+    const query = Result.isSuccess(decided) ? placeWanted(decided.success.value) : null;
+    if (query) yield* markSearching({ ...args, query });
+    const answeredBy = Result.isSuccess(decided) ? decided.success.answeredBy : undefined;
+    const searched = Result.isFailure(decided) ? Result.fail(decided.failure) : yield* Effect.result(tripFor(query, from, mode));
+    const at = yield* Clock.currentTimeMillis;
+    const outcome: TripOutcome = Result.isSuccess(searched)
+      ? { ...searched.success, ...(answeredBy ? { answeredBy } : {}), inputsHash, at }
+      : { kind: "failed", error: wireError(searched.failure), inputsHash, at, ...(query ? { query } : {}) };
+    yield* recordOutcome({ ...args, outcome });
     return null;
-  },
+  }, Effect.provide(Places.layer)),
 });

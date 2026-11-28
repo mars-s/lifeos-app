@@ -1,14 +1,16 @@
 import { v } from "convex/values";
-import { err, errAsync, ok, okAsync, ResultAsync } from "neverthrow";
+import { Clock, Effect } from "effect";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { internalMutation, internalQuery, type QueryCtx } from "../_generated/server";
-import { serialise, type SerialisedResult } from "../../shared/result";
+import type { SerialisedResult } from "../../shared/result";
+import { asWire } from "../../shared/effect/wire";
 import { vPlaceLabel, type PlaceLabel } from "../../shared/features";
-import { ownerAction, ownerQuery } from "../platform/access";
-import { geocodeUrl, normalisedAddress, parseGeocode, type Geocoded } from "./model";
-import { USER_AGENT } from "../../shared/ai";
-import { vPosition } from "./tables";
+import { acting, ownerAction, ownerQuery, reading } from "../platform/effect";
+import { AddressEmpty, AddressNotFound } from "./errors";
+import { normalisedAddress } from "./model";
+import { Places } from "./provider";
+import { vPosition, type Position } from "./tables";
 
 export type SavePlaceError =
   | { readonly kind: "empty" }
@@ -31,9 +33,11 @@ export const homeOf = (ctx: QueryCtx) => placeRow(ctx, "home");
 
 export const list = ownerQuery({
   args: {},
-  handler: async (ctx) =>
-    (await ctx.db.query("savedPlaces").withIndex("by_label").take(PLACE_LIMIT)).map(
-      ({ label, address, found, savedAt }) => ({ label, address, found, savedAt }) satisfies SavedPlace,
+  handler: () =>
+    reading(async (ctx) =>
+      (await ctx.db.query("savedPlaces").withIndex("by_label").take(PLACE_LIMIT)).map(
+        ({ label, address, found, savedAt }) => ({ label, address, found, savedAt }) satisfies SavedPlace,
+      ),
     ),
 });
 
@@ -42,21 +46,23 @@ export const known = internalQuery({
   handler: (ctx) => ctx.db.query("savedPlaces").withIndex("by_label").take(PLACE_LIMIT),
 });
 
-const geocode = (address: string) => {
-  const unreachable: SavePlaceError = { kind: "unreachable" };
-  const unreadable: SavePlaceError = { kind: "invalid_response" };
-  return ResultAsync.fromPromise(
-    fetch(geocodeUrl(address), { headers: { "user-agent": USER_AGENT, "accept-language": "en-AU" } }),
-    () => unreachable,
-  )
-    .andThen((response) =>
-      response.ok
-        ? ResultAsync.fromPromise(response.json() as Promise<unknown>, () => unreadable)
-        : errAsync<unknown, SavePlaceError>({ kind: "unavailable", status: response.status }),
-    )
-    .andThen((body) => parseGeocode(body).mapErr(() => unreadable))
-    .andThen((geocoded) => (geocoded ? ok(geocoded) : err<Geocoded, SavePlaceError>({ kind: "not_found" })));
-};
+const knownPlaces = () =>
+  acting((ctx) => {
+    const places: Promise<Doc<"savedPlaces">[]> = ctx.runQuery(internal.places.saved.known, {});
+    return places;
+  });
+
+const storePlace = (place: SavedPlace & { position: Position }) =>
+  acting((ctx) => {
+    const stored: Promise<null> = ctx.runMutation(internal.places.saved.store, place);
+    return stored;
+  });
+
+const forgetPlace = (label: PlaceLabel) =>
+  acting((ctx) => {
+    const forgotten: Promise<null> = ctx.runMutation(internal.places.saved.forget, { label });
+    return forgotten;
+  });
 
 const saveArgs = { label: vPlaceLabel, address: v.string() };
 
@@ -64,18 +70,22 @@ type Save = ReturnType<typeof ownerAction<typeof saveArgs, SerialisedResult<Save
 
 export const save: Save = ownerAction({
   args: saveArgs,
-  handler: async (ctx, { label, address }) => {
-    const trimmed = address.trim().replace(/\s+/g, " ");
-    if (trimmed === "") return serialise(err<SavedPlace, SavePlaceError>({ kind: "empty" }));
-    const places: Doc<"savedPlaces">[] = await ctx.runQuery(internal.places.saved.known, {});
-    const cached = places.find((place) => normalisedAddress(place.address) === normalisedAddress(trimmed));
-    const located = cached ? okAsync<Geocoded, SavePlaceError>({ position: cached.position, found: cached.found }) : geocode(trimmed);
-    const result = await located.andThen(({ position, found }) => {
-      const saved = { label, address: trimmed, found, savedAt: Date.now() } satisfies SavedPlace;
-      return ResultAsync.fromSafePromise(ctx.runMutation(internal.places.saved.store, { ...saved, position })).map(() => saved);
-    });
-    return serialise(result);
-  },
+  handler: Effect.fn("saved.save")(
+    function* ({ label, address }) {
+      const trimmed = address.trim().replace(/\s+/g, " ");
+      if (trimmed === "") return yield* new AddressEmpty();
+      const places = yield* knownPlaces();
+      const cached = places.find((place) => normalisedAddress(place.address) === normalisedAddress(trimmed));
+      const located = cached ? { position: cached.position, found: cached.found } : yield* Places.use((provider) => provider.geocode(trimmed));
+      if (!located) return yield* new AddressNotFound();
+      const savedAt = yield* Clock.currentTimeMillis;
+      const saved = { label, address: trimmed, found: located.found, savedAt } satisfies SavedPlace;
+      yield* storePlace({ ...saved, position: located.position });
+      return saved;
+    },
+    asWire,
+    Effect.provide(Places.layer),
+  ),
 });
 
 const removeArgs = { label: vPlaceLabel };
@@ -84,10 +94,10 @@ type Remove = ReturnType<typeof ownerAction<typeof removeArgs, null>>;
 
 export const remove: Remove = ownerAction({
   args: removeArgs,
-  handler: async (ctx, { label }) => {
-    await ctx.runMutation(internal.places.saved.forget, { label });
+  handler: Effect.fn("saved.remove")(function* ({ label }) {
+    yield* forgetPlace(label);
     return null;
-  },
+  }),
 });
 
 export const store = internalMutation({

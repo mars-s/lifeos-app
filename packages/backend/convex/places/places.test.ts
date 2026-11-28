@@ -4,7 +4,13 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi 
 import { api } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { DECISIONS_URL, newAiBackend as newBackend, newSignedOutBackend, strangerSession, unwrap, type Backend } from "../backend.test-utils";
+import { Result } from "effect";
+import { wireError } from "../../shared/effect/wire";
 import { kindOf, nearestPlaces, NOMINATIM_URL, OVERPASS_URL, overpassQuery, placePhrases, ROUTING_URL } from "./model";
+
+const failureOf = (result: ReturnType<typeof nearestPlaces>) => (Result.isFailure(result) ? wireError(result.failure) : undefined);
+
+const successOf = (result: ReturnType<typeof nearestPlaces>) => (Result.isSuccess(result) ? result.success : undefined);
 
 const ADDRESS = "12 Harbour Street, Haymarket NSW 2000";
 const HOME = { lat: -33.876543, lon: 151.203217 };
@@ -131,8 +137,8 @@ describe("searching for a brand", () => {
 
   test("a search Overpass gave up on is a failure to retry, not an empty street", () => {
     const timedOut = { elements: [], remark: "runtime error: Query timed out in \"query\" at line 1 after 21 seconds." };
-    expect(nearestPlaces(timedOut, HOME)._unsafeUnwrapErr()).toEqual({ kind: "unavailable" });
-    expect(nearestPlaces({ elements: [] }, HOME)._unsafeUnwrap()).toEqual([]);
+    expect(failureOf(nearestPlaces(timedOut, HOME))).toEqual({ kind: "unavailable" });
+    expect(successOf(nearestPlaces({ elements: [] }, HOME))).toEqual([]);
   });
 });
 
@@ -449,10 +455,10 @@ describe("a Trip when a provider fails", () => {
         { type: "node", id: 4, lat: -33.88, lon: 151.2, tags: { brand: "Officeworks", "addr:city": "Officeworks" } },
       ],
     };
-    expect(nearestPlaces(body, HOME)._unsafeUnwrap()).toEqual([
+    expect(successOf(nearestPlaces(body, HOME))).toEqual([
       { key: "node/4", name: "Officeworks", position: { lat: -33.88, lon: 151.2 }, straightMetres: expect.any(Number) },
     ]);
-    expect(nearestPlaces([], HOME)._unsafeUnwrapErr()).toEqual({ kind: "invalid_response" });
+    expect(failureOf(nearestPlaces([], HOME))).toEqual({ kind: "invalid_response" });
   });
 });
 

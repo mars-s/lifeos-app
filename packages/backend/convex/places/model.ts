@@ -1,7 +1,12 @@
-import { err, ok } from "neverthrow";
+import { Effect, Option, Result, Schema } from "effect";
 import type { TravelMode } from "../../shared/features";
+import { toNeverthrow } from "../../shared/effect/bridge";
 import type { ChoiceAsk } from "../ai/transport";
-import type { Place, PlacesError, Position } from "./tables";
+import { GeocoderInvalidResponse, PlacesInvalidResponse, PlacesRefused, PlacesUnavailable } from "./errors";
+import type { Place, Position } from "./tables";
+
+const soft = <S extends Schema.Constraint>(schema: S) =>
+  Schema.UndefinedOr(schema).pipe(Schema.catchDecoding(() => Effect.succeed(Option.some(undefined))));
 
 export const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 export const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
@@ -88,22 +93,32 @@ export const tripAsk = (title: string, phrases: readonly string[]) =>
   ],
 }) satisfies ChoiceAsk;
 
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
-
 export type TripDecision = { trip: number; place: string | null };
 
-export const parseTripDecision = (body: unknown) => {
-  const invalid = err<TripDecision, PlacesError>({ kind: "invalid_response" });
-  if (!isRecord(body) || !Array.isArray(body.answers)) return invalid;
-  const answers: unknown[] = body.answers;
-  const named = (name: string) => answers.find((entry): entry is Record<string, unknown> => isRecord(entry) && entry.name === name);
-  const trip = named(TRIP_QUESTION);
-  const place = named(PLACE_QUESTION);
-  if (trip?.type === "refusal" || place?.type === "refusal") return err<TripDecision, PlacesError>({ kind: "refused" });
-  if (trip?.type !== "predicate" || typeof trip.probability !== "number") return invalid;
-  const chosen = place?.type === "choice" && typeof place.choice === "string" && place.choice !== NO_PLACE ? place.choice : null;
-  return ok<TripDecision, PlacesError>({ trip: trip.probability, place: chosen });
-};
+const TripAnswers = Schema.Struct({ answers: Schema.Array(Schema.Unknown) });
+
+const Answer = Schema.Struct({
+  name: Schema.String,
+  type: Schema.String,
+  probability: Schema.optional(soft(Schema.Number)),
+  choice: Schema.optional(soft(Schema.String)),
+});
+
+const decodeAnswer = Schema.decodeUnknownOption(Answer);
+
+export const parseTripDecisionFx = (body: unknown) =>
+  Result.gen(function* () {
+    const { answers } = yield* Result.mapError(Schema.decodeUnknownResult(TripAnswers)(body), () => new PlacesInvalidResponse());
+    const decoded = answers.flatMap((entry) => Option.toArray(decodeAnswer(entry)));
+    const trip = decoded.find((answer) => answer.name === TRIP_QUESTION);
+    const place = decoded.find((answer) => answer.name === PLACE_QUESTION);
+    if (trip?.type === "refusal" || place?.type === "refusal") return yield* Result.fail(new PlacesRefused());
+    if (trip?.type !== "predicate" || trip.probability === undefined) return yield* Result.fail(new PlacesInvalidResponse());
+    const chosen = place?.type === "choice" && place.choice !== undefined && place.choice !== NO_PLACE ? place.choice : null;
+    return { trip: trip.probability, place: chosen } satisfies TripDecision;
+  });
+
+export const parseTripDecision = (body: unknown) => toNeverthrow(parseTripDecisionFx(body));
 
 export const kindOf = (phrase: string) => {
   const key = phrase.trim().toLowerCase();
@@ -133,7 +148,7 @@ export const overpassQuery = (phrase: string, from: Position) => {
   return `[out:json][timeout:25];(${filters.map((filter) => `nwr${filter}${around};`).join("")});out center tags ${SEARCH_RESULTS};`;
 };
 
-const gaveUp = (remark: unknown) => typeof remark === "string" && /runtime error|timed out|out of memory/i.test(remark);
+const gaveUp = (remark: string | undefined) => remark !== undefined && /runtime error|timed out|out of memory/i.test(remark);
 
 const radians = (degrees: number) => (degrees * Math.PI) / 180;
 
@@ -144,78 +159,117 @@ export const straightMetres = (a: Position, b: Position) => {
   return Math.round(2 * EARTH_METRES * Math.asin(Math.sqrt(h)));
 };
 
-const text = (value: unknown) => (typeof value === "string" && value.trim() !== "" ? value.trim() : undefined);
+const text = (value: string | undefined) => (value !== undefined && value.trim() !== "" ? value.trim() : undefined);
 
-const placeOf = (element: unknown, home: Position) => {
-  if (!isRecord(element) || !isRecord(element.tags) || typeof element.type !== "string" || typeof element.id !== "number") return [];
-  const centre = isRecord(element.center) ? element.center : element;
-  if (typeof centre.lat !== "number" || typeof centre.lon !== "number") return [];
-  const tags = element.tags;
-  const name = text(tags.name) ?? text(tags.brand);
+const Tags = Schema.Struct({
+  name: Schema.optional(soft(Schema.String)),
+  brand: Schema.optional(soft(Schema.String)),
+  "addr:suburb": Schema.optional(soft(Schema.String)),
+  branch: Schema.optional(soft(Schema.String)),
+  "addr:city": Schema.optional(soft(Schema.String)),
+});
+
+const Element = Schema.Struct({
+  type: Schema.String,
+  id: Schema.Number,
+  tags: Tags,
+  lat: Schema.optional(Schema.Number),
+  lon: Schema.optional(Schema.Number),
+  center: Schema.optional(Schema.Struct({ lat: Schema.Number, lon: Schema.Number })),
+});
+
+const OverpassBody = Schema.Struct({
+  elements: Schema.Array(Schema.Unknown),
+  remark: Schema.optional(soft(Schema.String)),
+});
+
+const decodeElement = Schema.decodeUnknownOption(Element);
+
+const placeOf = (raw: unknown, home: Position) => {
+  const element = Option.getOrUndefined(decodeElement(raw));
+  if (!element) return [];
+  const centre = element.center ?? (element.lat !== undefined && element.lon !== undefined ? { lat: element.lat, lon: element.lon } : undefined);
+  if (!centre) return [];
+  const name = text(element.tags.name) ?? text(element.tags.brand);
   if (!name) return [];
   const position = { lat: centre.lat, lon: centre.lon };
-  const suburb = text(tags["addr:suburb"]) ?? text(tags.branch) ?? text(tags["addr:city"]);
+  const suburb = text(element.tags["addr:suburb"]) ?? text(element.tags.branch) ?? text(element.tags["addr:city"]);
   const place: Place = { key: `${element.type}/${element.id}`, name, position, straightMetres: straightMetres(home, position) };
   if (suburb && suburb !== name) place.suburb = suburb;
   return [place];
 };
 
-export const nearestPlaces = (body: unknown, home: Position) => {
-  if (!isRecord(body) || !Array.isArray(body.elements)) return err<Place[], PlacesError>({ kind: "invalid_response" });
-  if (gaveUp(body.remark)) return err<Place[], PlacesError>({ kind: "unavailable" });
-  const elements: unknown[] = body.elements;
-  return ok<Place[], PlacesError>(
-    elements
+export const nearestPlaces = (body: unknown, home: Position) =>
+  Result.gen(function* () {
+    const decoded = yield* Result.mapError(Schema.decodeUnknownResult(OverpassBody)(body), () => new PlacesInvalidResponse());
+    if (gaveUp(decoded.remark)) return yield* Result.fail(new PlacesUnavailable({}));
+    return decoded.elements
       .flatMap((element) => placeOf(element, home))
       .toSorted((a, b) => a.straightMetres - b.straightMetres)
-      .slice(0, BRANCH_LIMIT),
-  );
-};
+      .slice(0, BRANCH_LIMIT);
+  });
 
 export const routingUrl = (mode: TravelMode, from: Position, places: readonly Place[]) => {
   const points = [from, ...places.map((place) => place.position)].map(({ lat, lon }) => `${lon},${lat}`).join(";");
   return `${ROUTING_URL}/${ROUTING_PROFILE[mode]}/table/v1/driving/${points}?sources=0&annotations=duration,distance`;
 };
 
-const rowOf = (value: unknown) => (Array.isArray(value) && Array.isArray(value[0]) ? (value[0] as unknown[]) : null);
+const RoutingBody = Schema.Struct({
+  code: Schema.Literal("Ok"),
+  durations: Schema.NonEmptyArray(Schema.Array(soft(Schema.Number))),
+  distances: Schema.NonEmptyArray(Schema.Array(soft(Schema.Number))),
+});
 
-export const withTravel = (body: unknown, places: readonly Place[]) => {
-  if (!isRecord(body) || body.code !== "Ok") return err<Place[], PlacesError>({ kind: "invalid_response" });
-  const durations = rowOf(body.durations);
-  const distances = rowOf(body.distances);
-  if (!durations || !distances) return err<Place[], PlacesError>({ kind: "invalid_response" });
-  return ok<Place[], PlacesError>(
-    places
+export const withTravel = (body: unknown, places: readonly Place[]) =>
+  Result.gen(function* () {
+    const decoded = yield* Result.mapError(Schema.decodeUnknownResult(RoutingBody)(body), () => new PlacesInvalidResponse());
+    const [durations] = decoded.durations;
+    const [distances] = decoded.distances;
+    return places
       .map((place, index) => {
         const seconds = durations[index + 1];
         const metres = distances[index + 1];
-        return typeof seconds === "number" && typeof metres === "number"
-          ? { ...place, travel: { seconds: Math.round(seconds), metres: Math.round(metres) } }
-          : place;
+        return seconds !== undefined && metres !== undefined ? { ...place, travel: { seconds: Math.round(seconds), metres: Math.round(metres) } } : place;
       })
-      .toSorted((a, b) => (a.travel?.seconds ?? Number.POSITIVE_INFINITY) - (b.travel?.seconds ?? Number.POSITIVE_INFINITY) || a.straightMetres - b.straightMetres),
-  );
-};
+      .toSorted((a, b) => (a.travel?.seconds ?? Number.POSITIVE_INFINITY) - (b.travel?.seconds ?? Number.POSITIVE_INFINITY) || a.straightMetres - b.straightMetres);
+  });
 
 export const geocodeUrl = (address: string) =>
   `${NOMINATIM_URL}?${new URLSearchParams({ q: address, format: "jsonv2", limit: "1", addressdetails: "1" }).toString()}`;
 
 export type Geocoded = { position: Position; found: string };
 
-export const parseGeocode = (body: unknown) => {
-  if (!Array.isArray(body)) return err<Geocoded | null, PlacesError>({ kind: "invalid_response" });
-  const first: unknown = body[0];
-  if (first === undefined) return ok<Geocoded | null, PlacesError>(null);
-  if (!isRecord(first)) return err<Geocoded | null, PlacesError>({ kind: "invalid_response" });
-  const lat = Number(first.lat);
-  const lon = Number(first.lon);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return err<Geocoded | null, PlacesError>({ kind: "invalid_response" });
-  const address = isRecord(first.address) ? first.address : {};
-  const street = [text(address.house_number), text(address.road)].filter(Boolean).join(" ");
-  const area = text(address.suburb) ?? text(address.town) ?? text(address.city) ?? text(address.village);
-  const found = [street, area].filter(Boolean).join(", ") || (text(first.display_name) ?? "").split(",").slice(0, 2).join(",").trim();
-  return ok<Geocoded | null, PlacesError>({ position: { lat, lon }, found });
-};
+const GeocodeAddress = Schema.Struct({
+  house_number: Schema.optional(soft(Schema.String)),
+  road: Schema.optional(soft(Schema.String)),
+  suburb: Schema.optional(soft(Schema.String)),
+  town: Schema.optional(soft(Schema.String)),
+  city: Schema.optional(soft(Schema.String)),
+  village: Schema.optional(soft(Schema.String)),
+});
+
+const GeocodeHit = Schema.Struct({
+  lat: Schema.Union([Schema.String, Schema.Number]),
+  lon: Schema.Union([Schema.String, Schema.Number]),
+  display_name: Schema.optional(soft(Schema.String)),
+  address: Schema.optional(soft(GeocodeAddress)),
+});
+
+export const parseGeocode = (body: unknown) =>
+  Result.gen(function* () {
+    const hits = yield* Result.mapError(Schema.decodeUnknownResult(Schema.Array(Schema.Unknown))(body), () => new GeocoderInvalidResponse());
+    const [first] = hits;
+    if (first === undefined) return null;
+    const hit = yield* Result.mapError(Schema.decodeUnknownResult(GeocodeHit)(first), () => new GeocoderInvalidResponse());
+    const lat = Number(hit.lat);
+    const lon = Number(hit.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return yield* Result.fail(new GeocoderInvalidResponse());
+    const address = hit.address ?? {};
+    const street = [text(address.house_number), text(address.road)].filter(Boolean).join(" ");
+    const area = text(address.suburb) ?? text(address.town) ?? text(address.city) ?? text(address.village);
+    const found = [street, area].filter(Boolean).join(", ") || (text(hit.display_name) ?? "").split(",").slice(0, 2).join(",").trim();
+    return { position: { lat, lon }, found } satisfies Geocoded;
+  });
 
 export const normalisedAddress = (address: string) => address.trim().replace(/\s+/g, " ").toLowerCase();
 
