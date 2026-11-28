@@ -56,6 +56,7 @@ public struct WidgetSnapshot: Codable, Sendable, Equatable {
     }
 
     public struct Slice: Codable, Sendable, Equatable {
+        public var id: String?
         public var colour: String?
         public var minutes: Double
     }
@@ -166,7 +167,7 @@ public struct DayClock: Sendable {
         formatter.calendar = calendar
         formatter.timeZone = calendar.timeZone
         formatter.locale = calendar.locale
-        formatter.setLocalizedDateFormatFromTemplate(template)
+        formatter.dateFormat = template
         return formatter.string(from: day)
     }
 }
@@ -253,7 +254,7 @@ public extension WidgetSnapshot {
         block.trip.map { block.start - $0.minutes * 60_000 }
     }
 
-    var todaySlices: [Slice] { week.first?.slices ?? [] }
+    var todaySlices: [Slice] { (week.first?.slices ?? []).filter { $0.id.map { !tickedIds.contains($0) } ?? true } }
 
     var weekFreeMinutes: Double {
         week.reduce(0) { $0 + max(0, $1.capacityMinutes - $1.plannedMinutes) }

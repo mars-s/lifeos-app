@@ -12,6 +12,20 @@
       "icon": {
         "light": "./assets/icon.png",
         "dark": "./assets/icon-dark.png"
+      },
+      "appleTeamId": "BFKXU8H6X5",
+      "entitlements": {
+        "com.apple.security.application-groups": [
+          "group.com.marss.lifeos"
+        ],
+        "keychain-access-groups": [
+          "$(AppIdentifierPrefix)com.marss.lifeos",
+          "$(AppIdentifierPrefix)com.marss.lifeos.shared"
+        ]
+      },
+      "infoPlist": {
+        "NSSupportsLiveActivities": true,
+        "NSSupportsLiveActivitiesFrequentUpdates": false
       }
     },
     "android": {
@@ -47,7 +61,8 @@
           "showMenuAtLaunch": false
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      "@bacons/apple-targets"
     ]
   }
 }

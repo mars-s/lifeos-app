@@ -131,7 +131,7 @@ const loadSnapshot = async (ctx: QueryCtx, date: IsoDate, timeZone: string) => {
       date: day.date,
       capacityMinutes: day.goalMinutes,
       plannedMinutes: day.plannedMinutes,
-      slices: day.slices.map((slice) => ({ colour: slice.area?.colour, minutes: slice.minutes })),
+      slices: day.slices.map((slice) => ({ id: slice.id, colour: slice.area?.colour, minutes: slice.minutes })),
       deadlines: dueOn(day.date),
     })),
     deadlines: nearest.map(({ task, date: due }) => ({

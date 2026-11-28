@@ -25,7 +25,7 @@ const setUp = async () => {
 };
 
 test("the widget snapshot holds today's Tasks, Work Blocks, the week and the Brain Dump count", async () => {
-  const { t, methods } = await setUp();
+  const { t, methods, physio } = await setUp();
   const shot = await snapshot(t);
 
   expect(shot.tasksLeft).toBe(2);
@@ -47,8 +47,8 @@ test("the widget snapshot holds today's Tasks, Work Blocks, the week and the Bra
     ["2026-12-06", 0, 0],
   ]);
   expect(shot.week[0]?.slices).toEqual([
-    { colour: "violet", minutes: 90 },
-    { colour: undefined, minutes: 15 },
+    { id: methods, colour: "violet", minutes: 90 },
+    { id: physio, colour: undefined, minutes: 15 },
   ]);
   expect(shot.deadlines.map((deadline) => [deadline.title, deadline.date])).toEqual([["Handover", "2026-12-04"]]);
   expect(shot.brainDump).toBe(1);

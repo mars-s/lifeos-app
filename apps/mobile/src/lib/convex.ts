@@ -3,7 +3,7 @@ import { ConvexReactClient } from "convex/react";
 import * as SecureStore from "expo-secure-store";
 
 const devUrl = __DEV__ ? process.env.EXPO_PUBLIC_DEV_CONVEX_URL : undefined;
-const convexUrl = devUrl || process.env.EXPO_PUBLIC_CONVEX_URL;
+export const convexUrl = devUrl || process.env.EXPO_PUBLIC_CONVEX_URL;
 
 export const convex = convexUrl ? new ConvexReactClient(convexUrl, { unsavedChangesWarning: false }) : null;
 

@@ -42,3 +42,4 @@ yarn-error.*
 
 # release builds
 /build
+/targets/*/Assets.xcassets

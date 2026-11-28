@@ -1,0 +1,1 @@
+../../../../../packages/widget-kit/Sources/LifeOSWidgetKit/Strips.swift

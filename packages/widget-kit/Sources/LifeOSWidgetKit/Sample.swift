@@ -23,7 +23,7 @@ public enum Sample {
         let day = { (index: Int, capacity: Double, slices: [(String, Double)], deadlines: Int) in
             WidgetSnapshot.Day(
                 date: next[safe: index - 1] ?? date, capacityMinutes: capacity, plannedMinutes: slices.reduce(0) { $0 + $1.1 },
-                slices: slices.map { .init(colour: $0.0, minutes: $0.1) }, deadlines: deadlines)
+                slices: slices.map { .init(id: nil, colour: $0.0, minutes: $0.1) }, deadlines: deadlines)
         }
         return WidgetSnapshot(
             v: 1, writtenAt: now.timeIntervalSince1970 * 1000, convexUrl: nil, date: date, timeZone: timeZone,
@@ -41,7 +41,7 @@ public enum Sample {
             week: [
                 WidgetSnapshot.Day(
                     date: date, capacityMinutes: 450, plannedMinutes: 255,
-                    slices: tasks.map { .init(colour: $0.area?.colour, minutes: $0.estimateMinutes ?? 0) }, deadlines: 0),
+                    slices: tasks.map { .init(id: $0.id, colour: $0.area?.colour, minutes: $0.estimateMinutes ?? 0) }, deadlines: 0),
                 day(1, 510, [("teal", 180), ("violet", 120), ("green", 30)], 0),
                 day(2, 360, [("rose", 120), ("violet", 60)], 0),
                 day(3, 420, [("violet", 240), ("teal", 120), ("orange", 60)], 1),

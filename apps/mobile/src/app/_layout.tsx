@@ -13,6 +13,7 @@ import { FocusPill } from "@/components/focus-pill";
 import { FocusSignals } from "@/components/focus-signals";
 import { OwnerGate } from "@/components/owner-gate";
 import { Toaster } from "@/components/ui/toast";
+import { WidgetSync } from "@/components/widget-sync";
 import { addMissingArrayMethods } from "@/lib/array-methods";
 import { addMissingRandomValues } from "@/lib/random";
 import { undoLatest } from "@/lib/change";
@@ -52,6 +53,7 @@ const Screens = () => {
         {convex && !OVERLAID.test(pathname) ? <FocusPill /> : null}
         {convex && !OVERLAID.test(pathname) ? <CaptureButton /> : null}
         {convex ? <FocusSignals /> : null}
+        {convex ? <WidgetSync /> : null}
         <Toaster variant="minimal" position="bottom" safeArea bottomInset={TAB_BAR_CLEARANCE + 72} />
       </FocusProvider>
     </ThemeProvider>
