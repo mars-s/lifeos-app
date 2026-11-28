@@ -29,7 +29,7 @@ export const NowDemo = () => {
           className="h-6 min-w-0 flex-1 touch-manipulation accent-(--brand)"
         />
       </label>
-      <DayTimeline day={day} from={at(9)} to={at(18)} scale={0.95} gutter={58} now={now} />
+      <DayTimeline day={day} from={at(9)} to={at(18)} scale={0.95} gutter={84} lane={26} now={now} />
     </div>
   );
 };

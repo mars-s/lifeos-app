@@ -65,6 +65,50 @@ A block of 20 minutes or less keeps one line: the box, the title and the start t
 - Behind now the dots join into a solid graphite line. The bead at now is the one blue thing on the page, with the time in a pill where the hour label would be, and a hairline across the blocks.
 - Gaps after now are named: **Buffer** under 30 minutes, **Free** from 30 minutes, each with its length. Gaps in the past are left blank.
 
+## Energy
+
+Shots: `timeline-energy.png`, and the rail in every day and week shot. Added 28 November 2026, after Avi asked for the energy levels from the Exoplan shot, predicted from his Oura ring.
+
+The rail carries an estimate of Avi's energy through the day. It is a thin lane between the hour labels and the blocks. The line leans away from the dots when energy is high and back towards them when it is low, so the day has a shape you can read at a glance: a rise after waking, a peak late in the morning, a dip after lunch, a second wind, and a wind down towards Oura's bedtime. One graphite ink, no green and red.
+
+| Day | Looks like | Comes from |
+| --- | --- | --- |
+| Today | A solid line. The area behind now is filled, so the rail still fills in as the day goes. The blue bead for now rides on the line | Last night's real sleep |
+| Coming days | A thin line over a hatched area, the same hatching as a predicted block | His usual pattern only |
+| Past days | A flat graphite area with a faint line | The estimate that day started with |
+| No curve | The plain dot rail | No Oura, or fewer than five nights |
+
+A filled dot marks the peak and a hollow dot marks the dip. A soft band in the Sleep Window colour marks the half hour before Oura's bedtime. In the week view the shared rail carries today's curve, and each day's header has a small curve in its own ink (a dashed outline for coming days), so a short night shows as a low day.
+
+**How it helps planning.**
+
+- Predictions are placed by energy. Among the Tasks for a day, the ones that need focus (the Deep Work Label, or an Estimate of an hour or more) go into the peak first. Short Tasks, Admin and Trips go into the dip. A block placed this way says so: "at your peak".
+- A Free gap of 30 minutes or more says what it is good for: "peak, good for deep work" or "dip, good for admin or a walk".
+- On a short night the header says "Low energy day" once, and predictions leave more Buffer. Nothing is cancelled for him.
+- Energy never moves a kept block and never overrides a Deadline, the Day Plan order within the same kind of Task, or an External Commitment.
+
+**The reading.** A tap on the rail opens a small card: Energy, marked Estimate, with last night's sleep, readiness, sleep debt over 14 nights, and the peak and dip windows. Its last line is always the limits.
+
+**States.**
+
+| State | What Avi sees |
+| --- | --- |
+| A good night | The full curve, solid |
+| A short night | The whole curve sits lower and the dip comes earlier. "Low energy day" in the header |
+| Stale (no sync since last night) | Today falls back to the usual pattern, hatched, and the card says "Oura last synced yesterday at 6:10 pm" |
+| Learning (fewer than five nights) | No curve. The card says "Learning your pattern, 3 of 5 nights" |
+| No Oura, or Health off | The plain dot rail. Nothing about energy anywhere |
+
+**The data.** Everything the first version needs is already synced by the `health` module every four hours: each night's sleep period (start, end, minutes asleep), the sleep score, the readiness score, Oura's bedtime, and the Usual Wake LifeOS already works out. No new Oura scope. The likely model is the two-process one: sleep pressure that builds from the time he woke, plus a daily rhythm anchored on his Usual Wake, scaled by sleep debt over the last 14 nights and by the day's readiness. The build researches and tests it. The curve on the specimen is a stand-in with the right shape. The curve is worked out, not saved, like a prediction. A new domain word is needed in `CONTEXT.md`: **Energy Curve**.
+
+**What it can claim, and what it cannot.**
+
+- It can say: given when you slept and woke, this is when most people with that night are sharpest and when they dip. It is always labelled an estimate.
+- It cannot say how Avi feels. It does not see caffeine, food, exercise, illness, naps or stress. It is not measured from heart rate or HRV (that would need Avi to reconnect Oura with more scopes, and is not planned).
+- It shows no number and no score. A percentage would look like a measurement.
+- The band before bedtime is labelled "Oura's bedtime", not a melatonin window. LifeOS cannot know when his melatonin rises.
+- "How the day actually went" is not drawn yet. Later, a past day could lay Focus Sessions and Actual Time beside its curve, which would also let LifeOS check the model against him.
+
 ## iPhone
 
 Shots: `timeline-iphone.png`, `timeline-day-iphone-yesterday.png`, `-today`, `-tomorrow`, `timeline-week-iphone.png`, each with `-dark`.
@@ -107,6 +151,7 @@ The hatch is one `repeating-linear-gradient` whose line width is a registered cu
 
 - **Sunsama and Ellie.** The Brain Dump, day columns and Timebox keep their places. Done blocks fade and strike through, as in Ellie's week.
 - **Things.** Calendar events stay quiet and separate from Tasks. The open box and the tick are the Things box.
+- **Sleep Window.** The band before bedtime uses the Sleep Window colour, and the curve stops where the Sleep Window starts.
 - **Widgets.** The same dots (one is 15 minutes), the same solid bar for a Work Block and outline for an External Commitment. The widgets' day strip should draw predictions hatched once this ships. The widgets draw a Trip as a dashed line, and here it is a band with a dashed rule.
 
 ## Shots
@@ -122,6 +167,7 @@ Taken by `apps/web/scripts/check-timeline-design.py` at 1440 px and double densi
 5. iPhone: the week view, and the sideways week
 6. Trips folded into blocks, with the drive reserved by the prediction
 7. Widgets: the day strip draws predictions hatched
+8. The Energy Curve: a pure function in `convex/health` from sleep periods, Usual Wake, sleep debt and readiness, with tests against known nights; the `planner/timeline` query returns it per day; the rail, the week headers and the reading card draw it; then predictions and gap hints use it
 
 ## Open questions
 

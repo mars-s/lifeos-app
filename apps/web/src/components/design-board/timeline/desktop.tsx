@@ -8,7 +8,8 @@ import { KeyCombo } from "@/components/ui/key-hint";
 import { Segmented } from "@/components/ui/segmented-control";
 import { cn } from "@/lib/utils";
 import { Fit } from "../widgets/parts";
-import { at, clock, lookOf, span, visibleAt, type Day } from "./model";
+import { EnergySpark } from "./energy";
+import { at, clock, energyModeOf, lookOf, span, visibleAt, type Day } from "./model";
 import { DayTimeline, DayTrack, HatchSwatch, LoadDots, NowLine, Rail, useDayFacts, useEntries, useWorld } from "./parts";
 import { AREAS, BRAIN_DUMP, NOW, TODAY_INDEX, WEEK } from "./sample";
 
@@ -84,13 +85,14 @@ const DayHeader = ({ day, index, compact = false }: { day: Day; index: number; c
         {!compact && <span className="font-mono">{span(capacity)}</span>}
         {!compact && " free"}
       </p>
+      {compact && <EnergySpark quality={day.energy} mode={energyModeOf(nowFor(index))} now={NOW} className="mt-1.5 pr-2" />}
     </div>
   );
 };
 
 const DayList = ({ index }: { index: number }) => {
   const day = WEEK[index];
-  const entries = useEntries(day ?? { date: "", weekday: "", number: 0, entries: [] });
+  const entries = useEntries(day ?? { date: "", weekday: "", number: 0, energy: 1, entries: [] });
   if (!day) return null;
   const now = nowFor(index);
   return (
@@ -167,7 +169,7 @@ const DayPane = ({ mode, onMode }: { mode: Mode; onMode: (mode: Mode) => void })
           "Every block is kept"
         )}
       </p>
-      <DayTimeline day={day} from={at(8)} to={at(18, 30)} scale={0.95} gutter={58} now={NOW} />
+      <DayTimeline day={day} from={at(8)} to={at(18, 30)} scale={0.95} gutter={84} lane={26} now={NOW} />
     </section>
   );
 };
@@ -189,7 +191,7 @@ const WeekPane = ({ mode, onMode }: { mode: Mode; onMode: (mode: Mode) => void }
   const from = at(8);
   const to = at(18, 30);
   const scale = 0.95;
-  const gutter = 58;
+  const gutter = 84;
   return (
     <section aria-label="Timeline, this week" className="flex min-w-0 flex-1 flex-col">
       <PaneBar title="23 to 29 Nov" mode={mode} onMode={onMode} />
@@ -199,7 +201,7 @@ const WeekPane = ({ mode, onMode }: { mode: Mode; onMode: (mode: Mode) => void }
         ))}
       </div>
       <div className="relative" style={{ paddingLeft: gutter }}>
-        <Rail from={from} to={to} scale={scale} now={NOW} gutter={gutter} />
+        <Rail from={from} to={to} scale={scale} now={NOW} gutter={gutter} lane={26} energy={WEEK[TODAY_INDEX]?.energy ?? 1} />
         <div className="grid grid-cols-7">
           {WEEK.map((day, index) => (
             <WeekTrack key={day.date} day={day} index={index} from={from} to={to} scale={scale} />

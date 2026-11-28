@@ -4,10 +4,13 @@ import { Car, Check } from "@phosphor-icons/react";
 import { createContext, use, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { areaVar } from "@/components/lifeos/area";
 import { cn } from "@/lib/utils";
+import { EnergyLane } from "./energy";
 import {
   capacityOf,
   clock,
   clockRange,
+  energyModeOf,
+  energyWord,
   gapsOf,
   hourLabel,
   loadOf,
@@ -211,7 +214,7 @@ export const Block = ({
   const compact = density === "week";
   const trip = isBlock && entry.trip ? { ...entry, trip: entry.trip } : undefined;
   const meta = isBlock
-    ? `${entry.guess ? "~" : ""}${span(entry.minutes)}${compact ? "" : ` · ${AREAS[entry.area].name}`}`
+    ? `${entry.guess ? "~" : ""}${span(entry.minutes)}${compact ? "" : ` · ${AREAS[entry.area].name}`}${predicted && entry.fit ? ` · at your ${entry.fit}` : ""}`
     : [entry.calendar, compact ? undefined : entry.place].filter(Boolean).join(" · ");
   const body = (
     <>
@@ -264,7 +267,25 @@ export const Block = ({
 
 const hoursBetween = (from: number, to: number) => Array.from({ length: Math.floor(to / 60) - Math.ceil(from / 60) + 1 }, (_, index) => (Math.ceil(from / 60) + index) * 60);
 
-export const Rail = ({ from, to, scale, now, gutter, compact = false }: { from: number; to: number; scale: number; now: number; gutter: number; compact?: boolean }) => {
+export const Rail = ({
+  from,
+  to,
+  scale,
+  now,
+  gutter,
+  compact = false,
+  lane = 0,
+  energy = 1,
+}: {
+  from: number;
+  to: number;
+  scale: number;
+  now: number;
+  gutter: number;
+  compact?: boolean;
+  lane?: number;
+  energy?: number;
+}) => {
   const reached = Math.max(0, Math.min(now, to) - from) * scale;
   const live = now > from && now < to;
   return (
@@ -272,21 +293,25 @@ export const Rail = ({ from, to, scale, now, gutter, compact = false }: { from: 
       {hoursBetween(from, to).map((minute) => (
         <span
           key={minute}
-          className={cn("absolute right-[1.125rem] -translate-y-1/2 font-mono whitespace-nowrap text-faint-foreground", compact ? "text-[0.5625rem]" : "text-[0.625rem]", live && Math.abs(minute - now) * scale < 13 && "opacity-0")}
-          style={{ top: (minute - from) * scale }}
+          className={cn("absolute -translate-y-1/2 font-mono whitespace-nowrap text-faint-foreground", compact ? "text-[0.5625rem]" : "text-[0.625rem]", live && Math.abs(minute - now) * scale < 13 && "opacity-0")}
+          style={{ top: (minute - from) * scale, right: 18 + lane }}
         >
           {hourLabel(minute)}
         </span>
       ))}
       <span
-        className="tl-rail absolute inset-y-0 right-[0.3125rem] w-[5px] [--tl-dot:color-mix(in_oklab,var(--foreground)_38%,transparent)]"
-        style={{ backgroundSize: `5px ${60 * scale}px, 5px ${15 * scale}px`, backgroundPosition: `0 ${-30 * scale - (from % 60) * scale}px, 0 ${-7.5 * scale - (from % 15) * scale}px` }}
+        className="tl-rail absolute inset-y-0 w-[5px] [--tl-dot:color-mix(in_oklab,var(--foreground)_38%,transparent)]"
+        style={{ right: 5 + lane, backgroundSize: `5px ${60 * scale}px, 5px ${15 * scale}px`, backgroundPosition: `0 ${-30 * scale - (from % 60) * scale}px, 0 ${-7.5 * scale - (from % 15) * scale}px` }}
       />
-      <span className="tl-now absolute top-0 right-[0.4375rem] w-px rounded-full bg-foreground/55" style={{ height: reached }} />
+      <span className="tl-now absolute top-0 w-px rounded-full bg-foreground/55" style={{ height: reached, right: 7 + lane }} />
+      {lane > 0 && <EnergyLane from={from} to={to} scale={scale} now={now} width={lane} quality={energy} mode={energyModeOf(now)} className="right-[3px]" />}
       {live && (
         <>
-          <span className="tl-now absolute right-[0.1875rem] size-[9px] -translate-y-1/2 rounded-full bg-brand shadow-[0_0_0_2px_var(--tl-ground)]" style={{ top: reached }} />
-          <span className={cn("tl-now absolute right-[1rem] -translate-y-1/2 rounded-full bg-brand px-1.5 font-mono font-medium text-brand-foreground", compact ? "text-[0.5625rem] leading-[0.875rem]" : "text-[0.625rem] leading-4")} style={{ top: reached }}>
+          {lane === 0 && <span className="tl-now absolute right-[0.1875rem] size-[9px] -translate-y-1/2 rounded-full bg-brand shadow-[0_0_0_2px_var(--tl-ground)]" style={{ top: reached }} />}
+          <span
+            className={cn("tl-now absolute -translate-y-1/2 rounded-full bg-brand px-1.5 font-mono font-medium text-brand-foreground", compact ? "text-[0.5625rem] leading-[0.875rem]" : "text-[0.625rem] leading-4")}
+            style={{ top: reached, right: 16 + lane }}
+          >
             {clock(now, true)}
           </span>
         </>
@@ -306,6 +331,7 @@ export const DayTrack = ({
   scale,
   density,
   now,
+  hints = false,
   className,
   children,
 }: {
@@ -315,6 +341,7 @@ export const DayTrack = ({
   scale: number;
   density: Density;
   now: number;
+  hints?: boolean;
   className?: string;
   children?: ReactNode;
 }) => {
@@ -331,6 +358,7 @@ export const DayTrack = ({
           style={{ top: (gap.start + gap.minutes / 2 - from) * scale }}
         >
           {gap.minutes < 30 ? "Buffer" : "Free"} <span className="font-mono">{span(gap.minutes)}</span>
+          {hints && gap.minutes >= 30 && energyWord(gap.start + gap.minutes / 2) && <span>· {energyWord(gap.start + gap.minutes / 2)}</span>}
         </span>
       ))}
       {shown.map((entry) => {
@@ -359,6 +387,7 @@ export const DayTimeline = ({
   scale,
   gutter,
   now,
+  lane = 0,
   className,
 }: {
   day: Day;
@@ -367,13 +396,14 @@ export const DayTimeline = ({
   scale: number;
   gutter: number;
   now: number;
+  lane?: number;
   className?: string;
 }) => {
   const entries = useEntries(day);
   return (
     <div className={cn("relative", className)} style={{ paddingLeft: gutter }}>
-      <Rail from={from} to={to} scale={scale} now={now} gutter={gutter} />
-      <DayTrack entries={entries} from={from} to={to} scale={scale} density="full" now={now}>
+      <Rail from={from} to={to} scale={scale} now={now} gutter={gutter} lane={lane} energy={day.energy} />
+      <DayTrack entries={entries} from={from} to={to} scale={scale} density="full" now={now} hints={lane > 0}>
         {now > from && now < to && <NowLine from={from} scale={scale} now={now} />}
       </DayTrack>
     </div>

@@ -1,10 +1,10 @@
-"""Check /design/timeline and screenshot the States, iPhone and Motion sections, each phone and both Planner windows in light and dark.
+"""Check /design/timeline and screenshot the States, iPhone, Energy and Motion sections, each phone and both Planner windows in light and dark.
 
 Set BASE to the running web app. Needs Playwright with Chromium.
 
     BASE=http://localhost:3990 uv run --with playwright python scripts/check-timeline-design.py <output folder>
 
-ONLY=iphone,week limits the screenshots to those parts (states, iphone, motion, desktop, week).
+ONLY=iphone,week limits the screenshots to those parts (states, iphone, energy, motion, desktop, week).
 """
 
 import os
@@ -16,7 +16,7 @@ from playwright.sync_api import expect, sync_playwright
 BASE = os.environ.get("BASE", "http://localhost:3990")
 OUT = Path(sys.argv[1] if len(sys.argv) > 1 else sys.exit(__doc__))
 ONLY = [name for name in os.environ.get("ONLY", "").split(",") if name]
-SECTIONS = ["states", "iphone", "motion"]
+SECTIONS = ["states", "iphone", "energy", "motion"]
 SIZES = {"desktop": (1440, 900, 2), "phone": (390, 844, 2)}
 PHONES = {"yesterday": "iPhone day view, yesterday", "today": "iPhone day view, today", "tomorrow": "iPhone day view, tomorrow", "week": "iPhone week view"}
 WINDOWS = {"desktop": "Mac Planner, day timeline", "week": "Mac Planner, week timeline"}

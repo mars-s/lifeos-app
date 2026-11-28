@@ -10,7 +10,7 @@ export const AREAS: Record<AreaId, Area> = {
 export const NOW = at(12, 40);
 export const TODAY_INDEX = 2;
 
-type Flags = { done?: boolean; guess?: boolean; trip?: Trip };
+type Flags = { done?: boolean; guess?: boolean; trip?: Trip; fit?: "peak" | "dip" };
 
 const block = (kept: boolean) => (id: string, title: string, area: AreaId, start: number, minutes: number, flags: Flags = {}) =>
   ({ kind: "block", id, title, area, start, minutes, kept, done: false, ...flags }) satisfies BlockEntry;
@@ -32,10 +32,10 @@ const commitment = (id: string, title: string, calendar: "Work" | "Home" | "Univ
 
 const standup = (day: string) => commitment(`${day}-standup`, "Team standup", "Work", at(8, 30), 15);
 
-const day = (date: string, weekday: string, number: number, entries: Entry[]) => ({ date, weekday, number, entries }) satisfies Day;
+const day = (date: string, weekday: string, number: number, energy: number, entries: Entry[]) => ({ date, weekday, number, energy, entries }) satisfies Day;
 
 export const WEEK: readonly Day[] = [
-  day("2026-11-23", "Mon", 23, [
+  day("2026-11-23", "Mon", 23, 0.96, [
     standup("mon"),
     kept("mon-outline", "Outline chapter three", "university", at(9), 90, { done: true }),
     kept("mon-invoices", "Invoice run for Paperless", "paperless", at(10, 40), 45, { done: true }),
@@ -43,7 +43,7 @@ export const WEEK: readonly Day[] = [
     kept("mon-empty-state", "Fix the onboarding empty state", "korvant", at(15, 10), 60),
     kept("mon-washing", "Hang the washing", "personal", at(16, 20), 15, { done: true }),
   ]),
-  day("2026-11-24", "Tue", 24, [
+  day("2026-11-24", "Tue", 24, 0.68, [
     standup("tue"),
     kept("tue-read", "Read Karpukhin on dense retrieval", "university", at(9), 60, { done: true }),
     kept("tue-methods", "Draft the methods section", "university", at(10, 10), 90, { done: true }),
@@ -53,7 +53,7 @@ export const WEEK: readonly Day[] = [
     commitment("tue-bee", "Working bee", "Work", at(15), 60),
     kept("tue-review", "Korvant onboarding review", "korvant", at(16, 10), 50, { done: true }),
   ]),
-  day("2026-11-25", "Wed", 25, [
+  day("2026-11-25", "Wed", 25, 0.92, [
     standup("wed"),
     kept("wed-outline", "Draft the thesis outline", "university", at(9, 10), 90, { done: true }),
     kept("wed-harry", "Reply to Harry about the invoice", "paperless", at(10, 50), 20),
@@ -65,28 +65,28 @@ export const WEEK: readonly Day[] = [
     commitment("wed-supervision", "Thesis supervision", "University", at(15, 30), 45, "Woodside 3.07"),
     predicted("wed-papers", "Read two papers on retrieval", "university", at(16, 45), 45, { guess: true }),
   ]),
-  day("2026-11-26", "Thu", 26, [
+  day("2026-11-26", "Thu", 26, 0.86, [
     standup("thu"),
-    predicted("thu-revise", "Revise the thesis outline", "university", at(9), 90),
+    predicted("thu-revise", "Revise the thesis outline", "university", at(9), 90, { fit: "peak" }),
     kept("thu-prep", "Group meeting prep", "university", at(10, 40), 45),
     commitment("thu-group", "COMP3900 group meeting", "University", at(11, 30), 60, "Building 14"),
     predicted("thu-bill", "Bill Harry for Paperless", "paperless", at(13, 15), 20),
-    predicted("thu-bee", "Weekly working bee prep", "paperless", at(13, 45), 30),
+    predicted("thu-bee", "Weekly working bee prep", "paperless", at(13, 45), 30, { fit: "dip" }),
     commitment("thu-dentist", "Dentist", "Home", at(15), 45, "Clayton Dental"),
     predicted("thu-findings", "Write up the onboarding findings", "korvant", at(16), 60, { guess: true }),
   ]),
-  day("2026-11-27", "Fri", 27, [
+  day("2026-11-27", "Fri", 27, 0.86, [
     standup("fri"),
-    predicted("fri-methods", "Methods draft, second pass", "university", at(9), 120),
+    predicted("fri-methods", "Methods draft, second pass", "university", at(9), 120, { fit: "peak" }),
     commitment("fri-catchup", "Supervisor catch-up", "University", at(11, 30), 30),
     predicted("fri-checklist", "Paperless 1.0 checklist", "paperless", at(13), 90),
     predicted("fri-groceries", "Groceries for the weekend", "personal", at(16), 30, { trip: { place: "Coles, Clayton", minutes: 15 } }),
   ]),
-  day("2026-11-28", "Sat", 28, [
+  day("2026-11-28", "Sat", 28, 0.86, [
     commitment("sat-brunch", "Brunch with Sam", "Home", at(10, 30), 90, "Oakleigh"),
     predicted("sat-japan", "Plan the Japan trip days", "personal", at(14), 60, { guess: true }),
   ]),
-  day("2026-11-29", "Sun", 29, []),
+  day("2026-11-29", "Sun", 29, 0.86, []),
 ];
 
 export const BRAIN_DUMP = ["Get moleskine notebooks from Officeworks", "Ask Priya about the reading group", "Idea: weekly review as a single page", "Renew the car registration"];

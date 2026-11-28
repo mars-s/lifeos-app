@@ -5,6 +5,7 @@ import { LifeosMark } from "@/components/lifeos/mark";
 import { Section, Specimen } from "../specimen";
 import { ThemeContext, useTheme } from "../theme";
 import { PlannerWindow } from "./desktop";
+import { EnergyAnatomy, EnergyStates } from "./energy-specimens";
 import { PhoneDay, PhoneWeek } from "./iphone";
 import { CompactSwatches, DragDemo, NowDemo, StateSwatches } from "./motion";
 import { TIMELINE_CSS, TimelineWorld } from "./parts";
@@ -15,6 +16,7 @@ const SECTIONS = [
   { id: "iphone", label: "iPhone" },
   { id: "desktop", label: "Planner" },
   { id: "week", label: "Week" },
+  { id: "energy", label: "Energy" },
   { id: "motion", label: "Motion" },
 ];
 
@@ -27,11 +29,11 @@ const PRINCIPLES = [
 const BLEND = [
   {
     from: "From Exoplan",
-    items: ["A time rail down the left with a line that traces the day", "Blocks sized by their length, with the gaps labelled", "Travel folded into the block it belongs to", "A week strip with today marked and the day's ring"],
+    items: ["A time rail down the left with a line that traces the day", "Blocks sized by their length, with the gaps labelled", "Travel folded into the block it belongs to", "A week strip with today marked and the day's ring", "An energy line that runs down the rail"],
   },
   {
     from: "From LifeOS",
-    items: ["Warm paper and graphite. No glow, no gradient", "The rail is dots: one dot is 15 minutes, as in the Planner", "Area colours fill only what you have committed to", "The ring is Capacity, drawn in the same dots as the widgets"],
+    items: ["Warm paper and graphite. No glow, no gradient", "The rail is dots: one dot is 15 minutes, as in the Planner", "Area colours fill only what you have committed to", "The ring is Capacity, drawn in the same dots as the widgets", "The line on the rail is energy, estimated from Oura sleep"],
   },
 ];
 
@@ -154,6 +156,19 @@ export const TimelineBoard = () => {
           <Section id="week" title="Week" lede="Week takes the room of the day columns. The Brain Dump stays, so a thought can still be dragged onto any day. Each column keeps its Capacity dots.">
             <Specimen name="Week" note="Monday and Tuesday in graphite, today in colour with the now line, the rest in pencil where LifeOS predicts. Sunday is free." className="col-span-full" stage="p-3 sm:p-5">
               <PlannerWindow start="week" />
+            </Specimen>
+          </Section>
+
+          <Section
+            id="energy"
+            title="Energy"
+            lede="The rail carries an estimate of Avi's energy through the day, worked out from his Oura sleep. The further the line leans from the rail, the more he has. It is drawn in the same three inks as the blocks."
+          >
+            <Specimen name="The day's shape" note="A rise after waking, a peak late in the morning, a dip after lunch, a second wind, then a wind down towards Oura's bedtime. A tap on the rail opens the reading." className="col-span-full">
+              <EnergyAnatomy />
+            </Specimen>
+            <Specimen name="Curve states" note="Solid when it comes from last night, hatched when it is only the usual pattern, graphite when the day is over, and absent when there is nothing honest to draw." className="col-span-full" stage="justify-start">
+              <EnergyStates />
             </Specimen>
           </Section>
 

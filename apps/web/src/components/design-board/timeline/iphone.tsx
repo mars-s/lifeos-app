@@ -3,7 +3,8 @@
 import { CalendarDots, ListBullets, MagnifyingGlass, Notebook, Plus, Rows, Stack, Star, type Icon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { at, capacityOf, clock, loadOf, span, type Day } from "./model";
+import { EnergySpark } from "./energy";
+import { at, capacityOf, clock, energyModeOf, loadOf, span, type Day } from "./model";
 import { CapacityRing, DayTimeline, DayTrack, HatchSwatch, LoadDots, NowLine, Rail, useDayFacts, useEntries, useWorld } from "./parts";
 import { NOW, TODAY_INDEX, WEEK } from "./sample";
 
@@ -125,6 +126,7 @@ const StripDay = ({ day, index, selected, detail }: { day: Day; index: number; s
       </span>
       <LoadDots load={index < TODAY_INDEX ? { done: planned, kept: 0, predicted: 0 } : load} capacity={capacityOf(day)} unit={90} className="h-1 flex-nowrap" />
       {detail && <span className="font-mono text-[0.5625rem] leading-none text-muted-foreground">{planned ? span(planned) : "Free"}</span>}
+      {detail && <EnergySpark quality={day.energy} mode={energyModeOf(nowFor(index))} now={NOW} className="mt-0.5 h-2.5 px-1" />}
     </button>
   );
 };
@@ -209,7 +211,7 @@ export const PhoneDay = ({ index }: { index: number }) => {
         role="region"
         aria-label={`${title} timeline`}
       >
-        <DayTimeline day={day} from={at(8)} to={at(19)} scale={1.1} gutter={66} now={nowFor(index)} className="mr-4" />
+        <DayTimeline day={day} from={at(8)} to={at(23)} scale={1.1} gutter={88} lane={26} now={nowFor(index)} className="mr-4" />
       </div>
       <Header day={day} title={title} sub={`${day.weekday} ${day.number} Nov`} toggle={ListBullets} toggleLabel="Show as a list">
         <WeekStrip selected={index} className="px-3" />
@@ -243,19 +245,19 @@ export const PhoneWeek = () => {
   const from = at(8);
   const to = at(17, 30);
   const scale = 0.8;
-  const gutter = 50;
+  const gutter = 64;
   return (
     <Phone label="iPhone week view">
-      <div className="absolute inset-0 overflow-y-auto overscroll-contain pt-[12rem] pb-28 [scrollbar-width:none]" tabIndex={0} role="region" aria-label="Week timeline">
+      <div className="absolute inset-0 overflow-y-auto overscroll-contain pt-[12.75rem] pb-28 [scrollbar-width:none]" tabIndex={0} role="region" aria-label="Week timeline">
         <div className="relative mr-3" style={{ paddingLeft: gutter }}>
-          <Rail from={from} to={to} scale={scale} now={NOW} gutter={gutter} compact />
+          <Rail from={from} to={to} scale={scale} now={NOW} gutter={gutter} compact lane={14} energy={WEEK[TODAY_INDEX]?.energy ?? 1} />
           <div className="grid grid-cols-7">
             {WEEK.map((day, index) => (
               <WeekColumn key={day.date} day={day} index={index} from={from} to={to} scale={scale} />
             ))}
           </div>
         </div>
-        <ul className="mt-4 flex gap-3.5 pl-[3.125rem] text-[0.6875rem] text-muted-foreground">
+        <ul className="mt-4 flex gap-3.5 pl-16 text-[0.6875rem] text-muted-foreground">
           {KEY.map((item) => (
             <li key={item.name} className="flex items-center gap-1.5">
               <span aria-hidden="true" data-look={item.look} className="tl-block size-3 rounded-[3px]" style={{ "--a": "var(--area-violet)" } as CSSProperties} />
@@ -265,7 +267,7 @@ export const PhoneWeek = () => {
         </ul>
       </div>
       <Header day={WEEK[TODAY_INDEX] as Day} title="Week" sub="23 to 29 Nov" toggle={Rows} toggleLabel="Show one day">
-        <WeekStrip selected={TODAY_INDEX} detail className="pr-3 pl-[3.125rem]" />
+        <WeekStrip selected={TODAY_INDEX} detail className="pr-3 pl-16" />
       </Header>
       <Bars />
     </Phone>

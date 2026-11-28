@@ -16,6 +16,7 @@ export type BlockEntry = {
   done: boolean;
   guess?: boolean;
   trip?: Trip;
+  fit?: "peak" | "dip";
 };
 
 export type CommitmentEntry = {
@@ -31,7 +32,8 @@ export type CommitmentEntry = {
 
 export type Entry = BlockEntry | CommitmentEntry;
 
-export type Day = { date: string; weekday: string; number: number; entries: readonly Entry[] };
+export type Day = { date: string; weekday: string; number: number; energy: number; entries: readonly Entry[] };
+export type EnergyMode = "past" | "today" | "usual";
 
 export type Look = "predicted" | "kept" | "done" | "missed" | "commitment" | "commitment-past";
 export type Density = "full" | "week" | "mini";
@@ -40,6 +42,32 @@ export type Load = { done: number; kept: number; predicted: number };
 export const WORKING = { start: 9 * 60, end: 17 * 60 + 30 } as const;
 
 export const at = (hour: number, minute = 0) => hour * 60 + minute;
+
+export const WAKE = at(7, 5);
+export const BEDTIME = at(22, 45);
+
+export const energyAt = (minute: number, quality = 1) => {
+  const hour = minute / 60;
+  const awake = Math.max(0, (minute - WAKE) / 60);
+  const rhythm = 0.3 * Math.cos((2 * Math.PI * (hour - 16.5)) / 24) + 0.24 * Math.cos((4 * Math.PI * (hour - 9)) / 24);
+  const pressure = 0.7 * (1 - Math.exp(-awake / 16)) + 0.45 * Math.exp(-awake / 0.8);
+  return Math.max(0.06, Math.min(1, ((rhythm - pressure + 0.5) / 0.62) * quality));
+};
+
+export const energyWord = (minute: number) => {
+  const shape = energyAt(minute);
+  if (shape >= 0.85 && minute < at(13)) return "peak, good for deep work";
+  if (shape <= 0.56 && minute >= at(13) && minute <= at(16)) return "dip, good for admin or a walk";
+  return undefined;
+};
+
+const extreme = (from: number, to: number, pick: (a: number, b: number) => boolean) =>
+  Array.from({ length: (to - from) / 5 + 1 }, (_, index) => from + index * 5).reduce((best, minute) => (pick(energyAt(minute), energyAt(best)) ? minute : best), from);
+
+export const PEAK_AT = extreme(WAKE + 55, at(13), (a, b) => a > b);
+export const DIP_AT = extreme(at(13), at(17), (a, b) => a < b);
+
+export const energyModeOf = (now: number) => (now === Number.POSITIVE_INFINITY ? "past" : now === Number.NEGATIVE_INFINITY ? "usual" : "today") satisfies EnergyMode;
 
 export const outerOf = (entry: Entry) => {
   const travel = entry.kind === "block" && entry.trip ? entry.trip.minutes : 0;
