@@ -8,6 +8,7 @@ import { undoLast } from "@/components/lifeos/undo";
 import { Section, Specimen } from "../specimen";
 import { ThemeContext, useTheme } from "../theme";
 import { DailyNote, NotebookCapture } from "./daily";
+import { ModeSpecimens } from "./modes";
 import { PhoneSpecimens } from "./iphone";
 import { Backlinks, GraphLegend, LocalGraph, OutgoingLinks, VaultGraph } from "./links";
 import { ShellSpecimens } from "./shell";
@@ -22,6 +23,7 @@ const SECTIONS = [
   { id: "links", label: "Links" },
   { id: "daily", label: "Daily note" },
   { id: "shell", label: "In the app" },
+  { id: "modes", label: "Modes" },
   { id: "states", label: "States" },
   { id: "iphone", label: "iPhone" },
 ];
@@ -216,6 +218,13 @@ export const NotesBoard = () => {
             lede="Notes is a module beside the Planner, not a separate app. It shares the sidebar, the command bar, the Areas and the undo."
           >
             <ShellSpecimens />
+          </Section>
+          <Section
+            id="modes"
+            title="Modes"
+            lede="A proposal, not built. Planner and Notes as two modes of one window, with a switch where the Notes row is now. Avi decides."
+          >
+            <ModeSpecimens />
           </Section>
           <Section id="states" title="States" lede="What the screens look like when they are empty, offline, or catching up with another device.">
             <StateSpecimens />

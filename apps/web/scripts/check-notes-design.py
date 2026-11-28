@@ -16,7 +16,7 @@ from playwright.sync_api import expect, sync_playwright
 BASE = os.environ.get("BASE", "http://localhost:3990")
 OUT = Path(sys.argv[1] if len(sys.argv) > 1 else sys.exit(__doc__))
 ONLY = [name for name in os.environ.get("ONLY", "").split(",") if name]
-SECTIONS = ["home", "writing", "links", "daily", "shell", "states", "iphone"]
+SECTIONS = ["home", "writing", "links", "daily", "shell", "modes", "states", "iphone"]
 SIZES = {"desktop": (1440, 900, int(os.environ.get("SCALE", "1"))), "phone": (390, 844, 2)}
 
 
@@ -43,6 +43,14 @@ def shoot(page, size, theme):
         target = page.locator(f"#{section}")
         target.scroll_into_view_if_needed()
         page.wait_for_timeout(350)
+        if section == "modes":
+            target.screenshot(path=str(OUT / f"modes{suffix}.png"))
+            target.get_by_role("button", name="Notes", exact=True).first.click()
+            expect(target.get_by_role("navigation", name="Notes", exact=True)).to_be_visible()
+            page.wait_for_timeout(250)
+            target.screenshot(path=str(OUT / f"modes-notes{suffix}.png"))
+            target.get_by_role("button", name="Planner", exact=True).first.click()
+            continue
         target.screenshot(path=str(OUT / f"notes-{section}{suffix}.png"))
     if size == "phone" and (not ONLY or "home" in ONLY):
         window = page.locator("#home")

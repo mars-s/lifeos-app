@@ -37,6 +37,7 @@ Each screen has four shots in this folder: `notes-<name>.png`, `-dark`, `-phone`
 | Links | `notes-links` | The links panel (small graph, Tasks, Linked from, Links out, not created yet) and the whole graph |
 | Daily note | `notes-daily` | The day tied to the Planner, and the capture for typing in a notebook page |
 | In the app | `notes-shell` | The sidebar row, the command bar with notes in it, and a note open beside the Planner |
+| Modes (a proposal, not built) | `modes`, `modes-notes` | Planner and Notes as two modes of one window: the switch, what the sidebar shows in each, what crosses over, and the iPhone |
 | States | `notes-states` | Three empty states, the sync indicator, and the merge moment |
 | iPhone | `notes-iphone` | Notes home, writing with the keyboard up, the links sheet, and the notebook capture |
 
@@ -141,6 +142,19 @@ No token was added to `styles.css`, to stay out of the way of other work on that
 BASE=http://localhost:3990 uv run --with playwright python scripts/check-notes-design.py ../../docs/design
 ```
 
+## Modes: a proposal
+
+Avi asked on 28 Nov 2026 whether Notes should be a toggle (Note mode, Planner mode) and not a sidebar row. This section is the answer as a design. Nothing here is built. Shots: `modes.png` (Planner mode) and `modes-notes.png` (Notes mode), each with `-dark`, `-phone` and `-phone-dark`.
+
+The view: yes on web and Mac, as long as the switch changes the sidebar and never what you can reach.
+
+- **Why a switch.** The Notes row is the only sidebar row that is not a list of Tasks, and pressing it already replaces the lists with a second column. Notes is the other half of the app, so it should not look like one more list. A switch also gives the notes column the whole sidebar and removes a column from the window.
+- **The switch.** Two glyphs, Planner and Notes. In the Mac title bar beside the traffic lights, and at the top of the sidebar on the web. Cmd+1 and Cmd+2 from anywhere. The keys do not animate. A click slides the thumb in 160 ms.
+- **The sidebar.** Planner mode: Inbox, Today, Planner, Anytime, Someday, the Areas, Logbook. Notes mode: search, Today's note, Recent, the Area and Project tree, Unfiled. The sync line stays at the foot in both. Each mode remembers its place, so Cmd+1 then Cmd+2 returns to the same note.
+- **What crosses over.** A note still opens beside the Planner from a Task's chip or Cmd+Enter in the command bar, without a mode change. Task chips in a note tick, open the card and undo in place. Cmd+K searches both and switches mode only when Enter takes you to the other half. Cmd+J works on the Task or note in front and reads both. The Planner's day header links to that day's note, and the daily note keeps showing the Planner's day.
+- **iPhone.** No switch. The tab bar is already one, and Notes keeps its tab.
+- **The risk.** A mode can turn into a wall. If any of the five crossings above is cut, go back to the sidebar row.
+
 ## Notes for the build
 
 Sync and storage are decided in issue #82 (Yjs, a relay on Cloudflare Durable Objects, CodeMirror 6). The design assumes that shape:
@@ -155,7 +169,7 @@ Sync and storage are decided in issue #82 (Yjs, a relay on Cloudflare Durable Ob
 ## Open questions for Avi
 
 1. **Typeface.** Notes are in Inter, like the rest of the app. The page has an Inter and System switch under the window. Do you want San Francisco for note text on Apple devices?
-2. **Where Notes sits.** It is one sidebar row between the lists and the Logbook. The other choice is a switch at the top between Planner and Notes.
+2. **Where Notes sits.** Built as one sidebar row between the lists and the Logbook. The switch between Planner and Notes is drawn in Modes above and is the recommended choice. Yes or no?
 3. **iPhone tab.** Notes is drawn as a fifth tab. The other choice is a row inside Lists.
 4. **Folders.** Areas and Projects are the only folders. Do you want free folders as well?
 5. **To-dos.** A round to-do stays in its note. Should open to-dos show anywhere in the Planner, or only once you make them a Task?
