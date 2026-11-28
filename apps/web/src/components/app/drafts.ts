@@ -1,13 +1,16 @@
 "use client";
 
 import { getFunctionName } from "convex/server";
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/reactivity";
+import { useCallback, useEffect, useMemo } from "react";
 import { api } from "@lifeos/backend/api";
 import type { Id } from "@lifeos/backend/dataModel";
 import type { IsoDate } from "@lifeos/backend/date";
 import type { PlannerTask } from "@lifeos/backend/types";
 import { rewriteView, type Updater } from "@lifeos/backend/client/local-views";
 import { taskAliases } from "@lifeos/backend/client/task-aliases";
+import { registry } from "../../lib/atoms";
 
 const OPTIMISTIC = "optimistic:task:";
 const CLOCK_SKEW_MS = 60_000;
@@ -33,16 +36,14 @@ type Snapshot = { drafts: readonly Draft[]; adopted: ReadonlyMap<string, Planner
 
 const EMPTY: Snapshot = { drafts: [], adopted: new Map() };
 
-let snapshot = EMPTY;
+const snapshotAtom = Atom.make(EMPTY).pipe(Atom.keepAlive);
 let count = 0;
 const aliases = new Map<string, string>();
 const waiting = new Map<string, ((taskId: Id<"tasks"> | null) => void)[]>();
-const listeners = new Set<() => void>();
 
-const publish = (next: Snapshot) => {
-  snapshot = next;
-  listeners.forEach((listener) => listener());
-};
+const now = () => registry.get(snapshotAtom);
+
+const publish = (next: Snapshot) => registry.set(snapshotAtom, next);
 
 const settle = (key: string, taskId: Id<"tasks"> | null) => {
   waiting.get(key)?.forEach((resolve) => resolve(taskId));
@@ -57,22 +58,22 @@ export const drafts = {
     const key = `${OPTIMISTIC}${count}`;
     const createdAt = Date.now();
     const task = { ...fields, _id: key as Id<"tasks">, _creationTime: createdAt };
-    publish({ ...snapshot, drafts: [...snapshot.drafts, { key, slot, task, known, createdAt, ...unsaved }] });
+    publish({ ...now(), drafts: [...now().drafts, { key, slot, task, known, createdAt, ...unsaved }] });
     return key;
   },
 
-  exists: (key: string) => snapshot.drafts.some((draft) => draft.key === key),
+  exists: (key: string) => now().drafts.some((draft) => draft.key === key),
 
-  isUnsaved: (key: string) => snapshot.drafts.some((draft) => draft.key === key && draft.save !== undefined),
+  isUnsaved: (key: string) => now().drafts.some((draft) => draft.key === key && draft.save !== undefined),
 
   commit: (key: string, title: string) => {
-    const draft = snapshot.drafts.find((candidate) => candidate.key === key);
+    const draft = now().drafts.find((candidate) => candidate.key === key);
     const trimmed = title.trim();
     if (!draft?.save || trimmed === "") return false;
     const { save } = draft;
     publish({
-      ...snapshot,
-      drafts: snapshot.drafts.map((candidate) =>
+      ...now(),
+      drafts: now().drafts.map((candidate) =>
         candidate.key === key ? { ...candidate, save: undefined, task: { ...candidate.task, title: trimmed } } : candidate,
       ),
     });
@@ -81,17 +82,17 @@ export const drafts = {
   },
 
   rewrite: (key: string, update: Updater) => {
-    const draft = snapshot.drafts.find((candidate) => candidate.key === key && candidate.taskId === undefined);
+    const draft = now().drafts.find((candidate) => candidate.key === key && candidate.taskId === undefined);
     if (!draft) return;
     const [task] = rewriteView(update, DRAFT_VIEW, {}, [draft.task]) as PlannerTask[];
     if (!task || task === draft.task) return;
-    publish({ ...snapshot, drafts: snapshot.drafts.map((candidate) => (candidate === draft ? { ...draft, task } : candidate)) });
+    publish({ ...now(), drafts: now().drafts.map((candidate) => (candidate === draft ? { ...draft, task } : candidate)) });
   },
 
   discard: (key: string) => {
-    const draft = snapshot.drafts.find((candidate) => candidate.key === key && candidate.save !== undefined);
+    const draft = now().drafts.find((candidate) => candidate.key === key && candidate.save !== undefined);
     if (!draft) return undefined;
-    publish({ ...snapshot, drafts: snapshot.drafts.filter((candidate) => candidate.key !== key) });
+    publish({ ...now(), drafts: now().drafts.filter((candidate) => candidate.key !== key) });
     settle(key, null);
     return draft.returnTo;
   },
@@ -99,34 +100,34 @@ export const drafts = {
   saved: (key: string, taskId: Id<"tasks">) => {
     aliases.set(taskId, key);
     taskAliases.set(key, taskId);
-    publish({ ...snapshot, drafts: snapshot.drafts.map((draft) => (draft.key === key ? { ...draft, taskId } : draft)) });
+    publish({ ...now(), drafts: now().drafts.map((draft) => (draft.key === key ? { ...draft, taskId } : draft)) });
     settle(key, taskId);
   },
 
   failed: (key: string) => {
-    publish({ ...snapshot, drafts: snapshot.drafts.filter((draft) => draft.key !== key) });
+    publish({ ...now(), drafts: now().drafts.filter((draft) => draft.key !== key) });
     settle(key, null);
   },
 
   keepOnly: (openKey: string | undefined) => {
-    const kept = snapshot.drafts.filter((draft) => draft.key === openKey || (draft.taskId === undefined && draft.save === undefined));
-    if (kept.length === snapshot.drafts.length) return;
-    const adopted = new Map([...snapshot.adopted].filter(([key]) => kept.some((draft) => draft.key === key)));
-    const dropped = snapshot.drafts.filter((draft) => !kept.includes(draft));
+    const kept = now().drafts.filter((draft) => draft.key === openKey || (draft.taskId === undefined && draft.save === undefined));
+    if (kept.length === now().drafts.length) return;
+    const adopted = new Map([...now().adopted].filter(([key]) => kept.some((draft) => draft.key === key)));
+    const dropped = now().drafts.filter((draft) => !kept.includes(draft));
     publish({ drafts: kept, adopted });
     for (const draft of dropped) if (draft.save) settle(draft.key, null);
   },
 
   release: (key: string) => {
-    if (!snapshot.drafts.some((draft) => draft.key === key)) return;
-    const adopted = new Map(snapshot.adopted);
+    if (!now().drafts.some((draft) => draft.key === key)) return;
+    const adopted = new Map(now().adopted);
     adopted.delete(key);
-    publish({ drafts: snapshot.drafts.filter((draft) => draft.key !== key), adopted });
+    publish({ drafts: now().drafts.filter((draft) => draft.key !== key), adopted });
   },
 
   adopt: (key: string, task: PlannerTask) => {
-    if (snapshot.adopted.get(key) === task) return;
-    publish({ ...snapshot, adopted: new Map(snapshot.adopted).set(key, task) });
+    if (now().adopted.get(key) === task) return;
+    publish({ ...now(), adopted: new Map(now().adopted).set(key, task) });
   },
 
   realId: taskAliases.realId,
@@ -135,42 +136,36 @@ export const drafts = {
     new Promise<Id<"tasks"> | null>((resolve) => {
       const known = taskAliases.get(key);
       if (known) return resolve(known);
-      if (!snapshot.drafts.some((draft) => draft.key === key)) return resolve(null);
+      if (!now().drafts.some((draft) => draft.key === key)) return resolve(null);
       waiting.set(key, [...(waiting.get(key) ?? []), resolve]);
     }),
 
   keyFor: (taskId: string) => aliases.get(taskId) ?? taskId,
 
-  count: (slot: string) => snapshot.drafts.filter((draft) => draft.slot === slot).length,
+  count: (slot: string) => countIn(now(), slot),
 };
-
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  return () => void listeners.delete(listener);
-};
-
-const read = () => snapshot;
-const readServer = () => EMPTY;
 
 const claims = (draft: Draft, task: PlannerTask) =>
   draft.taskId !== undefined
     ? draft.taskId === task._id
     : !draft.known.has(task._id) && task._creationTime >= draft.createdAt - CLOCK_SKEW_MS && task.title === draft.task.title;
 
-const readBlocks = () => snapshot.drafts;
+const draftsOf = (snapshot: Snapshot) => snapshot.drafts;
+
+const countIn = (snapshot: Snapshot, slot: string) => snapshot.drafts.filter((draft) => draft.slot === slot).length;
 
 export const useDraftBlocks = () => {
-  const live = useSyncExternalStore(subscribe, readBlocks, () => EMPTY.drafts);
+  const live = useAtomValue(snapshotAtom, draftsOf);
   return useMemo(
     () => live.flatMap((draft) => (draft.block && draft.taskId === undefined ? [{ key: draft.key, title: draft.task.title, block: draft.block }] : [])),
     [live],
   );
 };
 
-export const useDraftCount = (slot: string) => useSyncExternalStore(subscribe, () => drafts.count(slot), () => 0);
+export const useDraftCount = (slot: string) => useAtomValue(snapshotAtom, useCallback((snapshot: Snapshot) => countIn(snapshot, slot), [slot]));
 
 export const useRows = (tasks: readonly PlannerTask[], slot: string | undefined) => {
-  const { drafts: live, adopted } = useSyncExternalStore(subscribe, read, readServer);
+  const { drafts: live, adopted } = useAtomValue(snapshotAtom);
   const claimed = useMemo(
     () =>
       live.length === 0
