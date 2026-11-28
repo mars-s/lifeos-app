@@ -1,0 +1,424 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0491AC07CA6F3113851AE630 /* Glyphs.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC856D7F300FAB62A918D672 /* Glyphs.swift */; };
+		28F311C59A4635C20A3347FC /* LifeOSDots-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3C051C0681668D96303674A2 /* LifeOSDots-Regular.ttf */; };
+		311A3442D4A8613C721FDA6D /* Sample.swift in Sources */ = {isa = PBXBuildFile; fileRef = 498D00A0B4BFCD4AE81C1BE9 /* Sample.swift */; };
+		3E51E8D8E4D8FB217C4674E6 /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = F46D82AE7161EF5CD4DEA63D /* Store.swift */; };
+		3E544191E1896DE38CBF8B9A /* MacWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 374FB3071F5EE1121AC70C63 /* MacWidgets.swift */; };
+		4010C61B330FFC93A46FDA40 /* Inter_500Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 796A6A36DF4AE50029966376 /* Inter_500Medium.ttf */; };
+		61F3953B8F06757F50DA2CEE /* Tick.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD01B497B94484EA63B8D4CB /* Tick.swift */; };
+		665DD1B51C1BF3B948292416 /* Inter_600SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 1FC1C440C80A098F1718E9C6 /* Inter_600SemiBold.ttf */; };
+		6A88DB03CE449EB68D05BC9A /* Inter_400Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 07FF1EDDCBB8004CA00BA8DA /* Inter_400Regular.ttf */; };
+		80BA00D2C6EB0EC0BCF5717B /* Strips.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB7451C749E0D63BC1A198F4 /* Strips.swift */; };
+		8690E022150CCC59C69A1307 /* Parts.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9F060311299C89583DED6B5 /* Parts.swift */; };
+		894E6D7AF49CED40B8D4B5EE /* Ink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0215190C4E280E9D9F8C7857 /* Ink.swift */; };
+		9730975DA7AB4EA3CDFF1E13 /* Timeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 598A1260EB80335589F2FF91 /* Timeline.swift */; };
+		A1C2CF3CBFFE4B5FEE1C0994 /* GeistMono_400Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = FDBDBE79356BDBAF7BF1018B /* GeistMono_400Regular.ttf */; };
+		A42E1750A4865A60B65D176B /* Format.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9C2BDEDD15FB394ADB048F0 /* Format.swift */; };
+		C6027DF8D74C7184AC1BBC5F /* Token.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE959BF322942314886EBE95 /* Token.swift */; };
+		CBE8EA4829C544C27A1402DC /* GeistMono_500Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F37ABCFB3EE28AA8EBA7346A /* GeistMono_500Medium.ttf */; };
+		DE989AEF7159EA93BF75FD05 /* Tiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD59EE582CA908A33348AA1F /* Tiles.swift */; };
+		FEAE929FA9E72F5EC9EE224F /* Snapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A6D96780FCC39A05ECA64F4 /* Snapshot.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0215190C4E280E9D9F8C7857 /* Ink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Ink.swift; sourceTree = "<group>"; };
+		07FF1EDDCBB8004CA00BA8DA /* Inter_400Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Inter_400Regular.ttf; sourceTree = "<group>"; };
+		1FC1C440C80A098F1718E9C6 /* Inter_600SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Inter_600SemiBold.ttf; sourceTree = "<group>"; };
+		374FB3071F5EE1121AC70C63 /* MacWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacWidgets.swift; sourceTree = "<group>"; };
+		3C051C0681668D96303674A2 /* LifeOSDots-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "LifeOSDots-Regular.ttf"; sourceTree = "<group>"; };
+		498D00A0B4BFCD4AE81C1BE9 /* Sample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sample.swift; sourceTree = "<group>"; };
+		598A1260EB80335589F2FF91 /* Timeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Timeline.swift; sourceTree = "<group>"; };
+		796A6A36DF4AE50029966376 /* Inter_500Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Inter_500Medium.ttf; sourceTree = "<group>"; };
+		7A6D96780FCC39A05ECA64F4 /* Snapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Snapshot.swift; sourceTree = "<group>"; };
+		9B96EA583F6BB13410919E1A /* LifeOSWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = LifeOSWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A9C2BDEDD15FB394ADB048F0 /* Format.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Format.swift; sourceTree = "<group>"; };
+		AC856D7F300FAB62A918D672 /* Glyphs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glyphs.swift; sourceTree = "<group>"; };
+		AD01B497B94484EA63B8D4CB /* Tick.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tick.swift; sourceTree = "<group>"; };
+		BD59EE582CA908A33348AA1F /* Tiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tiles.swift; sourceTree = "<group>"; };
+		C9F060311299C89583DED6B5 /* Parts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Parts.swift; sourceTree = "<group>"; };
+		CB7451C749E0D63BC1A198F4 /* Strips.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Strips.swift; sourceTree = "<group>"; };
+		F37ABCFB3EE28AA8EBA7346A /* GeistMono_500Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = GeistMono_500Medium.ttf; sourceTree = "<group>"; };
+		F46D82AE7161EF5CD4DEA63D /* Store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Store.swift; sourceTree = "<group>"; };
+		FDBDBE79356BDBAF7BF1018B /* GeistMono_400Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = GeistMono_400Regular.ttf; sourceTree = "<group>"; };
+		FE959BF322942314886EBE95 /* Token.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Token.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		18254F5381B4EC0BE079DF3A /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				374FB3071F5EE1121AC70C63 /* MacWidgets.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		1D6DBD12EB411D502632A37C = {
+			isa = PBXGroup;
+			children = (
+				18254F5381B4EC0BE079DF3A /* Sources */,
+				C05453C0EB94A789C3B0E52A /* widgets */,
+				9F60189BFB9AD3F9E2039BB1 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		27EF42627FA21AB73AA3CCB0 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				B055236326060AD333E52F12 /* LifeOSWidgetKit */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		7F0C94DF145144AA1D1CB2F0 /* widget-kit */ = {
+			isa = PBXGroup;
+			children = (
+				8C7242F73EAF234AFD2AB67E /* Fonts */,
+				27EF42627FA21AB73AA3CCB0 /* Sources */,
+			);
+			path = "widget-kit";
+			sourceTree = "<group>";
+		};
+		8C7242F73EAF234AFD2AB67E /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				FDBDBE79356BDBAF7BF1018B /* GeistMono_400Regular.ttf */,
+				F37ABCFB3EE28AA8EBA7346A /* GeistMono_500Medium.ttf */,
+				07FF1EDDCBB8004CA00BA8DA /* Inter_400Regular.ttf */,
+				796A6A36DF4AE50029966376 /* Inter_500Medium.ttf */,
+				1FC1C440C80A098F1718E9C6 /* Inter_600SemiBold.ttf */,
+				3C051C0681668D96303674A2 /* LifeOSDots-Regular.ttf */,
+			);
+			path = Fonts;
+			sourceTree = "<group>";
+		};
+		9F60189BFB9AD3F9E2039BB1 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				9B96EA583F6BB13410919E1A /* LifeOSWidgets.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		B055236326060AD333E52F12 /* LifeOSWidgetKit */ = {
+			isa = PBXGroup;
+			children = (
+				A9C2BDEDD15FB394ADB048F0 /* Format.swift */,
+				AC856D7F300FAB62A918D672 /* Glyphs.swift */,
+				0215190C4E280E9D9F8C7857 /* Ink.swift */,
+				C9F060311299C89583DED6B5 /* Parts.swift */,
+				498D00A0B4BFCD4AE81C1BE9 /* Sample.swift */,
+				7A6D96780FCC39A05ECA64F4 /* Snapshot.swift */,
+				F46D82AE7161EF5CD4DEA63D /* Store.swift */,
+				CB7451C749E0D63BC1A198F4 /* Strips.swift */,
+				AD01B497B94484EA63B8D4CB /* Tick.swift */,
+				BD59EE582CA908A33348AA1F /* Tiles.swift */,
+				598A1260EB80335589F2FF91 /* Timeline.swift */,
+				FE959BF322942314886EBE95 /* Token.swift */,
+			);
+			path = LifeOSWidgetKit;
+			sourceTree = "<group>";
+		};
+		B6AE0068B7B3AA79DC47E687 /* packages */ = {
+			isa = PBXGroup;
+			children = (
+				7F0C94DF145144AA1D1CB2F0 /* widget-kit */,
+			);
+			path = packages;
+			sourceTree = "<group>";
+		};
+		C05453C0EB94A789C3B0E52A /* widgets */ = {
+			isa = PBXGroup;
+			children = (
+				B6AE0068B7B3AA79DC47E687 /* packages */,
+			);
+			name = widgets;
+			path = ../../..;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		3135832625D3882981E875AB /* LifeOSWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7F680117442A0E471849EB95 /* Build configuration list for PBXNativeTarget "LifeOSWidgets" */;
+			buildPhases = (
+				E31BDCF9053C41CF684835D2 /* Sources */,
+				2276466EFA4929DBB8B6F631 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = LifeOSWidgets;
+			packageProductDependencies = (
+			);
+			productName = LifeOSWidgets;
+			productReference = 9B96EA583F6BB13410919E1A /* LifeOSWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A7768547F8BF6388775D1203 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					3135832625D3882981E875AB = {
+						DevelopmentTeam = BFKXU8H6X5;
+						ProvisioningStyle = Manual;
+					};
+				};
+			};
+			buildConfigurationList = A286744575E00E603E5FC970 /* Build configuration list for PBXProject "LifeOSWidgets" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 1D6DBD12EB411D502632A37C;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				3135832625D3882981E875AB /* LifeOSWidgets */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		2276466EFA4929DBB8B6F631 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1C2CF3CBFFE4B5FEE1C0994 /* GeistMono_400Regular.ttf in Resources */,
+				CBE8EA4829C544C27A1402DC /* GeistMono_500Medium.ttf in Resources */,
+				6A88DB03CE449EB68D05BC9A /* Inter_400Regular.ttf in Resources */,
+				4010C61B330FFC93A46FDA40 /* Inter_500Medium.ttf in Resources */,
+				665DD1B51C1BF3B948292416 /* Inter_600SemiBold.ttf in Resources */,
+				28F311C59A4635C20A3347FC /* LifeOSDots-Regular.ttf in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		E31BDCF9053C41CF684835D2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A42E1750A4865A60B65D176B /* Format.swift in Sources */,
+				0491AC07CA6F3113851AE630 /* Glyphs.swift in Sources */,
+				894E6D7AF49CED40B8D4B5EE /* Ink.swift in Sources */,
+				3E544191E1896DE38CBF8B9A /* MacWidgets.swift in Sources */,
+				8690E022150CCC59C69A1307 /* Parts.swift in Sources */,
+				311A3442D4A8613C721FDA6D /* Sample.swift in Sources */,
+				FEAE929FA9E72F5EC9EE224F /* Snapshot.swift in Sources */,
+				3E51E8D8E4D8FB217C4674E6 /* Store.swift in Sources */,
+				80BA00D2C6EB0EC0BCF5717B /* Strips.swift in Sources */,
+				61F3953B8F06757F50DA2CEE /* Tick.swift in Sources */,
+				DE989AEF7159EA93BF75FD05 /* Tiles.swift in Sources */,
+				9730975DA7AB4EA3CDFF1E13 /* Timeline.swift in Sources */,
+				C6027DF8D74C7184AC1BBC5F /* Token.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		2E6B582B4D08E4D49A87D94E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = BFKXU8H6X5;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		77C0A5F1AE7EBB8D58336B56 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = BFKXU8H6X5;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		B41DD6A76251B68F41D02AB6 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = LifeOSWidgets.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = com.marss.lifeos.desktop.widgets;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		C954FC21B4BBC0599CB4AF1F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = LifeOSWidgets.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = com.marss.lifeos.desktop.widgets;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		7F680117442A0E471849EB95 /* Build configuration list for PBXNativeTarget "LifeOSWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B41DD6A76251B68F41D02AB6 /* Debug */,
+				C954FC21B4BBC0599CB4AF1F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A286744575E00E603E5FC970 /* Build configuration list for PBXProject "LifeOSWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2E6B582B4D08E4D49A87D94E /* Debug */,
+				77C0A5F1AE7EBB8D58336B56 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A7768547F8BF6388775D1203 /* Project object */;
+}

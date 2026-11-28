@@ -1,6 +1,6 @@
 # Widgets design
 
-The design for LifeOS widgets on iPhone and Mac, for whoever builds them. It is a design only: sample data, no WidgetKit code. The live specimen is the Waku route `/design/widgets` in `apps/web` (run `pnpm dev:web`, open `/design/widgets`). The Task boxes can be ticked, and the Home Screen and the Mac desktop have switches for their modes. The shared look is in [system.md](system.md). The plan is tracked in issue #84.
+The design for LifeOS widgets on iPhone and Mac, and how they are built (see Built). The live specimen is the Waku route `/design/widgets` in `apps/web` (run `pnpm dev:web`, open `/design/widgets`). The Task boxes can be ticked, and the Home Screen and the Mac desktop have switches for their modes. The shared look is in [system.md](system.md). The plan is tracked in issue #84.
 
 ## Direction
 
@@ -115,8 +115,23 @@ Widgets never talk to Convex to draw. Each app writes one snapshot file to its A
 - **Mac (Tauri).** A widget extension (`.appex`) built with Xcode and embedded in the app bundle under `Contents/PlugIns`, signed with the same team and App Group. The Rust side writes the snapshot and calls `WidgetCenter` through a small Swift bridge. iPhone widgets also show on the Mac through Continuity, so the Mac extension is only needed for the extra large size and for when the iPhone is away.
 - **Shared.** One Swift package holds the parts, the strips, the glyph font and the snapshot type, used by both extensions.
 
-## Open questions for Avi
+## Decisions (28 Nov 2026)
 
-1. Should Capacity count down with the clock (free time still ahead of now), or stay as the Planner shows it (Capacity less everything planned today)? The design shows the Planner's number.
-2. Words in Inter, as in the apps, or San Francisco so the widgets sit with the system ones? The design shows Inter.
-3. Is a Daily note widget worth adding once Notes ships?
+1. Capacity counts down with the clock: free working time still ahead of now (less External Commitments), capped at the day's Capacity, less the open Day Load. It moves through timeline entries a minute apart, so it needs no app.
+2. Words are in Inter, as in the apps. Figures are dots drawn as shapes, and `Text(timerInterval:)` uses the LifeOSDots font built from the same grid.
+3. No Daily note widget.
+
+## Built
+
+| Part | Where |
+| --- | --- |
+| Snapshot query | `planner/widgets:snapshot` in `packages/backend/convex/planner/widgets.ts`. Times are moments; the widgets place them on the day in the snapshot's time zone |
+| Shared Swift | `packages/widget-kit`: the `WidgetSnapshot` type, the store, the token, the tick intent, the parts, the strips and every tile. `swift test` covers the maths. `scripts/link.sh` links its files into the iPhone target and the Expo module; `scripts/make-dot-font.py` rebuilds the dot font |
+| iPhone widgets | `apps/mobile/targets/widgets`, added by `@bacons/apple-targets` at prebuild. App Group `group.com.marss.lifeos`, Keychain group `BFKXU8H6X5.com.marss.lifeos.shared` |
+| iPhone module | `apps/mobile/modules/lifeos-widgets` (pod `LifeOSWidgetBridge`): writes the snapshot, keeps the Convex token in the shared Keychain group, hands queued ticks to the app, runs the Focus Live Activity and passes the control's route. `src/lib/widgets.ts` drives it |
+| Mac widgets | `apps/desktop/widgets`: an Xcode project made by XcodeGen from `project.yml` (regenerate with `nix run nixpkgs#xcodegen -- generate`), built by `widgets/build.sh` and embedded under `Contents/PlugIns` by `pnpm build:desktop`. App Group `BFKXU8H6X5.com.marss.lifeos` |
+| Mac bridge | `apps/desktop/widgets/Bridge/Bridge.swift`, compiled into a static library by `src-tauri/build.rs`. `src-tauri/src/widgets.rs` has the commands, and `apps/web/src/components/app/widget-sync.tsx` writes the snapshot from the Mac app's webview |
+
+Ticks go straight to Convex from the iPhone widget when the saved token is fresh. Otherwise, and always on the Mac, they wait in `ticks.json` in the App Group and the app sends them through `planner/tasks:complete` when it next runs. Start, Pause and Stop in the Live Activity and the Focus tile open the timer in the app instead of changing the session from the widget.
+
+Shots of the real widgets, on the iPhone 17 Pro simulator against a seeded local backend: `widgets-built-home.png` and `-dark`, `widgets-built-home-small.png` and `-dark`, `widgets-built-home-tinted.png`, `widgets-built-home-clear.png`, `widgets-built-island.png`, `widgets-built-live-activity.png`, `widgets-built-control-*.png`.

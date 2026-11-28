@@ -7,6 +7,7 @@ mod notifications;
 mod permissions;
 mod setup;
 mod things_import;
+mod widgets;
 
 use std::sync::Arc;
 
@@ -38,7 +39,10 @@ pub fn run() -> tauri::Result<()> {
             permissions::onboarded,
             permissions::finish_onboarding,
             permissions::sync_report,
-            permissions::import_things_now
+            permissions::import_things_now,
+            widgets::write_widget_snapshot,
+            widgets::pending_widget_ticks,
+            widgets::clear_widget_ticks
         ])
         .setup(|app| Ok(set_up(app)?))
         .build(tauri::generate_context!())?

@@ -1,0 +1,46 @@
+name: LifeOSWidgets
+options:
+  bundleIdPrefix: com.marss.lifeos.desktop
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    DEVELOPMENT_TEAM: BFKXU8H6X5
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  LifeOSWidgets:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Sources
+      - path: ../../../packages/widget-kit/Sources/LifeOSWidgetKit
+        excludes:
+          - FocusActivity.swift
+      - path: ../../../packages/widget-kit/Fonts
+        buildPhase: resources
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: LifeOS
+        ATSApplicationFontsPath: .
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: LifeOSWidgets.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+        com.apple.security.application-groups:
+          - BFKXU8H6X5.com.marss.lifeos
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.marss.lifeos.desktop.widgets
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: Apple Development
+        PROVISIONING_PROFILE_SPECIFIER: ""
+        ENABLE_HARDENED_RUNTIME: YES
+        SKIP_INSTALL: YES
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks"

@@ -42,12 +42,19 @@
     ],
     "category": "Productivity",
     "macOS": {
-      "minimumSystemVersion": "14.0"
+      "minimumSystemVersion": "14.0",
+      "signingIdentity": "Apple Development",
+      "entitlements": "Entitlements.plist",
+      "files": {
+        "PlugIns/LifeOSWidgets.appex": "../widgets/build/Build/Products/Release/LifeOSWidgets.appex"
+      }
     }
   },
   "plugins": {
     "deep-link": {
-      "desktop": { "schemes": ["lifeos"] }
+      "desktop": {
+        "schemes": ["lifeos"]
+      }
     }
   }
 }

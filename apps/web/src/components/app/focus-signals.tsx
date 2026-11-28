@@ -7,6 +7,7 @@ import { useMac } from "@/lib/mac";
 import { timeUpAlert, viewOf } from "@lifeos/backend/client/focus";
 import { useActiveFocus, useFocusNow, type ActiveFocus } from "./focus";
 import { tabTitle } from "./focus-alert";
+import { WidgetSync } from "./widget-sync";
 
 const FocusTitle = ({ active }: { active: ActiveFocus }) => {
   const { path } = useRouter();
@@ -38,5 +39,10 @@ const useTimeUpAlert = (active: ActiveFocus | null) => {
 export const FocusSignals = () => {
   const active = useActiveFocus();
   useTimeUpAlert(active);
-  return active ? <FocusTitle active={active} /> : null;
+  return (
+    <>
+      {active ? <FocusTitle active={active} /> : null}
+      <WidgetSync />
+    </>
+  );
 };

@@ -7,6 +7,7 @@ let package = Package(
     products: [.library(name: "LifeOSWidgetKit", targets: ["LifeOSWidgetKit"])],
     targets: [
         .target(name: "LifeOSWidgetKit"),
+        .executableTarget(name: "WidgetShots", dependencies: ["LifeOSWidgetKit"]),
         .testTarget(name: "LifeOSWidgetKitTests", dependencies: ["LifeOSWidgetKit"]),
     ]
 )
