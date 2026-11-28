@@ -24,6 +24,13 @@ public class LifeOSWidgetsModule: Module {
             Self.reload()
         }
 
+        Function("takeRoute") { () -> String? in
+            let defaults = UserDefaults(suiteName: WidgetStore.appGroup)
+            let route = defaults?.string(forKey: "route")
+            defaults?.removeObject(forKey: "route")
+            return route
+        }
+
         AsyncFunction("syncFocus") { (json: String?) async in
             let focus = json.flatMap { try? JSONDecoder().decode(WidgetSnapshot.Focus.self, from: Data($0.utf8)) }
             await FocusActivities.sync(focus)

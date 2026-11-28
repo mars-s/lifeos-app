@@ -5,6 +5,7 @@ type LifeOSWidgetsModule = {
   setToken: (token: string | null) => boolean;
   pendingTicks: () => string[];
   clearTicks: (taskIds: string[]) => void;
+  takeRoute: () => string | null;
   syncFocus: (json: string | null) => Promise<void>;
 };
 

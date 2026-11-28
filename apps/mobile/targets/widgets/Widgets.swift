@@ -10,6 +10,10 @@ struct LifeOSWidgetBundle: WidgetBundle {
         FocusWidget()
         UpcomingWidget()
         BrainDumpWidget()
+        FocusLiveActivity()
+        if #available(iOS 18.0, *) {
+            BrainDumpControl()
+        }
     }
 }
 

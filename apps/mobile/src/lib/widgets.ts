@@ -1,5 +1,6 @@
 import { useAuthToken } from "@convex-dev/auth/react";
 import { useEffect, useRef } from "react";
+import { router } from "expo-router";
 import { AppState } from "react-native";
 import { api } from "@lifeos/backend/api";
 import type { Id } from "@lifeos/backend/dataModel";
@@ -10,6 +11,15 @@ import { useLocalDate, useView, valueOf } from "@/lib/views";
 const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 const sending = new Set<string>();
+
+const ROUTES = new Set(["/capture"]);
+
+const followRoute = () => {
+  const route = widgets?.takeRoute();
+  if (route && ROUTES.has(route)) router.push("/capture");
+};
+
+const ROUTE_RETRY_MS = 600;
 
 const sendTicks = () => {
   if (!widgets || !convex) return;
@@ -55,11 +65,20 @@ export const useWidgetSync = () => {
 
   useEffect(() => {
     sendTicks();
+    followRoute();
+    const retry = setTimeout(followRoute, ROUTE_RETRY_MS);
     const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") sendTicks();
+      if (state === "active") {
+        sendTicks();
+        followRoute();
+        setTimeout(followRoute, ROUTE_RETRY_MS);
+      }
       if (state === "background" && widgets && written.current)
         widgets.writeSnapshot(JSON.stringify({ ...written.current.shape, writtenAt: Date.now() }));
     });
-    return () => subscription.remove();
+    return () => {
+      clearTimeout(retry);
+      subscription.remove();
+    };
   }, []);
 };
