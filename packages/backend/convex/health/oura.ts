@@ -1,12 +1,23 @@
 import { v } from "convex/values";
-import { err, errAsync, ok, okAsync, ResultAsync, type Result } from "neverthrow";
+import { Clock, Context, Effect, Layer, Predicate, Redacted, Result, Schema } from "effect";
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
-import { env, internalAction, internalMutation, internalQuery, type ActionCtx } from "../_generated/server";
-import { ownerMutation } from "../platform/access";
+import { env, type ActionCtx } from "../_generated/server";
 import { addDays, type IsoDate } from "../../shared/date";
-import { serialise } from "../../shared/result";
-import { healthDaysFrom, parseCollection, type OuraCollections } from "./model";
+import { asWire, wireError } from "../../shared/effect/wire";
+import { Acts, acting, internalAction, internalMutation, internalQuery, ownerMutation, reading, runAtEdge, writing } from "../platform/effect";
+import {
+  OuraForbidden,
+  OuraInvalidResponse,
+  OuraNotConfigured,
+  OuraNotConnected,
+  OuraRateLimited,
+  OuraUnauthorised,
+  OuraUnavailable,
+  type OuraFailure,
+} from "./errors";
+import { healthDaysFrom, OuraPage } from "./model";
 import { vHealthDay, vOuraError, type HealthDay, type OuraError } from "./tables";
 
 export const OURA_SCOPES = "daily";
@@ -25,10 +36,12 @@ export const redirectUri = () => `${env.CONVEX_SITE_URL}${CALLBACK_PATH}`;
 const clientCredentials = () => {
   const id = env.OURA_CLIENT_ID;
   const secret = env.OURA_CLIENT_SECRET;
-  return id && secret ? ok<{ id: string; secret: string }, OuraError>({ id, secret }) : err<{ id: string; secret: string }, OuraError>({ kind: "not_configured" });
+  const credentials: Result.Result<{ id: string; secret: Redacted.Redacted }, OuraNotConfigured> =
+    id && secret ? Result.succeed({ id, secret: Redacted.make(secret) }) : Result.fail(new OuraNotConfigured());
+  return credentials;
 };
 
-export const ouraConfigured = () => clientCredentials().isOk();
+export const ouraConfigured = () => Result.isSuccess(clientCredentials());
 
 const base64Url = (bytes: Uint8Array) =>
   btoa(String.fromCharCode(...bytes))
@@ -41,59 +54,217 @@ const randomBytes = (length: number) => crypto.getRandomValues(new Uint8Array(le
 const challengeFor = async (verifier: string) =>
   base64Url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
 
+export type Tokens = { readonly accessToken: string; readonly refreshToken: string; readonly expiresAt: number; readonly scope: string };
+
+type CollectionName = "sleep" | "daily_sleep" | "sleep_time";
+
+const TokenBody = Schema.Struct({
+  access_token: Schema.String,
+  refresh_token: Schema.String,
+  expires_in: Schema.Number,
+  scope: Schema.optional(Schema.Unknown),
+});
+
+const decodeTokens = Schema.decodeUnknownEffect(TokenBody);
+const decodePage = Schema.decodeUnknownEffect(OuraPage);
+
+const failureOf = (status: number, retryAfter: string | undefined, tokenEndpoint: boolean) => {
+  if (status === 401 || (tokenEndpoint && status === 400)) return new OuraUnauthorised();
+  if (status === 403) return new OuraForbidden();
+  if (status === 429) {
+    const seconds = Number(retryAfter);
+    return new OuraRateLimited(Number.isFinite(seconds) && seconds > 0 ? { retryAfterSeconds: seconds } : {});
+  }
+  return new OuraUnavailable({ status });
+};
+
+export class OuraToken extends Context.Service<OuraToken, Redacted.Redacted>()("lifeos/health/OuraToken") {}
+
+export class Oura extends Context.Service<
+  Oura,
+  {
+    exchange(grant: Readonly<Record<string, string>>): Effect.Effect<Tokens, OuraFailure>;
+    collection(name: CollectionName, start: IsoDate, end: IsoDate): Effect.Effect<ReadonlyArray<unknown>, OuraFailure, OuraToken>;
+  }
+>()("lifeos/health/Oura") {
+  static readonly layerNoDeps = Layer.effect(
+    Oura,
+    Effect.gen(function* () {
+      const credentials = clientCredentials();
+      const http = yield* HttpClient.HttpClient;
+
+      const send = Effect.fn("Oura.send")(function* (request: HttpClientRequest.HttpClientRequest, tokenEndpoint: boolean) {
+        const response = yield* http.execute(request).pipe(Effect.mapError(() => new OuraUnavailable({})));
+        if (response.status < 200 || response.status >= 300) {
+          return yield* failureOf(response.status, response.headers["retry-after"], tokenEndpoint);
+        }
+        return yield* response.json.pipe(Effect.mapError(() => new OuraInvalidResponse()));
+      });
+
+      const exchange = Effect.fn("Oura.exchange")(function* (grant: Readonly<Record<string, string>>) {
+        const { id, secret } = yield* Effect.fromResult(credentials);
+        const now = yield* Clock.currentTimeMillis;
+        const request = HttpClientRequest.post(OURA_TOKEN_URL).pipe(
+          HttpClientRequest.setHeader("user-agent", USER_AGENT),
+          HttpClientRequest.bodyUrlParams({ ...grant, client_id: id, client_secret: secret }),
+        );
+        const body = yield* send(request, true);
+        const decoded = yield* decodeTokens(body).pipe(Effect.mapError(() => new OuraInvalidResponse()));
+        return {
+          accessToken: decoded.access_token,
+          refreshToken: decoded.refresh_token,
+          expiresAt: now + decoded.expires_in * 1000,
+          scope: Predicate.isString(decoded.scope) ? decoded.scope : OURA_SCOPES,
+        } satisfies Tokens;
+      });
+
+      const collection = Effect.fn("Oura.collection")(function* (name: CollectionName, start: IsoDate, end: IsoDate) {
+        const token = yield* OuraToken;
+        const collected: unknown[] = [];
+        let next: string | undefined;
+        for (let pages = 0; pages < MAX_PAGES; pages += 1) {
+          const request = HttpClientRequest.get(`${OURA_API}/${name}`).pipe(
+            HttpClientRequest.setUrlParams({ start_date: start, end_date: end, ...(next ? { next_token: next } : {}) }),
+            HttpClientRequest.setHeader("user-agent", USER_AGENT),
+            HttpClientRequest.bearerToken(Redacted.value(token)),
+          );
+          const body = yield* send(request, false);
+          const page = yield* decodePage(body).pipe(Effect.mapError(() => new OuraInvalidResponse()));
+          collected.push(...page.data);
+          next = page.next_token;
+          if (!next) break;
+        }
+        return collected;
+      });
+
+      return Oura.of({ exchange, collection });
+    }),
+  );
+
+  static readonly layer = Oura.layerNoDeps.pipe(Layer.provide(FetchHttpClient.layer));
+
+  static readonly layerTest = (canned: {
+    tokens?: Tokens;
+    collections?: Partial<Record<CollectionName, ReadonlyArray<unknown>>>;
+    failure?: OuraFailure;
+  }) =>
+    Layer.succeed(
+      Oura,
+      Oura.of({
+        exchange: () =>
+          canned.failure
+            ? Effect.fail(canned.failure)
+            : Effect.succeed(canned.tokens ?? { accessToken: "test-access", refreshToken: "test-refresh", expiresAt: 0, scope: OURA_SCOPES }),
+        collection: (name) => (canned.failure ? Effect.fail(canned.failure) : Effect.succeed(canned.collections?.[name] ?? [])),
+      }),
+    );
+}
+
+const storedConnection = () =>
+  acting((ctx) => {
+    const row: Promise<Doc<"ouraConnection"> | null> = ctx.runQuery(internal.health.oura.connection, {});
+    return row;
+  });
+
+const scheduleSync = () =>
+  acting((ctx) => {
+    const scheduled: Promise<unknown> = ctx.scheduler.runAfter(0, internal.health.oura.sync, {});
+    return scheduled;
+  });
+
+const queueSync = () =>
+  writing((ctx) => {
+    const scheduled: Promise<unknown> = ctx.scheduler.runAfter(0, internal.health.oura.sync, {});
+    return scheduled;
+  });
+
+const takeStateFor = (state: string) =>
+  acting((ctx) => {
+    const verifier: Promise<string | null> = ctx.runMutation(internal.health.oura.takeState, { state });
+    return verifier;
+  });
+
+const saveTokens = (tokens: Tokens) =>
+  acting((ctx) => {
+    const saved: Promise<null> = ctx.runMutation(internal.health.oura.saveConnection, tokens);
+    return saved;
+  });
+
+const storeSync = (at: number, days: HealthDay[]) =>
+  acting((ctx) => {
+    const stored: Promise<null> = ctx.runMutation(internal.health.oura.recordSync, { at, days });
+    return stored;
+  });
+
+const storeFailure = (at: number, error: OuraError) =>
+  acting((ctx) => {
+    const stored: Promise<null> = ctx.runMutation(internal.health.oura.recordFailure, { at, error });
+    return stored;
+  });
+
+const storeRotation = (tokens: Tokens, previousRefreshToken: string) =>
+  acting((ctx) => {
+    const rotated: Promise<string | null> = ctx.runMutation(internal.health.oura.rotateTokens, { ...tokens, previousRefreshToken });
+    return rotated;
+  });
+
 export const connect = ownerMutation({
   args: {},
-  handler: async (ctx) => {
-    const credentials = clientCredentials();
-    if (credentials.isErr()) return serialise(err<{ url: string }, OuraError>(credentials.error));
-    const now = Date.now();
-    for (const stale of await ctx.db.query("ouraAuthStates").take(20)) {
-      if (stale.expiresAt < now) await ctx.db.delete("ouraAuthStates", stale._id);
+  handler: Effect.fn("oura.connect")(function* () {
+    const credentials = yield* Effect.fromResult(clientCredentials());
+    const now = yield* Clock.currentTimeMillis;
+    const stale = yield* reading((ctx) => ctx.db.query("ouraAuthStates").take(20));
+    for (const row of stale) {
+      if (row.expiresAt < now) yield* writing((ctx) => ctx.db.delete("ouraAuthStates", row._id));
     }
     const state = base64Url(randomBytes(24));
     const verifier = base64Url(randomBytes(48));
-    await ctx.db.insert("ouraAuthStates", { state, verifier, expiresAt: now + STATE_TTL_MS });
+    yield* writing((ctx) => ctx.db.insert("ouraAuthStates", { state, verifier, expiresAt: now + STATE_TTL_MS }));
+    const challenge = yield* Effect.promise(() => challengeFor(verifier));
     const url = new URL(OURA_AUTHORIZE_URL);
     url.search = new URLSearchParams({
       response_type: "code",
-      client_id: credentials.value.id,
+      client_id: credentials.id,
       redirect_uri: redirectUri(),
       scope: OURA_SCOPES,
       state,
-      code_challenge: await challengeFor(verifier),
+      code_challenge: challenge,
       code_challenge_method: "S256",
     }).toString();
-    return serialise(ok<{ url: string }, OuraError>({ url: url.toString() }));
-  },
+    return { url: url.toString() };
+  }, asWire),
 });
 
 export const syncNow = ownerMutation({
   args: {},
-  handler: async (ctx) => {
-    const connection = await ctx.db.query("ouraConnection").first();
-    if (!connection) return serialise(err<{ queued: true }, OuraError>({ kind: "not_connected" }));
-    await ctx.scheduler.runAfter(0, internal.health.oura.sync, {});
-    return serialise(ok<{ queued: true }, OuraError>({ queued: true }));
-  },
+  handler: Effect.fn("oura.syncNow")(function* () {
+    const connection = yield* reading((ctx) => ctx.db.query("ouraConnection").first());
+    if (!connection) return yield* new OuraNotConnected();
+    yield* queueSync();
+    return { queued: true as const };
+  }, asWire),
 });
 
 export const takeState = internalMutation({
   args: { state: v.string() },
   returns: v.union(v.string(), v.null()),
-  handler: async (ctx, { state }) => {
-    const row = await ctx.db
-      .query("ouraAuthStates")
-      .withIndex("by_state", (q) => q.eq("state", state))
-      .unique();
+  handler: Effect.fn("oura.takeState")(function* ({ state }) {
+    const row = yield* reading((ctx) =>
+      ctx.db
+        .query("ouraAuthStates")
+        .withIndex("by_state", (q) => q.eq("state", state))
+        .unique(),
+    );
     if (!row) return null;
-    await ctx.db.delete("ouraAuthStates", row._id);
-    return row.expiresAt >= Date.now() ? row.verifier : null;
-  },
+    yield* writing((ctx) => ctx.db.delete("ouraAuthStates", row._id));
+    const now = yield* Clock.currentTimeMillis;
+    return row.expiresAt >= now ? row.verifier : null;
+  }),
 });
 
 export const connection = internalQuery({
   args: {},
-  handler: (ctx) => ctx.db.query("ouraConnection").first(),
+  handler: () => reading((ctx) => ctx.db.query("ouraConnection").first()),
 });
 
 const vTokens = { accessToken: v.string(), refreshToken: v.string(), expiresAt: v.number(), scope: v.string() };
@@ -101,179 +272,109 @@ const vTokens = { accessToken: v.string(), refreshToken: v.string(), expiresAt: 
 export const saveConnection = internalMutation({
   args: vTokens,
   returns: v.null(),
-  handler: async (ctx, tokens) => {
-    const rows = await ctx.db.query("ouraConnection").take(5);
-    for (const row of rows) await ctx.db.delete("ouraConnection", row._id);
-    await ctx.db.insert("ouraConnection", { ...tokens, connectedAt: Date.now(), sync: { kind: "never" } });
+  handler: Effect.fn("oura.saveConnection")(function* (tokens) {
+    const rows = yield* reading((ctx) => ctx.db.query("ouraConnection").take(5));
+    for (const row of rows) yield* writing((ctx) => ctx.db.delete("ouraConnection", row._id));
+    const connectedAt = yield* Clock.currentTimeMillis;
+    yield* writing((ctx) => ctx.db.insert("ouraConnection", { ...tokens, connectedAt, sync: { kind: "never" } }));
     return null;
-  },
+  }),
 });
 
 export const rotateTokens = internalMutation({
   args: { ...vTokens, previousRefreshToken: v.string() },
   returns: v.union(v.string(), v.null()),
-  handler: async (ctx, { previousRefreshToken, ...tokens }) => {
-    const row = await ctx.db.query("ouraConnection").first();
+  handler: Effect.fn("oura.rotateTokens")(function* ({ previousRefreshToken, ...tokens }) {
+    const row = yield* reading((ctx) => ctx.db.query("ouraConnection").first());
     if (!row) return null;
     if (row.refreshToken !== previousRefreshToken) return row.accessToken;
-    await ctx.db.patch("ouraConnection", row._id, tokens);
+    yield* writing((ctx) => ctx.db.patch("ouraConnection", row._id, tokens));
     return tokens.accessToken;
-  },
+  }),
 });
 
 export const recordSync = internalMutation({
   args: { at: v.number(), days: v.array(vHealthDay) },
   returns: v.null(),
-  handler: async (ctx, { at, days }) => {
-    const row = await ctx.db.query("ouraConnection").first();
+  handler: Effect.fn("oura.recordSync")(function* ({ at, days }) {
+    const row = yield* reading((ctx) => ctx.db.query("ouraConnection").first());
     if (!row) return null;
     for (const day of days) {
-      const existing = await ctx.db
-        .query("healthDays")
-        .withIndex("by_source_and_day", (q) => q.eq("source", "oura").eq("day", day.day))
-        .unique();
+      const existing = yield* reading((ctx) =>
+        ctx.db
+          .query("healthDays")
+          .withIndex("by_source_and_day", (q) => q.eq("source", "oura").eq("day", day.day))
+          .unique(),
+      );
       const fields = { source: "oura" as const, ...day, syncedAt: at };
-      if (existing) await ctx.db.replace("healthDays", existing._id, fields);
-      else await ctx.db.insert("healthDays", fields);
+      if (existing) yield* writing((ctx) => ctx.db.replace("healthDays", existing._id, fields));
+      else yield* writing((ctx) => ctx.db.insert("healthDays", fields));
     }
-    await ctx.db.patch("ouraConnection", row._id, { sync: { kind: "ok", at } });
+    yield* writing((ctx) => ctx.db.patch("ouraConnection", row._id, { sync: { kind: "ok", at } }));
     return null;
-  },
+  }),
 });
 
 export const recordFailure = internalMutation({
   args: { at: v.number(), error: vOuraError },
   returns: v.null(),
-  handler: async (ctx, { at, error }) => {
-    const row = await ctx.db.query("ouraConnection").first();
+  handler: Effect.fn("oura.recordFailure")(function* ({ at, error }) {
+    const row = yield* reading((ctx) => ctx.db.query("ouraConnection").first());
     if (!row) return null;
     const lastOkAt = row.sync.kind === "ok" ? row.sync.at : row.sync.kind === "failed" ? row.sync.lastOkAt : undefined;
-    await ctx.db.patch("ouraConnection", row._id, {
-      sync: { kind: "failed", at, error, ...(lastOkAt === undefined ? {} : { lastOkAt }) },
-    });
+    yield* writing((ctx) =>
+      ctx.db.patch("ouraConnection", row._id, {
+        sync: { kind: "failed", at, error, ...(lastOkAt === undefined ? {} : { lastOkAt }) },
+      }),
+    );
     return null;
-  },
+  }),
 });
 
-const unauthorised: OuraError = { kind: "unauthorised" };
-const forbidden: OuraError = { kind: "forbidden" };
-const unreachable: OuraError = { kind: "unavailable" };
-const invalidResponse: OuraError = { kind: "invalid_response" };
+const latestAccessToken = Effect.fn("oura.latestAccessToken")(function* (current: Doc<"ouraConnection">) {
+  const latest = yield* storedConnection();
+  return latest && latest.refreshToken !== current.refreshToken ? latest.accessToken : null;
+});
 
-const failureOf = (response: Response, tokenEndpoint: boolean) => {
-  if (response.status === 401 || (tokenEndpoint && response.status === 400)) return unauthorised;
-  if (response.status === 403) return forbidden;
-  if (response.status === 429) {
-    const retryAfter = Number(response.headers.get("retry-after"));
-    const limited: OuraError = { kind: "rate_limited", ...(Number.isFinite(retryAfter) && retryAfter > 0 ? { retryAfterSeconds: retryAfter } : {}) };
-    return limited;
-  }
-  const down: OuraError = { kind: "unavailable", status: response.status };
-  return down;
-};
-
-const fetchJson = (url: string, init: RequestInit, tokenEndpoint = false) =>
-  ResultAsync.fromPromise(fetch(url, init), () => unreachable).andThen((response) =>
-    response.ok
-      ? ResultAsync.fromPromise(response.json() as Promise<unknown>, () => invalidResponse)
-      : errAsync(failureOf(response, tokenEndpoint)),
+const freshAccessToken = Effect.fn("oura.freshAccessToken")(function* (current: Doc<"ouraConnection">, now: number) {
+  if (current.expiresAt - now > REFRESH_MARGIN_MS) return current.accessToken;
+  const oura = yield* Oura;
+  const rotated = yield* oura.exchange({ grant_type: "refresh_token", refresh_token: current.refreshToken }).pipe(
+    Effect.flatMap((tokens) => storeRotation(tokens, current.refreshToken)),
+    Effect.catchTag("OuraUnauthorised", () => latestAccessToken(current)),
   );
+  if (!rotated) return yield* new OuraUnauthorised();
+  return rotated;
+});
 
-type Tokens = { accessToken: string; refreshToken: string; expiresAt: number; scope: string };
-
-const parseTokens = (body: unknown, now: number) => {
-  if (typeof body !== "object" || body === null) return err<Tokens, OuraError>({ kind: "invalid_response" });
-  const { access_token, refresh_token, expires_in, scope } = body as Record<string, unknown>;
-  return typeof access_token === "string" && typeof refresh_token === "string" && typeof expires_in === "number"
-    ? ok<Tokens, OuraError>({
-        accessToken: access_token,
-        refreshToken: refresh_token,
-        expiresAt: now + expires_in * 1000,
-        scope: typeof scope === "string" ? scope : OURA_SCOPES,
-      })
-    : err<Tokens, OuraError>({ kind: "invalid_response" });
-};
-
-const requestTokens = (grant: Record<string, string>, now: number) =>
-  clientCredentials()
-    .asyncAndThen(({ id, secret }) =>
-      fetchJson(
-        OURA_TOKEN_URL,
-        {
-          method: "POST",
-          headers: { "content-type": "application/x-www-form-urlencoded", "user-agent": USER_AGENT },
-          body: new URLSearchParams({ ...grant, client_id: id, client_secret: secret }).toString(),
-        },
-        true,
-      ),
-    )
-    .andThen((body) => parseTokens(body, now));
-
-const freshAccessToken = (ctx: ActionCtx, current: Doc<"ouraConnection">, now: number) => {
-  if (current.expiresAt - now > REFRESH_MARGIN_MS) return okAsync<string, OuraError>(current.accessToken);
-  return requestTokens({ grant_type: "refresh_token", refresh_token: current.refreshToken }, now)
-    .andThen((tokens) => {
-      const rotated: Promise<string | null> = ctx.runMutation(internal.health.oura.rotateTokens, {
-        ...tokens,
-        previousRefreshToken: current.refreshToken,
-      });
-      return ResultAsync.fromSafePromise<string | null, OuraError>(rotated);
-    })
-    .orElse((error: OuraError) => {
-      if (error.kind !== "unauthorised") return errAsync<string | null, OuraError>(error);
-      const latest: Promise<Doc<"ouraConnection"> | null> = ctx.runQuery(internal.health.oura.connection, {});
-      return ResultAsync.fromSafePromise<Doc<"ouraConnection"> | null, OuraError>(latest).map((row) =>
-        row && row.refreshToken !== current.refreshToken ? row.accessToken : null,
-      );
-    })
-    .andThen((token) => (token ? okAsync<string, OuraError>(token) : errAsync<string, OuraError>(unauthorised)));
-};
-
-const fetchCollection = (token: string, name: string, start: IsoDate, end: IsoDate) => {
-  const page: (collected: readonly unknown[], next: string | undefined, pages: number) => ResultAsync<readonly unknown[], OuraError> = (
-    collected,
-    next,
-    pages,
-  ) => {
-    const url = new URL(`${OURA_API}/${name}`);
-    url.searchParams.set("start_date", start);
-    url.searchParams.set("end_date", end);
-    if (next) url.searchParams.set("next_token", next);
-    return fetchJson(url.toString(), { headers: { authorization: `Bearer ${token}`, "user-agent": USER_AGENT } })
-      .andThen(parseCollection)
-      .andThen(({ data, nextToken }) =>
-        nextToken && pages + 1 < MAX_PAGES ? page([...collected, ...data], nextToken, pages + 1) : okAsync([...collected, ...data]),
-      );
-  };
-  return page([], undefined, 0);
-};
-
-const fetchDays = (token: string, today: IsoDate) => {
+const fetchDays = Effect.fn("oura.fetchDays")(function* (today: IsoDate) {
+  const oura = yield* Oura;
   const start = addDays(today, -SYNC_DAYS_BACK);
   const end = addDays(today, 1);
-  return ResultAsync.combine([
-    fetchCollection(token, "sleep", start, end),
-    fetchCollection(token, "daily_sleep", start, end),
-    fetchCollection(token, "sleep_time", start, end),
-  ]).map(([sleep, dailySleep, sleepTime]) => healthDaysFrom({ sleep, dailySleep, sleepTime } satisfies OuraCollections));
-};
+  const sleep = yield* oura.collection("sleep", start, end);
+  const dailySleep = yield* oura.collection("daily_sleep", start, end);
+  const sleepTime = yield* oura.collection("sleep_time", start, end);
+  return healthDaysFrom({ sleep, dailySleep, sleepTime });
+});
+
+const daysFor = Effect.fn("oura.daysFor")(function* (current: Doc<"ouraConnection">, now: number) {
+  const today = new Date(now).toISOString().slice(0, 10) as IsoDate;
+  const token = yield* freshAccessToken(current, now);
+  return yield* fetchDays(today).pipe(Effect.provideService(OuraToken, Redacted.make(token)));
+});
 
 export const sync = internalAction({
   args: {},
   returns: v.null(),
-  handler: async (ctx) => {
-    const now = Date.now();
-    const current: Doc<"ouraConnection"> | null = await ctx.runQuery(internal.health.oura.connection, {});
+  handler: Effect.fn("oura.sync")(function* () {
+    const now = yield* Clock.currentTimeMillis;
+    const current = yield* storedConnection();
     if (!current) return null;
-    const today = new Date(now).toISOString().slice(0, 10) as IsoDate;
-    const result: Result<HealthDay[], OuraError> = await freshAccessToken(ctx, current, now).andThen((token: string) => fetchDays(token, today));
-    const write: Promise<null> = result.match(
-      (days) => ctx.runMutation(internal.health.oura.recordSync, { at: now, days }),
-      (error) => ctx.runMutation(internal.health.oura.recordFailure, { at: now, error }),
-    );
-    await write;
+    const outcome = yield* Effect.result(daysFor(current, now));
+    if (Result.isSuccess(outcome)) yield* storeSync(now, outcome.success);
+    else yield* storeFailure(now, wireError(outcome.failure));
     return null;
-  },
+  }, Effect.provide(Oura.layer)),
 });
 
 const page = (status: number, heading: string, body: string) =>
@@ -282,17 +383,22 @@ const page = (status: number, heading: string, body: string) =>
     { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "no-referrer" } },
   );
 
-export const finishConnect = async (ctx: ActionCtx, request: Request) => {
+const finishing = Effect.fn("oura.finishConnect")(function* (request: Request) {
   const params = new URL(request.url).searchParams;
   const state = params.get("state");
-  const verifier = state ? await ctx.runMutation(internal.health.oura.takeState, { state }) : null;
+  const verifier = state ? yield* takeStateFor(state) : null;
   if (!verifier) return page(400, "This link has expired", "Start again from Connect Oura in LifeOS.");
   const code = params.get("code");
   if (!code) return page(400, "Oura was not connected", "Oura did not share your sleep. Start again from LifeOS if you change your mind.");
-  const now = Date.now();
-  const tokens = await requestTokens({ grant_type: "authorization_code", code, redirect_uri: redirectUri(), code_verifier: verifier }, now);
-  if (tokens.isErr()) return page(502, "Oura did not connect", "Oura refused the sign-in. Try Connect Oura again in a minute.");
-  await ctx.runMutation(internal.health.oura.saveConnection, tokens.value);
-  await ctx.scheduler.runAfter(0, internal.health.oura.sync, {});
+  const oura = yield* Oura;
+  const tokens = yield* Effect.result(
+    oura.exchange({ grant_type: "authorization_code", code, redirect_uri: redirectUri(), code_verifier: verifier }),
+  );
+  if (Result.isFailure(tokens)) return page(502, "Oura did not connect", "Oura refused the sign-in. Try Connect Oura again in a minute.");
+  yield* saveTokens(tokens.success);
+  yield* scheduleSync();
   return page(200, "Oura is connected", "LifeOS is pulling your sleep now. You can close this tab.");
-};
+});
+
+export const finishConnect = (ctx: ActionCtx, request: Request) =>
+  runAtEdge(finishing(request).pipe(Effect.provide(Oura.layer), Effect.provideService(Acts, ctx)));

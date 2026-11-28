@@ -1,14 +1,13 @@
-import { err, ok } from "neverthrow";
-import { addDays, parseIsoDate, type IsoDate } from "../../shared/date";
+import { Effect, Option, Result, Schema } from "effect";
+import { addDays, type IsoDate } from "../../shared/date";
+import { parseIsoDate } from "../../shared/effect/date";
 import { zonedMoment } from "../calendar/model";
+import { InvalidHealthRange } from "./errors";
 import {
   BEDTIME_RECOMMENDATIONS,
   BEDTIME_STATUSES,
-  type BedtimeRecommendation,
-  type BedtimeStatus,
   type BedtimeWindow,
   type HealthDay,
-  type OuraError,
   type SleepPeriod,
   type SleepTime,
 } from "./tables";
@@ -18,19 +17,17 @@ export const DAY_MINUTES = 24 * 60;
 export const USUAL_NIGHTS = 14;
 export const MIN_USUAL_NIGHTS = 3;
 
-type Json = Record<string, unknown>;
+const soft = <S extends Schema.Constraint>(schema: S) =>
+  Schema.UndefinedOr(schema).pipe(Schema.catchDecoding(() => Effect.succeed(Option.some(undefined))));
 
-const isObject = (value: unknown): value is Json => typeof value === "object" && value !== null && !Array.isArray(value);
-const numberOr = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : undefined);
-const oneOf = <T extends string>(options: readonly T[], value: unknown) =>
-  options.find((option) => option === value);
-
-const invalid = () => err<never, OuraError>({ kind: "invalid_response" });
+export const OuraPage = Schema.Struct({
+  data: Schema.Array(Schema.Unknown),
+  next_token: Schema.optional(soft(Schema.NonEmptyString)),
+});
 
 const LOCAL_OFFSET = /(?:([+-])(\d{2}):?(\d{2})|Z)$/;
 
-export const parseLocalTime = (value: unknown) => {
-  if (typeof value !== "string") return undefined;
+export const parseLocalTime = (value: string) => {
   const at = Date.parse(value);
   const zone = LOCAL_OFFSET.exec(value);
   if (!Number.isFinite(at) || !zone) return undefined;
@@ -39,23 +36,43 @@ export const parseLocalTime = (value: unknown) => {
   return { at, offsetMinutes };
 };
 
-export const parseCollection = (body: unknown) =>
-  isObject(body) && Array.isArray(body.data)
-    ? ok<{ data: unknown[]; nextToken: string | undefined }, OuraError>({
-        data: body.data,
-        nextToken: typeof body.next_token === "string" && body.next_token !== "" ? body.next_token : undefined,
-      })
-    : invalid();
+const SleepDocument = Schema.Struct({
+  type: Schema.Literal("long_sleep"),
+  day: Schema.String,
+  bedtime_start: Schema.String,
+  bedtime_end: Schema.String,
+  total_sleep_duration: Schema.optional(soft(Schema.Finite)),
+  time_in_bed: Schema.optional(soft(Schema.Finite)),
+  readiness: Schema.optional(soft(Schema.Struct({ score: Schema.optional(soft(Schema.Finite)) }))),
+});
+
+const Window = Schema.Struct({ start_offset: Schema.Finite, end_offset: Schema.Finite, day_tz: Schema.Finite });
+
+const SleepTimeDocument = Schema.Struct({
+  day: Schema.String,
+  status: Schema.optional(soft(Schema.Literals(BEDTIME_STATUSES))),
+  recommendation: Schema.optional(soft(Schema.Literals(BEDTIME_RECOMMENDATIONS))),
+  optimal_bedtime: Schema.optional(soft(Window)),
+});
+
+const ScoreDocument = Schema.Struct({ day: Schema.String, score: Schema.Finite });
+
+const decodeSleep = Schema.decodeUnknownOption(SleepDocument);
+const decodeSleepTime = Schema.decodeUnknownOption(SleepTimeDocument);
+const decodeScore = Schema.decodeUnknownOption(ScoreDocument);
+
+const dayOf = (day: string) => Result.getOrUndefined(parseIsoDate(day));
 
 type SleepDoc = { day: IsoDate; period: SleepPeriod; timeInBed: number; readinessScore: number | undefined };
 
 const parseSleepDoc = (doc: unknown) => {
-  if (!isObject(doc) || doc.type !== "long_sleep") return undefined;
-  const day = typeof doc.day === "string" ? parseIsoDate(doc.day).unwrapOr(undefined) : undefined;
-  const start = parseLocalTime(doc.bedtime_start);
-  const end = parseLocalTime(doc.bedtime_end);
+  const decoded = Option.getOrUndefined(decodeSleep(doc));
+  if (!decoded) return undefined;
+  const day = dayOf(decoded.day);
+  const start = parseLocalTime(decoded.bedtime_start);
+  const end = parseLocalTime(decoded.bedtime_end);
   if (!day || !start || !end || end.at <= start.at) return undefined;
-  const asleep = numberOr(doc.total_sleep_duration);
+  const asleep = decoded.total_sleep_duration;
   return {
     day,
     period: {
@@ -64,50 +81,41 @@ const parseSleepDoc = (doc: unknown) => {
       offsetMinutes: end.offsetMinutes,
       ...(asleep === undefined ? {} : { asleepMinutes: Math.round(asleep / 60) }),
     },
-    timeInBed: numberOr(doc.time_in_bed) ?? (end.at - start.at) / 1000,
-    readinessScore: isObject(doc.readiness) ? numberOr(doc.readiness.score) : undefined,
+    timeInBed: decoded.time_in_bed ?? (end.at - start.at) / 1000,
+    readinessScore: decoded.readiness?.score,
   } satisfies SleepDoc;
 };
 
-const parseWindow = (value: unknown) => {
-  if (!isObject(value)) return undefined;
-  const startOffset = numberOr(value.start_offset);
-  const endOffset = numberOr(value.end_offset);
-  const dayTz = numberOr(value.day_tz);
-  return startOffset === undefined || endOffset === undefined || dayTz === undefined || endOffset < startOffset
-    ? undefined
-    : ({ startOffset, endOffset, dayTz } satisfies BedtimeWindow);
-};
-
 const parseSleepTimeDoc = (doc: unknown) => {
-  if (!isObject(doc) || typeof doc.day !== "string") return undefined;
-  const day = parseIsoDate(doc.day).unwrapOr(undefined);
-  if (!day) return undefined;
-  const status: BedtimeStatus | undefined = oneOf(BEDTIME_STATUSES, doc.status);
-  const recommendation: BedtimeRecommendation | undefined = oneOf(BEDTIME_RECOMMENDATIONS, doc.recommendation);
-  const window = parseWindow(doc.optimal_bedtime);
+  const decoded = Option.getOrUndefined(decodeSleepTime(doc));
+  const day = decoded && dayOf(decoded.day);
+  if (!decoded || !day) return undefined;
+  const bedtime = decoded.optimal_bedtime;
+  const window =
+    bedtime && bedtime.end_offset >= bedtime.start_offset
+      ? ({ startOffset: bedtime.start_offset, endOffset: bedtime.end_offset, dayTz: bedtime.day_tz } satisfies BedtimeWindow)
+      : undefined;
   return {
     day,
     sleepTime: {
-      ...(status ? { status } : {}),
-      ...(recommendation ? { recommendation } : {}),
+      ...(decoded.status ? { status: decoded.status } : {}),
+      ...(decoded.recommendation ? { recommendation: decoded.recommendation } : {}),
       ...(window ? { window } : {}),
     } satisfies SleepTime,
   };
 };
 
 const parseScoreDoc = (doc: unknown) => {
-  if (!isObject(doc) || typeof doc.day !== "string") return undefined;
-  const day = parseIsoDate(doc.day).unwrapOr(undefined);
-  const score = numberOr(doc.score);
-  return day && score !== undefined ? { day, score } : undefined;
+  const decoded = Option.getOrUndefined(decodeScore(doc));
+  const day = decoded && dayOf(decoded.day);
+  return decoded && day ? { day, score: decoded.score } : undefined;
 };
 
 export type OuraCollections = { sleep: readonly unknown[]; dailySleep: readonly unknown[]; sleepTime: readonly unknown[] };
 
 export const healthDaysFrom = ({ sleep, dailySleep, sleepTime }: OuraCollections) => {
   const days = new Map<IsoDate, HealthDay>();
-  const dayOf = (day: IsoDate) => {
+  const dayRecord = (day: IsoDate) => {
     const existing = days.get(day);
     if (existing) return existing;
     const fresh: HealthDay = { day };
@@ -118,13 +126,13 @@ export const healthDaysFrom = ({ sleep, dailySleep, sleepTime }: OuraCollections
   for (const doc of sleep.map(parseSleepDoc)) {
     if (!doc || (longest.get(doc.day) ?? -1) >= doc.timeInBed) continue;
     longest.set(doc.day, doc.timeInBed);
-    const day = dayOf(doc.day);
+    const day = dayRecord(doc.day);
     day.sleep = doc.period;
     if (doc.readinessScore === undefined) delete day.readinessScore;
     else day.readinessScore = doc.readinessScore;
   }
-  for (const doc of dailySleep.map(parseScoreDoc)) if (doc) dayOf(doc.day).sleepScore = doc.score;
-  for (const doc of sleepTime.map(parseSleepTimeDoc)) if (doc) dayOf(doc.day).sleepTime = doc.sleepTime;
+  for (const doc of dailySleep.map(parseScoreDoc)) if (doc) dayRecord(doc.day).sleepScore = doc.score;
+  for (const doc of sleepTime.map(parseSleepTimeDoc)) if (doc) dayRecord(doc.day).sleepTime = doc.sleepTime;
   return [...days.values()].toSorted((a, b) => (a.day < b.day ? -1 : 1));
 };
 
@@ -219,5 +227,8 @@ export const nightsBetween = (
     return [planned];
   });
 
-export const parseDayCount = (days: number) =>
-  Number.isInteger(days) && days >= 1 && days <= 62 ? ok<number, { kind: "invalid_range" }>(days) : err<number, { kind: "invalid_range" }>({ kind: "invalid_range" });
+export const parseDayCount = (days: number) => {
+  const parsed: Result.Result<number, InvalidHealthRange> =
+    Number.isInteger(days) && days >= 1 && days <= 62 ? Result.succeed(days) : Result.fail(new InvalidHealthRange());
+  return parsed;
+};

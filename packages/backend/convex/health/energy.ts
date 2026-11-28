@@ -1,10 +1,12 @@
 import { v } from "convex/values";
-import { err, ok, Result } from "neverthrow";
-import { parseTimeZone, zonedIso, zonedMoment } from "../calendar/model";
+import { Effect, Result } from "effect";
+import { parseTimeZoneFx, zonedIso, zonedMoment } from "../calendar/model";
 import type { QueryCtx } from "../_generated/server";
-import { ownerQuery } from "../platform/access";
-import { addDays, daysBetween, parseIsoDate, type IsoDate } from "../../shared/date";
-import { serialise } from "../../shared/result";
+import { addDays, daysBetween, type IsoDate } from "../../shared/date";
+import { parseIsoDate } from "../../shared/effect/date";
+import { asWire } from "../../shared/effect/wire";
+import { ownerQuery, reading } from "../platform/effect";
+import { InvalidHealthRange } from "./errors";
 import { DAY_MINUTES, MINUTE_MS, USUAL_NIGHTS, usualSleep } from "./model";
 import type { HealthDay, OuraSync, SleepPeriod } from "./tables";
 
@@ -80,7 +82,7 @@ const median = (values: readonly number[]) => {
 
 const wallMinuteOf = (instant: number, date: IsoDate, timeZone: string) => {
   const iso = zonedIso(instant, timeZone);
-  const day = parseIsoDate(iso.slice(0, 10)).unwrapOr(date);
+  const day = Result.getOrElse(parseIsoDate(iso.slice(0, 10)), () => date);
   return daysBetween(date, day) * DAY_MINUTES + Number(iso.slice(11, 13)) * 60 + Number(iso.slice(14, 16));
 };
 
@@ -184,22 +186,22 @@ export const energyDay = ({ date, today, timeZone, days, oura }: EnergyInput) =>
 
 const lastSyncOf = (sync: OuraSync) => (sync.kind === "ok" ? sync.at : sync.kind === "failed" ? sync.lastOkAt : undefined);
 
-type EnergyError = { kind: "invalid_range" };
-
-const invalidRange: EnergyError = { kind: "invalid_range" };
-
 const parseRange = (from: IsoDate, to: IsoDate) => {
   const span = daysBetween(from, to);
-  return span >= 0 && span < MAX_RANGE_DAYS ? ok<number, EnergyError>(span) : err<number, EnergyError>(invalidRange);
+  const parsed: Result.Result<number, InvalidHealthRange> =
+    span >= 0 && span < MAX_RANGE_DAYS ? Result.succeed(span) : Result.fail(new InvalidHealthRange());
+  return parsed;
 };
 
 const parseArgs = (args: { from: string; to: string; today: string; timeZone: string }) =>
-  Result.combine([
-    parseIsoDate(args.from).mapErr(() => invalidRange),
-    parseIsoDate(args.to).mapErr(() => invalidRange),
-    parseIsoDate(args.today).mapErr(() => invalidRange),
-    parseTimeZone(args.timeZone).mapErr(() => invalidRange),
-  ]).andThen(([from, to, today, timeZone]) => parseRange(from, to).map((span) => ({ from, span, today, timeZone })));
+  Result.gen(function* () {
+    const from = yield* Result.mapError(parseIsoDate(args.from), () => new InvalidHealthRange());
+    const to = yield* Result.mapError(parseIsoDate(args.to), () => new InvalidHealthRange());
+    const today = yield* Result.mapError(parseIsoDate(args.today), () => new InvalidHealthRange());
+    const timeZone = yield* Result.mapError(parseTimeZoneFx(args.timeZone), () => new InvalidHealthRange());
+    const span = yield* parseRange(from, to);
+    return { from, span, today, timeZone };
+  });
 
 export const energyDays = async (ctx: QueryCtx, { from, span, today, timeZone }: { from: IsoDate; span: number; today: IsoDate; timeZone: string }) => {
   const connection = await ctx.db.query("ouraConnection").first();
@@ -220,5 +222,8 @@ export const energyDays = async (ctx: QueryCtx, { from, span, today, timeZone }:
 
 export const days = ownerQuery({
   args: { from: v.string(), to: v.string(), today: v.string(), timeZone: v.string() },
-  handler: async (ctx, args) => serialise(await parseArgs(args).asyncMap((range) => energyDays(ctx, range))),
+  handler: Effect.fn("energy.days")(function* (args) {
+    const range = yield* Effect.fromResult(parseArgs(args));
+    return yield* reading((ctx) => energyDays(ctx, range));
+  }, asWire),
 });
