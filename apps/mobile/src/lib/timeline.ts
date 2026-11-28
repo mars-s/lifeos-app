@@ -2,7 +2,6 @@ import { useAtomValue } from "@effect/atom-react";
 import type { FunctionReturnType } from "convex/server";
 import { Schema } from "effect";
 import { Atom } from "effect/reactivity";
-import { useSyncExternalStore } from "react";
 import { AppState } from "react-native";
 import { api } from "@lifeos/backend/api";
 import type { Id } from "@lifeos/backend/dataModel";
@@ -33,18 +32,20 @@ export const setFace = (next: Face) => registry.set(faceAtom, next);
 
 export const useFace = () => useAtomValue(faceAtom);
 
-const subscribeMinute = (onChange: () => void) => {
-  const timer = setInterval(onChange, NOW_STEP_MS / 4);
-  const focus = AppState.addEventListener("change", onChange);
-  return () => {
-    clearInterval(timer);
-    focus.remove();
-  };
-};
-
 const readMinute = () => Math.floor(Date.now() / NOW_STEP_MS) * NOW_STEP_MS;
 
-export const useMinute = () => useSyncExternalStore(subscribeMinute, readMinute, readMinute);
+const minuteAtom = Atom.make((get) => {
+  const refresh = () => get.setSelf(readMinute());
+  const timer = setInterval(refresh, NOW_STEP_MS / 4);
+  const focus = AppState.addEventListener("change", refresh);
+  get.addFinalizer(() => {
+    clearInterval(timer);
+    focus.remove();
+  });
+  return readMinute();
+});
+
+export const useMinute = () => useAtomValue(minuteAtom);
 
 export const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 

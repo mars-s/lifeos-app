@@ -1,4 +1,6 @@
+import { useAtomValue } from "@effect/atom-react";
 import { Result } from "effect";
+import { Atom } from "effect/reactivity";
 import { useQueries } from "convex/react";
 import { getFunctionName, makeFunctionReference, type FunctionArgs, type FunctionReference, type FunctionReturnType } from "convex/server";
 import { convexToJson, jsonToConvex, type JSONValue, type Value } from "convex/values";
@@ -72,18 +74,20 @@ export const forgetSavedViews = async () => {
   await savedViews.clearAsync();
 };
 
-const subscribeTick = (onChange: () => void) => {
-  const timer = setInterval(onChange, TICK_MS);
-  const focus = AppState.addEventListener("change", onChange);
-  return () => {
-    clearInterval(timer);
-    focus.remove();
-  };
-};
-
 const readLocalDate = () => localIsoDate(new Date());
 
-export const useLocalDate = () => useSyncExternalStore(subscribeTick, readLocalDate, readLocalDate);
+const localDateAtom = Atom.make((get) => {
+  const refresh = () => get.setSelf(readLocalDate());
+  const timer = setInterval(refresh, TICK_MS);
+  const focus = AppState.addEventListener("change", refresh);
+  get.addFinalizer(() => {
+    clearInterval(timer);
+    focus.remove();
+  });
+  return readLocalDate();
+});
+
+export const useLocalDate = () => useAtomValue(localDateAtom);
 
 export const useViewState = <Query extends FunctionReference<"query">>(query: Query, args: FunctionArgs<Query> | "skip") => {
   const name = getFunctionName(query);
