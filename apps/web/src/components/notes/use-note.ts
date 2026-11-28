@@ -2,9 +2,12 @@
 
 import { useAuthToken } from "@convex-dev/auth/react";
 import { isTauri } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/reactivity";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type * as Y from "yjs";
 import { NoteSync, RELAY_URL, type SyncStatus } from "@lifeos/notes/client";
+import { registry } from "../../lib/atoms";
 import { openNote } from "./library";
 
 export const relayUrl = import.meta.env.WAKU_PUBLIC_NOTES_RELAY_URL ?? RELAY_URL;
@@ -22,17 +25,11 @@ export const useRelayToken = () => {
 export const relayToken = () => Promise.resolve(tokenStore.current);
 
 type Live = { sync: NoteSync; users: number };
+type Awareness = NoteSync["awareness"];
 const live = new Map<string, Live>();
-const liveListeners = new Set<() => void>();
-const liveChanged = () => {
-  for (const listener of liveListeners) listener();
-};
-const subscribeLive = (listener: () => void) => {
-  liveListeners.add(listener);
-  return () => liveListeners.delete(listener);
-};
-const statusListeners = new Set<() => void>();
-let overall: SyncStatus = { kind: "connecting" };
+const awarenessAtom = Atom.make<ReadonlyMap<string, Awareness>>(new Map()).pipe(Atom.keepAlive);
+const liveChanged = () => registry.set(awarenessAtom, new Map([...live].map(([docId, entry]) => [docId, entry.sync.awareness])));
+const overallAtom = Atom.make<SyncStatus>({ kind: "connecting" }).pipe(Atom.keepAlive);
 
 const recompute = () => {
   const statuses = [...live.values()].map((entry) => entry.sync.status);
@@ -45,22 +42,11 @@ const recompute = () => {
       : statuses.some((s) => s.kind === "connecting")
         ? { kind: "connecting" }
         : { kind: "synced" };
-  if (JSON.stringify(next) === JSON.stringify(overall)) return;
-  overall = next;
-  for (const listener of statusListeners) listener();
+  if (JSON.stringify(next) === JSON.stringify(registry.get(overallAtom))) return;
+  registry.set(overallAtom, next);
 };
 
-const subscribeOverall = (listener: () => void) => {
-  statusListeners.add(listener);
-  return () => statusListeners.delete(listener);
-};
-
-export const useNotesStatus = () =>
-  useSyncExternalStore(
-    subscribeOverall,
-    () => overall,
-    () => overall,
-  );
+export const useNotesStatus = () => useAtomValue(overallAtom);
 
 const acquire = (docId: string, doc: Y.Doc) => {
   const known = live.get(docId);
@@ -103,10 +89,9 @@ export const useNote = (docId: string | null) => {
   const entry = useMemo(() => (docId ? openNote(docId) : null), [docId]);
   const [readyFor, setReadyFor] = useState<string | null>(null);
   const [status, setStatus] = useState<SyncStatus>({ kind: "connecting" });
-  const awareness = useSyncExternalStore(
-    subscribeLive,
-    () => (docId ? (live.get(docId)?.sync.awareness ?? null) : null),
-    () => null,
+  const awareness = useAtomValue(
+    awarenessAtom,
+    useCallback((all: ReadonlyMap<string, Awareness>) => (docId ? (all.get(docId) ?? null) : null), [docId]),
   );
   const token = useRelayToken();
   const syncRef = useRef<NoteSync | null>(null);
