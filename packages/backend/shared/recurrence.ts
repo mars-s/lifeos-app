@@ -1,6 +1,7 @@
-import { err, ok, type Result } from "neverthrow";
 import type { MonthDay, RepeatEnd, RepeatNext, Schedule, Weekday } from "../convex/planner/tables";
-import { addDays, laterOf, parseIsoDate, type IsoDate } from "./date";
+import { addDays, laterOf, type IsoDate } from "./date";
+import { toNeverthrow } from "./effect/bridge";
+import * as fx from "./effect/recurrence";
 
 export type { MonthDay, RepeatEnd, RepeatNext, Schedule, Weekday };
 export type AfterCompletion = Extract<Schedule, { kind: "afterCompletion" }>;
@@ -11,10 +12,10 @@ type Kind = Schedule["kind"];
 type Of<K extends Kind> = Extract<Schedule, { kind: K }>;
 type EndOf<K extends RepeatEnd["kind"]> = Extract<RepeatEnd, { kind: K }>;
 
+export { MAX_EVERY, MAX_REPEAT_COUNT, zonedFormatter } from "./effect/recurrence";
+
 const DAY_MS = 86_400_000;
 const SCAN_DAYS = 11 * 366;
-export const MAX_REPEAT_COUNT = 999;
-export const MAX_EVERY = { days: 99, weeks: 52, months: 24, years: 10, afterCompletion: 99 } as const;
 
 const WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
@@ -25,8 +26,6 @@ const NTH_NAMES = new Map([
   [4, "fourth"],
   [-1, "last"],
 ]);
-
-const daysInMonth = (year: number, month: number) => new Date(Date.UTC(year, month, 0)).getUTCDate();
 
 const pad = (n: number, width = 2) => String(n).padStart(width, "0");
 
@@ -42,7 +41,7 @@ const dayOf = (date: IsoDate) => {
     month,
     day: at.getUTCDate(),
     weekday: ((at.getUTCDay() + 6) % 7) + 1,
-    length: daysInMonth(year, month),
+    length: fx.daysInMonth(year, month),
   };
 };
 
@@ -96,7 +95,7 @@ const addMonths = (date: IsoDate, months: number) => {
   const index = year * 12 + month - 1 + months;
   const nextYear = Math.floor(index / 12);
   const nextMonth = (index % 12) + 1;
-  return isoOf(nextYear, nextMonth, Math.min(day, daysInMonth(nextYear, nextMonth)));
+  return isoOf(nextYear, nextMonth, Math.min(day, fx.daysInMonth(nextYear, nextMonth)));
 };
 
 const afterUnit = {
@@ -136,81 +135,17 @@ export const uncreatedDates = (rule: RuleClock, from: IsoDate, to: IsoDate) => {
   return dates;
 };
 
-const zonedFormatters = new Map<string, Intl.DateTimeFormat>();
-
-export const zonedFormatter = (timeZone: string) => {
-  const known = zonedFormatters.get(timeZone);
-  if (known) return known;
-  const made = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    hourCycle: "h23",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-  zonedFormatters.set(timeZone, made);
-  return made;
-};
-
 export const localDateIn = (timeZone: string, instant: number) => {
-  const parts = zonedFormatter(timeZone).formatToParts(instant);
+  const parts = fx.zonedFormatter(timeZone).formatToParts(instant);
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((each) => each.type === type)?.value ?? "";
   return `${part("year")}-${part("month")}-${part("day")}` as IsoDate;
 };
 
-const fault = (reason: ScheduleFault) => ({ kind: "invalid_schedule", reason }) satisfies ScheduleError;
+export const parseTimeZone = (timeZone: string) => toNeverthrow(fx.parseTimeZone(timeZone));
 
-export const parseTimeZone = (timeZone: string) => {
-  try {
-    zonedFormatter(timeZone);
-    return ok<string, ScheduleError>(timeZone);
-  } catch {
-    return err<string, ScheduleError>(fault("time_zone"));
-  }
-};
+export const parseSchedule = (schedule: Schedule) => toNeverthrow(fx.parseSchedule(schedule));
 
-const isWhole = (n: number, min: number, max: number) => Number.isInteger(n) && n >= min && n <= max;
-
-const LEAP_YEAR = 2000;
-
-const checkShape = {
-  days: (schedule) => ok(schedule),
-  weekdays: (schedule) => ok(schedule),
-  weeks: (schedule) => {
-    const days = [...new Set(schedule.days)].toSorted((a, b) => a - b);
-    return days.length > 0 ? ok({ ...schedule, days }) : err(fault("days"));
-  },
-  months: (schedule) => (schedule.on.kind === "weekday" || isWhole(schedule.on.day, 1, 31) ? ok(schedule) : err(fault("day"))),
-  years: (schedule) =>
-    !isWhole(schedule.month, 1, 12)
-      ? err(fault("month"))
-      : isWhole(schedule.day, 1, daysInMonth(LEAP_YEAR, schedule.month))
-        ? ok(schedule)
-        : err(fault("day")),
-  afterCompletion: (schedule) => ok(schedule),
-} satisfies { [K in Kind]: (schedule: Of<K>) => Result<Of<K>, ScheduleError> };
-
-export const parseSchedule = (schedule: Schedule) => {
-  if ("every" in schedule && !isWhole(schedule.every, 1, MAX_EVERY[schedule.kind])) {
-    return err<Schedule, ScheduleError>(fault("every"));
-  }
-  return (checkShape[schedule.kind] as (schedule: Schedule) => Result<Schedule, ScheduleError>)(schedule);
-};
-
-const checkEnd = {
-  never: (end) => ok(end),
-  on: (end) =>
-    parseIsoDate(end.date)
-      .map(() => end)
-      .mapErr(() => fault("end")),
-  after: (end) => (isWhole(end.count, 1, MAX_REPEAT_COUNT) ? ok(end) : err(fault("count"))),
-} satisfies { [K in RepeatEnd["kind"]]: (end: EndOf<K>) => Result<EndOf<K>, ScheduleError> };
-
-export const parseEnd = (end: RepeatEnd) =>
-  (checkEnd[end.kind] as (end: RepeatEnd) => Result<RepeatEnd, ScheduleError>)(end);
+export const parseEnd = (end: RepeatEnd) => toNeverthrow(fx.parseEnd(end));
 
 const ordinal = (n: number) => {
   const tens = n % 100;
