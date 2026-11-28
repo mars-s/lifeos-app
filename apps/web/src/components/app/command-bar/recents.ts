@@ -1,32 +1,22 @@
-export type Recent = { kind: "task" | "project" | "area" | "list"; id: string };
+"use client";
+
+import { Schema } from "effect";
+import { Atom } from "effect/reactivity";
+import { registry } from "../../../lib/atoms";
+import { atomRuntime } from "../../../lib/runtime";
+
+const Recent = Schema.Struct({ kind: Schema.Literals(["task", "project", "area", "list"]), id: Schema.String });
+
+export type Recent = typeof Recent.Type;
 
 const KEY = "lifeos:bar:recents:v1";
 const LIMIT = 6;
 
-const isRecent = (value: unknown): value is Recent =>
-  typeof value === "object" &&
-  value !== null &&
-  typeof (value as Recent).id === "string" &&
-  ["task", "project", "area", "list"].includes((value as Recent).kind);
+const NONE: readonly Recent[] = [];
 
-let cached: readonly Recent[] | undefined;
+const recentsAtom = Atom.kvs({ runtime: atomRuntime, key: KEY, schema: Schema.Array(Recent), defaultValue: () => NONE }).pipe(Atom.keepAlive);
 
-export const readRecents = () => {
-  if (cached) return cached;
-  try {
-    const stored: unknown = JSON.parse(localStorage.getItem(KEY) ?? "[]");
-    cached = Array.isArray(stored) ? stored.filter(isRecent).slice(0, LIMIT) : [];
-  } catch {
-    cached = [];
-  }
-  return cached;
-};
+export const readRecents = () => registry.get(recentsAtom).slice(0, LIMIT);
 
-export const rememberRecent = (recent: Recent) => {
-  cached = [recent, ...readRecents().filter((other) => other.kind !== recent.kind || other.id !== recent.id)].slice(0, LIMIT);
-  try {
-    localStorage.setItem(KEY, JSON.stringify(cached));
-  } catch {
-    return;
-  }
-};
+export const rememberRecent = (recent: Recent) =>
+  registry.set(recentsAtom, [recent, ...readRecents().filter((other) => other.kind !== recent.kind || other.id !== recent.id)].slice(0, LIMIT));

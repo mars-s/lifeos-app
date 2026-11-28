@@ -1,6 +1,9 @@
 "use client";
 
 import { CalendarDot, CaretLeft, CaretRight, DotsThree, Notebook, NotePencil, SidebarSimple } from "@phosphor-icons/react";
+import { useAtom } from "@effect/atom-react";
+import { Schema } from "effect";
+import { Atom } from "effect/reactivity";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Id } from "@lifeos/backend/dataModel";
 import type { SidebarView } from "@lifeos/backend/types";
@@ -12,6 +15,7 @@ import { AreaDot, areaVar } from "@/components/lifeos/area";
 import { EmptyState } from "@/components/lifeos/states";
 import { AiMark } from "@/components/lifeos/ai-orb";
 import { cn } from "@/lib/utils";
+import { atomRuntime } from "../../lib/runtime";
 import { AskBox, NOTE_ASK_VERBS } from "../app/ai/ask-box";
 import { useNoteAsk } from "../app/ai/task-ask";
 import { useShell } from "../app/shell-context";
@@ -23,7 +27,6 @@ import { dailyDocId, ensureDaily, newDocId, openNote, setFolder, textOf } from "
 import { LinksPanel } from "./links-panel";
 import { NoteRow, SearchPill, SectionLabel, Fold } from "./parts";
 import { SyncIndicator, syncWords } from "./sync-indicator";
-import { useStored, writeStored } from "./stored";
 import { useNote } from "./use-note";
 
 type Place = { area?: SidebarView["areas"][number]; project?: { _id: Id<"projects">; title: string } };
@@ -439,6 +442,10 @@ export const NotePage = ({
 
 const LINKS_KEY = "lifeos-notes-links-open";
 
+const linksOpenAtom = Atom.kvs({ runtime: atomRuntime, key: LINKS_KEY, schema: Schema.Literals([0, 1]), defaultValue: () => 1 as const }).pipe(
+  Atom.withServerValue(() => 1),
+);
+
 let freshDoc: string | null = null;
 
 export const useNotesNav = (sidebar: SidebarView | undefined) => {
@@ -465,8 +472,9 @@ export const useNotesNav = (sidebar: SidebarView | undefined) => {
 export const NotesScreen = ({ docId, sidebar }: { docId: string | null; sidebar: SidebarView | undefined }) => {
   const shell = useShell();
   const { items, open, create, openTitle } = useNotesNav(sidebar);
-  const linksOpen = useStored(LINKS_KEY) !== "0";
-  const toggleLinks = () => writeStored(LINKS_KEY, linksOpen ? "0" : "1");
+  const [shown, showLinks] = useAtom(linksOpenAtom);
+  const linksOpen = shown === 1;
+  const toggleLinks = () => showLinks(linksOpen ? 0 : 1);
 
   return (
     <div className="flex h-[calc(100dvh-0.75rem)] max-md:h-[calc(100dvh-3rem)]">

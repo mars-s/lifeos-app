@@ -1,11 +1,14 @@
 "use client";
 
 import { Kanban, Notebook, type Icon } from "@phosphor-icons/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Schema } from "effect";
+import { Atom } from "effect/reactivity";
+import { useCallback, useEffect, useState } from "react";
 import { Tooltip } from "@/components/ui/tooltip-hint";
 import { KeyCombo } from "@/components/ui/key-hint";
 import { cn } from "@/lib/utils";
-import { readStored, writeStored } from "../notes/stored";
+import { registry } from "../../lib/atoms";
+import { atomRuntime } from "../../lib/runtime";
 import { parseRoute, type Route, type Via } from "./route";
 
 export type Mode = "planner" | "notes";
@@ -21,36 +24,27 @@ const PLACES_KEY = "lifeos-mode-places";
 
 export const modeOf = (route: Route) => (route.kind === "notes" ? "notes" : route.kind === "settings" ? null : "planner") satisfies Mode | null;
 
-const readPlaces = () => {
-  try {
-    const stored: unknown = JSON.parse(readStored(PLACES_KEY) ?? "{}");
-    const places = typeof stored === "object" && stored !== null ? (stored as Partial<Record<Mode, unknown>>) : {};
-    return {
-      planner: typeof places.planner === "string" ? places.planner : HOME.planner,
-      notes: typeof places.notes === "string" ? places.notes : HOME.notes,
-    } satisfies Record<Mode, string>;
-  } catch {
-    return { ...HOME };
-  }
-};
+const placesAtom = Atom.kvs({
+  runtime: atomRuntime,
+  key: PLACES_KEY,
+  schema: Schema.Struct({ planner: Schema.String, notes: Schema.String }),
+  defaultValue: () => ({ ...HOME }),
+}).pipe(Atom.keepAlive);
 
 export const useModes = (route: Route, href: string) => {
   const routeMode = modeOf(route);
   const [kept, setKept] = useState<Mode>(routeMode ?? "planner");
   if (routeMode && routeMode !== kept) setKept(routeMode);
   const mode = routeMode ?? kept;
-  const places = useRef<Record<Mode, string> | null>(null);
   useEffect(() => {
-    places.current ??= readPlaces();
-    if (!routeMode || places.current[routeMode] === href) return;
-    places.current = { ...places.current, [routeMode]: href };
-    writeStored(PLACES_KEY, JSON.stringify(places.current));
+    const places = registry.get(placesAtom);
+    if (!routeMode || places[routeMode] === href) return;
+    registry.set(placesAtom, { ...places, [routeMode]: href });
   }, [routeMode, href]);
   const placeOf = useCallback(
     (next: Mode) => {
       if (next === routeMode) return null;
-      places.current ??= readPlaces();
-      const place = parseRoute(places.current[next]);
+      const place = parseRoute(registry.get(placesAtom)[next]);
       return modeOf(place) === next ? place : parseRoute(HOME[next]);
     },
     [routeMode],

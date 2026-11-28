@@ -1,25 +1,28 @@
 "use client";
 
 import { useConvex } from "convex/react";
+import { Schema } from "effect";
+import { Atom } from "effect/reactivity";
 import { useEffect } from "react";
 import { api } from "@lifeos/backend/api";
-import { catchUpAll, type SyncMarks } from "@lifeos/notes/catchup";
+import { catchUpAll } from "@lifeos/notes/catchup";
 import { editedSince, withNote } from "./library";
-import { readStored, writeStored } from "./stored";
+import { registry } from "../../lib/atoms";
+import { atomRuntime } from "../../lib/runtime";
 import { relayUrl, useRelayToken } from "./use-note";
 
 const MARKS_KEY = "lifeos-notes-marks";
 const ROUNDS = 10;
 const RETRY_MS = [3000, 10_000, 30_000];
 
-const readMarks = () => {
-  try {
-    const parsed = JSON.parse(readStored(MARKS_KEY) ?? "null") as SyncMarks | null;
-    return parsed && typeof parsed.core === "number" && typeof parsed.local === "number" ? parsed : { core: 0, local: 0 };
-  } catch {
-    return { core: 0, local: 0 };
-  }
-};
+const marksAtom = Atom.kvs({
+  runtime: atomRuntime,
+  key: MARKS_KEY,
+  schema: Schema.Struct({ core: Schema.Number, local: Schema.Number }),
+  defaultValue: () => ({ core: 0, local: 0 }),
+}).pipe(Atom.keepAlive);
+
+const readMarks = () => registry.get(marksAtom);
 
 let running: Promise<void> | null = null;
 
@@ -41,7 +44,7 @@ export const NotesCatchUp = () => {
             token,
             relayUrl,
           });
-          writeStored(MARKS_KEY, JSON.stringify(result.marks));
+          registry.set(marksAtom, result.marks);
           if (result.failed.length > 0) throw new Error("some notes did not catch up");
           attempt = 0;
           if (!result.more) break;

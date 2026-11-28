@@ -2,6 +2,8 @@
 
 import { ArrowRight, BookOpen, CaretLeft, CaretRight, Kanban, X } from "@phosphor-icons/react";
 import { useConvex, useQuery } from "convex/react";
+import { Schema } from "effect";
+import { Atom } from "effect/reactivity";
 import { useRef, useState } from "react";
 import * as Y from "yjs";
 import { api } from "@lifeos/backend/api";
@@ -15,6 +17,8 @@ import { EstimateChip, StrikeTitle, TaskCheckbox } from "@/components/lifeos/tas
 import { showUndo } from "@/components/lifeos/undo";
 import { toast } from "@/components/ui/toast-stack";
 import { cn } from "@/lib/utils";
+import { registry } from "../../lib/atoms";
+import { atomRuntime } from "../../lib/runtime";
 import { valueOf } from "../app/hooks";
 import { useShell } from "../app/shell-context";
 import { useNoteActions } from "./actions";
@@ -87,21 +91,13 @@ const shiftDay = (date: string, days: number) => {
   return next.toLocaleDateString("en-CA");
 };
 
-const readPage = () => {
-  try {
-    return Number(globalThis.localStorage?.getItem(PAGE_KEY)) || 1;
-  } catch {
-    return 1;
-  }
-};
+const pageAtom = Atom.kvs({ runtime: atomRuntime, key: PAGE_KEY, schema: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)), defaultValue: () => 1 }).pipe(
+  Atom.keepAlive,
+);
 
-const savePage = (page: number) => {
-  try {
-    globalThis.localStorage?.setItem(PAGE_KEY, String(page));
-  } catch {
-    return;
-  }
-};
+const readPage = () => registry.get(pageAtom);
+
+const savePage = (page: number) => registry.set(pageAtom, page);
 
 export const NotebookCapture = ({ doc: dayDoc, date, folder, onClose }: { doc: Y.Doc; date: string; folder: FolderRef | null; onClose: () => void }) => {
   const convex = useConvex();
