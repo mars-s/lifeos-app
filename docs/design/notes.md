@@ -37,7 +37,7 @@ Each screen has four shots in this folder: `notes-<name>.png`, `-dark`, `-phone`
 | Links | `notes-links` | The links panel (small graph, Tasks, Linked from, Links out, not created yet) and the whole graph |
 | Daily note | `notes-daily` | The day tied to the Planner, and the capture for typing in a notebook page |
 | In the app | `notes-shell` | The sidebar row, the command bar with notes in it, and a note open beside the Planner |
-| Modes (a proposal, not built) | `modes`, `modes-notes` | Planner and Notes as two modes of one window: the switch, what the sidebar shows in each, what crosses over, and the iPhone |
+| Modes (built 28 Nov 2026) | `modes`, `modes-notes` | Planner and Notes as two modes of one window: the switch, what the sidebar shows in each, what crosses over, and the iPhone |
 | States | `notes-states` | Three empty states, the sync indicator, and the merge moment |
 | iPhone | `notes-iphone` | Notes home, writing with the keyboard up, the links sheet, and the notebook capture |
 
@@ -142,9 +142,9 @@ No token was added to `styles.css`, to stay out of the way of other work on that
 BASE=http://localhost:3990 uv run --with playwright python scripts/check-notes-design.py ../../docs/design
 ```
 
-## Modes: a proposal
+## Modes
 
-Avi asked on 28 Nov 2026 whether Notes should be a toggle (Note mode, Planner mode) and not a sidebar row. This section is the answer as a design. Nothing here is built. Shots: `modes.png` (Planner mode) and `modes-notes.png` (Notes mode), each with `-dark`, `-phone` and `-phone-dark`.
+Avi asked on 28 Nov 2026 whether Notes should be a toggle (Note mode, Planner mode) and not a sidebar row. Avi approved it on 28 Nov 2026 and it is built on web and Mac: `modes.tsx` holds the switch and the remembered places, `check-modes.py` drives the switch, the keys and the five crossings, and `modes-app*.png` are shots of the real app. A Task chip in a note opens the real Task card over the note (`task-beside.tsx`), Cmd+J on a note asks LifeOS AI about that note, and each Planner day header has a button for that day's note. Shots: `modes.png` (Planner mode) and `modes-notes.png` (Notes mode), each with `-dark`, `-phone` and `-phone-dark`.
 
 The view: yes on web and Mac, as long as the switch changes the sidebar and never what you can reach.
 
@@ -169,7 +169,7 @@ Sync and storage are decided in issue #82 (Yjs, a relay on Cloudflare Durable Ob
 ## Open questions for Avi
 
 1. **Typeface.** Notes are in Inter, like the rest of the app. The page has an Inter and System switch under the window. Do you want San Francisco for note text on Apple devices?
-2. **Where Notes sits.** Built as one sidebar row between the lists and the Logbook. The switch between Planner and Notes is drawn in Modes above and is the recommended choice. Yes or no?
+2. **Where Notes sits.** Settled: the Planner and Notes switch in Modes above, built 28 Nov 2026.
 3. **iPhone tab.** Notes is drawn as a fifth tab. The other choice is a row inside Lists.
 4. **Folders.** Areas and Projects are the only folders. Do you want free folders as well?
 5. **To-dos.** A round to-do stays in its note. Should open to-dos show anywhere in the Planner, or only once you make them a Task?

@@ -75,14 +75,15 @@ const useOnline = () => {
   return online;
 };
 
-export const useTaskAsk = (task: PlannerTask, today: string) => {
+type Subject = { taskId?: Id<"tasks">; frame?: (request: string) => string };
+
+const useAgentAsk = ({ taskId, frame = (request) => request }: Subject) => {
   const [open, setOpen] = useState(false);
   const openBox = useCallback(() => setOpen(true), []);
   const [asked, setAsked] = useState<Asked>(null);
   const [sending, setSending] = useState<{ verb: VerbId | null; request: string } | null>(null);
   const online = useOnline();
   const start = useMutation(api.ai.runs.start);
-  const change = useChange();
   const overview = useQuietView(api.ai.routing.overview, {});
   const available = overview?.capabilities.some((state) => state.capability === "agent" && state.on && state.answering !== null) ?? false;
   const run = useQuietView(api.ai.runs.get, asked ? { jobId: asked.jobId } : "skip");
@@ -121,7 +122,7 @@ export const useTaskAsk = (task: PlannerTask, today: string) => {
   const ask = (verb: VerbId | null, request: string) => {
     setSending({ verb, request });
     setAsked(null);
-    void start({ request, mode: "ask", taskId: task._id })
+    void start({ request: frame(request), mode: "ask", ...(taskId ? { taskId } : {}) })
       .then((result) => {
         if (result.ok) setAsked({ ...result.value, verb, request });
         else setAsked(null);
@@ -133,9 +134,25 @@ export const useTaskAsk = (task: PlannerTask, today: string) => {
 
   const doIt = (request: string) => {
     close();
-    void start({ request, mode: "run", taskId: task._id }).then((result) => result.ok && openRun(result.value.jobId));
+    void start({ request: frame(request), mode: "run", ...(taskId ? { taskId } : {}) }).then((result) => result.ok && openRun(result.value.jobId));
   };
 
+  return { phase, open: openBox, close, ask, doIt, online, available };
+};
+
+const NOTE_REQUEST_MAX = 1900;
+
+export const useNoteAsk = (title: string, body: string) => {
+  const base = useAgentAsk({
+    frame: (request) => `${request}\n\nAbout the note "${title}":\n${body.slice(0, Math.max(0, NOTE_REQUEST_MAX - request.length - title.length))}`,
+  });
+  return { ...base, keep: base.close };
+};
+
+export const useTaskAsk = (task: PlannerTask, today: string) => {
+  const base = useAgentAsk({ taskId: task._id });
+  const { close } = base;
+  const change = useChange();
   const actions = taskActions(change, task, today, askToConfirm);
 
   const keep = (kept: Proposal) => {
@@ -164,7 +181,7 @@ export const useTaskAsk = (task: PlannerTask, today: string) => {
     });
   };
 
-  return { phase, open: openBox, close, ask, doIt, keep, online, available };
+  return { ...base, keep };
 };
 
 export type TaskAsk = ReturnType<typeof useTaskAsk>;

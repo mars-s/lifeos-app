@@ -12,6 +12,7 @@ import type { Route } from "../app/route";
 import { selection } from "../app/selection";
 import { useShell } from "../app/shell-context";
 import { forgetLocal } from "./library";
+import { openTaskBeside } from "./task-beside";
 
 const asRoute = (route: Route) => route;
 
@@ -44,6 +45,7 @@ export const useNoteActions = () => {
       openEntity: async (table: "tasks" | "projects" | "areas", id: string) => {
         if (table === "areas") return shell.navigate({ kind: "area", id: id as Id<"areas"> }, "pointer");
         if (table === "projects") return shell.navigate({ kind: "project", id: id as Id<"projects"> }, "pointer");
+        if (shell.route.kind === "notes") return openTaskBeside(id as Id<"tasks">);
         const task = await convex.query(api.planner.tasks.row, { taskId: id as Id<"tasks"> }).catch(() => null);
         if (!task) return;
         const home = homeOf(task, shell.today);

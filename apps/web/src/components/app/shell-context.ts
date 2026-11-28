@@ -3,6 +3,7 @@
 import { createContext, use } from "react";
 import type { Id } from "@lifeos/backend/dataModel";
 import type { IsoDate } from "@lifeos/backend/date";
+import type { Mode } from "./modes";
 import type { Route, Via } from "./route";
 
 export type OpenCard = { key: string; instant: boolean };
@@ -18,6 +19,8 @@ export type ShellState = {
   via: Via;
   today: IsoDate;
   navigate: (route: Route, via: Via, depth?: Depth) => void;
+  mode: Mode;
+  switchMode: (mode: Mode, via: Via) => void;
   openCard: OpenCard | null;
   setOpenCard: (card: OpenCard | null, on?: Route) => void;
   closeCard: (key: string) => void;

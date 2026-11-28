@@ -28,8 +28,11 @@ import {
   type SidebarArea,
 } from "./container-actions";
 import { Folding } from "./fold";
-import { NotesSyncDot } from "../notes/sync-indicator";
+import { NotesColumn, useNotesNav } from "../notes/notes-screen";
+import { SyncIndicator } from "../notes/sync-indicator";
+import { useNotesStatus } from "../notes/use-note";
 import { RouteLink } from "./list-page";
+import { ModeSwitch } from "./modes";
 import { sameRoute, type ListKind, type Route, type Via } from "./route";
 import { useNeedsAttention } from "./settings/attention";
 import { useShell, type Renaming } from "./shell-context";
@@ -132,7 +135,7 @@ const NavItem = ({
 }) => {
   const { route, renaming, setRenaming } = useShell();
   const reduce = useReducedMotion();
-  const active = to.kind === "notes" ? route.kind === "notes" : sameRoute(route, to);
+  const active = sameRoute(route, to);
   const editing = rename !== undefined && renaming?.id === rename.target.id;
   const glyph = (
     <span className={cn("relative grid size-4 shrink-0 place-items-center", active ? "text-brand" : "text-muted-foreground")}>
@@ -498,59 +501,88 @@ const Areas = ({ areas, via, actions }: { areas: SidebarArea[]; via: Via; action
   </SortableContext>
 );
 
+const NotesSidebar = ({ view }: { view: SidebarView | undefined }) => {
+  const { route, today } = useShell();
+  const { items, open, create } = useNotesNav(view);
+  return (
+    <NotesColumn
+      items={items}
+      sidebar={view}
+      current={route.kind === "notes" ? (route.id ?? null) : null}
+      today={today}
+      onOpen={open}
+      onCreate={create}
+      heading={false}
+      className="flex-1"
+    />
+  );
+};
+
+const SyncLine = () => <SyncIndicator status={useNotesStatus()} className="px-2.5" />;
+
 export const Sidebar = ({ view, via, notice }: { view: SidebarView | undefined; via: Via; notice?: ReactNode }) => {
   const shell = useShell();
   const actions = useContainerActions(shell);
-  const { draft } = shell;
+  const { draft, mode } = shell;
   const looseDraft = draft?.kind === "project" && draft.areaId === null;
   return (
-    <nav aria-label="Lists" data-arrow-scope className="flex h-full flex-col gap-4 overflow-y-auto overscroll-contain px-2 pb-2">
-      <div data-tauri-drag-region className="flex h-12 shrink-0 items-end px-2.5 pb-1">
+    <nav
+      aria-label={mode === "notes" ? "Notes" : "Lists"}
+      data-arrow-scope
+      data-sidebar-mode={mode}
+      className={cn("flex h-full flex-col gap-4 overscroll-contain px-2 pb-2", mode === "notes" ? "overflow-hidden" : "overflow-y-auto")}
+    >
+      <div data-tauri-drag-region className="flex h-12 shrink-0 items-center justify-between gap-2 pl-2.5">
         <span className="flex items-center gap-2 text-small font-semibold md:hidden">
           <LifeosMark fill="enter" />
           <span translate="no">LifeOS</span>
         </span>
+        <ModeSwitch mode={mode} via={via} onMode={(next) => shell.switchMode(next, "pointer")} className="ml-auto" />
       </div>
-      <div>
-        <NavItem to={{ kind: "inbox" }} {...LIST_META.inbox} count={view?.counts.inbox} via={via} />
-      </div>
-      <div>
-        <NavItem to={{ kind: "today" }} {...LIST_META.today} count={view?.counts.today} via={via} />
-        <NavItem to={{ kind: shell.route.kind === "upcoming" ? "upcoming" : "planner" }} {...PLANNER_META} via={via} />
-        <NavItem to={{ kind: "anytime" }} {...LIST_META.anytime} via={via} />
-        <NavItem to={{ kind: "someday" }} {...LIST_META.someday} via={via} />
-      </div>
-      <div>
-        <NavItem to={{ kind: "notes" }} {...NOTES_META} trailing={<NotesSyncDot />} via={via} />
-      </div>
-      <div>
-        <NavItem to={{ kind: "logbook" }} {...LIST_META.logbook} via={via} />
-        <NavItem to={{ kind: "trash" }} {...LIST_META.trash} via={via} />
-      </div>
-      {notice}
-      {view && (
-        <Sortables view={view} actions={actions}>
-          {(view.projects.length > 0 || looseDraft) && (
-            <div>
-              <SortableContext items={view.projects.map((project) => project._id)} strategy={verticalListSortingStrategy}>
-                <AnimatePresence initial={false}>
-                  {view.projects.map((project) => (
-                    <Leaving key={project._id} id={project._id}>
-                      <ProjectItem project={project} colour="var(--muted-foreground)" indent={false} via={via} actions={actions} />
-                    </Leaving>
-                  ))}
-                </AnimatePresence>
-              </SortableContext>
-              {looseDraft && <DraftRow kind="project" indent={false} onCommit={(title) => actions.createProject(title, null)} />}
-            </div>
+      {mode === "notes" ? (
+        <NotesSidebar view={view} />
+      ) : (
+        <>
+          <div>
+            <NavItem to={{ kind: "inbox" }} {...LIST_META.inbox} count={view?.counts.inbox} via={via} />
+          </div>
+          <div>
+            <NavItem to={{ kind: "today" }} {...LIST_META.today} count={view?.counts.today} via={via} />
+            <NavItem to={{ kind: shell.route.kind === "upcoming" ? "upcoming" : "planner" }} {...PLANNER_META} via={via} />
+            <NavItem to={{ kind: "anytime" }} {...LIST_META.anytime} via={via} />
+            <NavItem to={{ kind: "someday" }} {...LIST_META.someday} via={via} />
+          </div>
+          <div>
+            <NavItem to={{ kind: "logbook" }} {...LIST_META.logbook} via={via} />
+            <NavItem to={{ kind: "trash" }} {...LIST_META.trash} via={via} />
+          </div>
+          {notice}
+          {view && (
+            <Sortables view={view} actions={actions}>
+              {(view.projects.length > 0 || looseDraft) && (
+                <div>
+                  <SortableContext items={view.projects.map((project) => project._id)} strategy={verticalListSortingStrategy}>
+                    <AnimatePresence initial={false}>
+                      {view.projects.map((project) => (
+                        <Leaving key={project._id} id={project._id}>
+                          <ProjectItem project={project} colour="var(--muted-foreground)" indent={false} via={via} actions={actions} />
+                        </Leaving>
+                      ))}
+                    </AnimatePresence>
+                  </SortableContext>
+                  {looseDraft && <DraftRow kind="project" indent={false} onCommit={(title) => actions.createProject(title, null)} />}
+                </div>
+              )}
+              <Areas areas={view.areas} via={via} actions={actions} />
+            </Sortables>
           )}
-          <Areas areas={view.areas} via={via} actions={actions} />
-        </Sortables>
+          {draft?.kind === "area" && <DraftRow kind="area" indent={false} onCommit={(title) => actions.createArea(title, view)} />}
+        </>
       )}
-      {draft?.kind === "area" && <DraftRow kind="area" indent={false} onCommit={(title) => actions.createArea(title, view)} />}
-      <div className="mt-auto pt-2">
-        <NewList />
+      <div className="mt-auto shrink-0 pt-2">
+        {mode === "planner" && <NewList />}
         <SettingsItem via={via} />
+        <SyncLine />
       </div>
     </nav>
   );

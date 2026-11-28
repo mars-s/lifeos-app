@@ -25,8 +25,8 @@ export const SHORTCUT_GROUPS: readonly { title: string; shortcuts: readonly Shor
   {
     title: "Move around",
     shortcuts: [
-      { label: "Inbox to Trash", keys: ["mod+1–7", "1–7"], only: "app" },
-      { label: "Inbox to Trash", keys: ["1–7"], only: "browser" },
+      { label: "Planner or Notes mode", keys: ["mod+1", "mod+2"], joiner: "or" },
+      { label: "Inbox to Trash", keys: ["1–7"] },
       { label: "Planner or Upcoming", keys: ["8", "3"], joiner: "or" },
       { label: "Next or previous Task", keys: ["down", "up"], joiner: "or" },
       { label: "Settings", keys: ["mod+,"] },

@@ -13,6 +13,7 @@ import { Toaster } from "@/components/ui/toast-stack";
 import { cn } from "@/lib/utils";
 import { NotesCatchUp } from "../notes/catch-up";
 import { NoteBeside } from "../notes/note-beside";
+import { TaskBeside } from "../notes/task-beside";
 import { CommandBarHost } from "./command-bar/host";
 import { ConfirmHost } from "./confirm";
 import { drafts } from "./drafts";
@@ -22,6 +23,7 @@ import { FocusSignals } from "./focus-signals";
 import { useLocalDate, useViewState, valueOf } from "./hooks";
 import { AppMenu } from "./menus";
 import { PanelBoundary, PanelNotice } from "./panel-boundary";
+import { isModeKey, useModes } from "./modes";
 import { arrowTarget } from "./row-window";
 import { LISTS, parseRoute, routeHref, screenKey, type Route, type Via } from "./route";
 import { UPCOMING_DAYS } from "./dates";
@@ -109,6 +111,7 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
   const [sidebarAttempt, setSidebarAttempt] = useState(0);
   const sidebarState = useViewState(api.planner.sidebar.get, { date: today });
   const sidebar = valueOf(sidebarState.value);
+  const { mode, placeOf } = useModes(route, href);
 
   const shell = useMemo(() => {
     const navigate = (to: Route, how: Via, depth?: Depth) => {
@@ -132,6 +135,11 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
       via,
       today,
       navigate,
+      mode,
+      switchMode: (next, how) => {
+        const place = placeOf(next);
+        if (place) navigate(place, how);
+      },
       openCard: card?.href === href ? card : null,
       setOpenCard: (next, on) => setCard(next && { ...next, href: on ? routeHref(on) : href }),
       closeCard: (key) => setCard((open) => (open?.key === key ? null : open)),
@@ -143,7 +151,7 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
         setDraft(next);
       },
     } satisfies ShellState;
-  }, [route, via, today, card, href, actual, router, renaming, draft]);
+  }, [route, via, today, card, href, actual, router, renaming, draft, mode, placeOf]);
 
   useEffect(() => {
     latest.current = shell;
@@ -178,7 +186,12 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
         if (undoLast()) event.preventDefault();
         return;
       }
-      if (event.defaultPrevented || isTyping(event.target) || event.altKey || event.ctrlKey || event.shiftKey) return;
+      const toMode = isModeKey(event);
+      if (toMode) {
+        event.preventDefault();
+        return shell.switchMode(toMode, "keyboard");
+      }
+      if (event.defaultPrevented || isTyping(event.target) || event.altKey || event.ctrlKey || event.shiftKey || event.metaKey) return;
       const list = LISTS[Number(event.key) - 1];
       if (list) {
         event.preventDefault();
@@ -188,7 +201,6 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
         event.preventDefault();
         return shell.navigate({ kind: "planner" }, "keyboard");
       }
-      if (event.metaKey) return;
       if (event.key === "Escape") return setDrawer(false);
       const step = event.key === "ArrowDown" || event.key === "j" ? 1 : event.key === "ArrowUp" || event.key === "k" ? -1 : 0;
       if (step !== 0 && moveFocus(step, main.current)) event.preventDefault();
@@ -284,6 +296,7 @@ const Connected = ({ today, children }: { today: IsoDate; children: ReactNode })
       </PanelBoundary>
       <PanelBoundary panel="bar" fallback={() => null}>
         <NoteBeside sidebar={sidebar} />
+        <TaskBeside />
         <NotesCatchUp />
       </PanelBoundary>
       <PanelBoundary panel="bar" fallback={() => null}>

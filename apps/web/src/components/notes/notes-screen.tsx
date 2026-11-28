@@ -10,7 +10,10 @@ import { Menu, type MenuItem } from "@/components/ui/action-menu";
 import { Tooltip } from "@/components/ui/tooltip-hint";
 import { AreaDot, areaVar } from "@/components/lifeos/area";
 import { EmptyState } from "@/components/lifeos/states";
+import { AiMark } from "@/components/lifeos/ai-orb";
 import { cn } from "@/lib/utils";
+import { AskBox, NOTE_ASK_VERBS } from "../app/ai/ask-box";
+import { useNoteAsk } from "../app/ai/task-ask";
 import { useShell } from "../app/shell-context";
 import { useNoteActions } from "./actions";
 import { DayHeader, NotebookCapture } from "./daily";
@@ -125,13 +128,14 @@ const TreeArea = ({
   );
 };
 
-const NotesColumn = ({
+export const NotesColumn = ({
   items,
   sidebar,
   current,
   today,
   onOpen,
   onCreate,
+  heading,
   className,
 }: {
   items: NoteItem[];
@@ -140,6 +144,7 @@ const NotesColumn = ({
   today: string;
   onOpen: (docId: string) => void;
   onCreate: (title?: string) => void;
+  heading: boolean;
   className?: string;
 }) => {
   const [query, setQuery] = useState("");
@@ -153,15 +158,18 @@ const NotesColumn = ({
   const todayId = dailyDocId(today);
   const toggle = (id: string) => setClosed((shut) => new Set(shut.has(id) ? [...shut].filter((other) => other !== id) : [...shut, id]));
   return (
-    <section aria-label="Notes" className={cn("flex min-h-0 w-64 shrink-0 flex-col", className)}>
-      <div className="flex h-12 items-center justify-between pr-2 pl-4">
-        <h2 className="text-heading font-semibold">Notes</h2>
-        <IconButton icon={NotePencil} label="New note" variant="quiet" tooltip="New note" onClick={() => onCreate()} />
+    <section aria-label="Notes" className={cn("flex min-h-0 shrink-0 flex-col", className)}>
+      {heading && (
+        <div className="flex h-12 items-center justify-between pr-2 pl-4">
+          <h2 className="text-heading font-semibold">Notes</h2>
+          <IconButton icon={NotePencil} label="New note" variant="quiet" tooltip="New note" onClick={() => onCreate()} />
+        </div>
+      )}
+      <div className={cn("flex items-center gap-1 pb-2", heading ? "px-2" : "pr-0.5")}>
+        <SearchPill value={query} onChange={setQuery} placeholder="Search notes…" label="Search notes" className="min-w-0 flex-1" />
+        {!heading && <IconButton icon={NotePencil} label="New note" variant="quiet" tooltip="New note" onClick={() => onCreate()} />}
       </div>
-      <div className="px-2 pb-2">
-        <SearchPill value={query} onChange={setQuery} placeholder="Search notes…" label="Search notes" />
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-3">
+      <div className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain pb-3", heading && "px-2")}>
         {wanted ? (
           found.length > 0 ? (
             <ul className="animate-fade-in">
@@ -326,6 +334,21 @@ export const NotePage = ({
   );
 
   const title = projectNote(text).title;
+  const ask = useNoteAsk(day ? `Journal for ${day}` : title, text);
+  const [askVia, setAskVia] = useState<"keys" | "pointer">("keys");
+  const openAsk = ask.open;
+  useEffect(() => {
+    if (!ask.available) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== "j") return;
+      if (document.querySelector("li[data-open-card]")) return;
+      event.preventDefault();
+      setAskVia("keys");
+      openAsk();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [ask.available, openAsk]);
   const more: MenuItem[] = [
     { type: "submenu", id: "move", label: "Move to", items: folderItems(sidebar, folder, (next) => note && setFolder(note.doc, next)) },
     ...(day ? [{ id: "notebook", label: "Add a notebook page", onSelect: () => setNotebook(true) } satisfies MenuItem] : []),
@@ -344,11 +367,11 @@ export const NotePage = ({
     <article aria-label={title} className={cn("relative flex min-w-0 flex-1 flex-col", className)}>
       <header className="absolute inset-x-0 top-0 z-10 flex h-14 items-start gap-2 rounded-t-2xl bg-surface-inset/75 px-3 pt-2 backdrop-blur-md [mask-image:linear-gradient(to_bottom,black_62%,transparent)]">
         {onBack && (
-          <Button variant="quiet" size="sm" icon={CaretLeft} iconWeight="bold" onClick={onBack} className="-ml-1 px-2 min-[672px]:hidden">
+          <Button variant="quiet" size="sm" icon={CaretLeft} iconWeight="bold" onClick={onBack} className="-ml-1 px-2 md:hidden">
             Notes
           </Button>
         )}
-        <div className="flex h-8 min-w-0 flex-1 items-center pl-1.5 max-[671px]:hidden">
+        <div className={cn("flex h-8 min-w-0 flex-1 items-center pl-1.5", onBack && "max-md:hidden")}>
           <Breadcrumb place={place} day={day} />
         </div>
         <div className="ml-auto flex items-center gap-0.5">
@@ -357,6 +380,19 @@ export const NotePage = ({
               {note && <SyncIndicator status={note.status} words={false} />}
             </button>
           </Tooltip>
+          {ask.available && (
+            <IconButton
+              icon={AiMark}
+              label="Ask AI"
+              tooltip
+              aria-keyshortcuts="Meta+J"
+              aria-expanded={ask.phase.kind !== "idle"}
+              onClick={() => {
+                setAskVia("pointer");
+                ask.open();
+              }}
+            />
+          )}
           {day && <IconButton icon={Notebook} label="Add a notebook page" tooltip onClick={() => setNotebook(true)} />}
           {onToggleLinks && (
             <IconButton
@@ -371,6 +407,11 @@ export const NotePage = ({
           {extra}
         </div>
       </header>
+      {ask.phase.kind !== "idle" && (
+        <div className="absolute inset-x-0 top-12 z-20 flex justify-center px-3">
+          <AskBox ask={ask} via={askVia} verbs={NOTE_ASK_VERBS} reads="Reads this note. Nothing changes in it." label="LifeOS AI on this note" />
+        </div>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pt-12">
         {day && <DayHeader date={day} size={size} />}
         {note?.ready ? (
@@ -398,18 +439,18 @@ export const NotePage = ({
 
 const LINKS_KEY = "lifeos-notes-links-open";
 
-export const NotesScreen = ({ docId, sidebar }: { docId: string | null; sidebar: SidebarView | undefined }) => {
+let freshDoc: string | null = null;
+
+export const useNotesNav = (sidebar: SidebarView | undefined) => {
   const shell = useShell();
   const items = useNoteItems(sidebar);
-  const linksOpen = useStored(LINKS_KEY) !== "0";
-  const [fresh, setFresh] = useState<string | null>(null);
   const open = (next: string) => shell.navigate({ kind: "notes", id: next }, "pointer");
   const create = (title?: string) => {
     const id = newDocId();
     const { doc, ready } = openNote(id);
     void ready.then(() => {
       if (title) doc.transact(() => textOf(doc).insert(0, `${title}\n`));
-      setFresh(id);
+      freshDoc = id;
       open(id);
     });
   };
@@ -418,19 +459,17 @@ export const NotesScreen = ({ docId, sidebar }: { docId: string | null; sidebar:
     if (known) open(known.docId);
     else create(title);
   };
+  return { items, open, create, openTitle };
+};
+
+export const NotesScreen = ({ docId, sidebar }: { docId: string | null; sidebar: SidebarView | undefined }) => {
+  const shell = useShell();
+  const { items, open, create, openTitle } = useNotesNav(sidebar);
+  const linksOpen = useStored(LINKS_KEY) !== "0";
   const toggleLinks = () => writeStored(LINKS_KEY, linksOpen ? "0" : "1");
 
   return (
     <div className="flex h-[calc(100dvh-0.75rem)] max-md:h-[calc(100dvh-3rem)]">
-      <NotesColumn
-        items={items}
-        sidebar={sidebar}
-        current={docId}
-        today={shell.today}
-        onOpen={open}
-        onCreate={create}
-        className={cn("max-[671px]:w-full", docId && "max-[671px]:hidden")}
-      />
       {docId ? (
         <>
           <NotePage
@@ -443,15 +482,18 @@ export const NotesScreen = ({ docId, sidebar }: { docId: string | null; sidebar:
             onBack={() => shell.navigate({ kind: "notes" }, "pointer")}
             onTrashed={() => shell.navigate({ kind: "notes" }, "pointer")}
             onOpenTitle={openTitle}
-            autoFocus={fresh === docId || shell.via === "keyboard"}
+            autoFocus={freshDoc === docId || shell.via === "keyboard"}
             className="animate-fade-in"
           />
           {linksOpen && <LinksPanel docId={docId} items={items} onOpen={open} onOpenTitle={openTitle} className="max-[1023px]:hidden" />}
         </>
       ) : (
-        <div className="grid min-w-0 flex-1 place-items-center max-[671px]:hidden">
-          <EmptyState title="Pick a note, or start one" hint="Notes save on this device as you type and sync when you are online." />
-        </div>
+        <>
+          <NotesColumn items={items} sidebar={sidebar} current={null} today={shell.today} onOpen={open} onCreate={create} heading className="w-full md:hidden" />
+          <div className="grid min-w-0 flex-1 place-items-center max-md:hidden">
+            <EmptyState title="Pick a note, or start one" hint="Notes save on this device as you type and sync when you are online." />
+          </div>
+        </>
       )}
     </div>
   );

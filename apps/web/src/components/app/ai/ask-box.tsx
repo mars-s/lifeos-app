@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowClockwise, CalendarPlus, Hourglass, ListChecks, NotePencil } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowRight, CalendarPlus, Hourglass, ListChecks, NotePencil, TextAlignLeft } from "@phosphor-icons/react";
 import { useMutation } from "convex/react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { api } from "@lifeos/backend/api";
@@ -21,6 +21,20 @@ const BOX = "@container w-full max-w-[26rem] rounded-2xl bg-popover p-1.5 text-s
 const ROW = "flex h-8 w-full items-center gap-2.5 rounded-lg px-2 text-left text-small transition-colors duration-(--dur-press) pointer-coarse:h-11";
 
 const VERB_ICONS = { steps: ListChecks, estimate: Hourglass, time: CalendarPlus, notes: NotePencil } satisfies Record<VerbId, Glyph>;
+
+type Asker = Pick<TaskAsk, "phase" | "close" | "ask" | "doIt" | "online"> & { keep: (proposal: Proposal) => void };
+
+export type AskVerb = { id: string; label: string; request: string; reading: string; icon: Glyph; verb: VerbId | null };
+
+const TASK_ASK_VERBS = TASK_VERBS.map((verb) => ({ ...verb, icon: VERB_ICONS[verb.id], verb: verb.id })) satisfies AskVerb[];
+
+const TASK_READS = "Reads this Task and your days. Nothing changes until you keep it.";
+
+export const NOTE_ASK_VERBS = [
+  { id: "summary", label: "Summarise", request: "Summarise this note in a few lines.", reading: "Reading the note", icon: TextAlignLeft, verb: null },
+  { id: "tasks", label: "Find the Tasks in it", request: "List the Tasks this note asks for, one per line.", reading: "Reading the note", icon: ListChecks, verb: null },
+  { id: "next", label: "What comes next", request: "Suggest the next step for what this note describes.", reading: "Reading the note", icon: ArrowRight, verb: null },
+] as const satisfies readonly AskVerb[];
 
 const KEEP: Record<Proposal["kind"], (proposal: Proposal) => string> = {
   steps: (proposal) => (proposal.kind === "steps" && proposal.steps.length === 1 ? "Add 1 step" : `Add ${proposal.kind === "steps" ? proposal.steps.length : 0} steps`),
@@ -90,12 +104,12 @@ const ModelTag = ({ model }: { model: string | null }) =>
     </span>
   ) : null;
 
-const Asking = ({ ask, field }: { ask: TaskAsk; field: React.RefObject<HTMLInputElement | null> }) => {
+const Asking = ({ ask, field, verbs, reads }: { ask: Asker; field: React.RefObject<HTMLInputElement | null>; verbs: readonly AskVerb[]; reads: string }) => {
   const listId = useId();
   const [query, setQuery] = useState("");
   const [at, setAt] = useState(0);
   const needle = query.trim().toLowerCase();
-  const matches = needle ? TASK_VERBS.filter((verb) => verb.label.toLowerCase().includes(needle)) : TASK_VERBS;
+  const matches = needle ? verbs.filter((verb) => verb.label.toLowerCase().includes(needle)) : verbs;
   const custom = needle !== "" && matches.length === 0;
   const count = custom ? 2 : matches.length;
   const active = Math.min(at, Math.max(0, count - 1));
@@ -105,7 +119,7 @@ const Asking = ({ ask, field }: { ask: TaskAsk; field: React.RefObject<HTMLInput
     const verb = matches[index];
     if (custom && index === 1) ask.doIt(query.trim());
     else if (custom) ask.ask(null, query.trim());
-    else if (verb) ask.ask(verb.id, verb.request);
+    else if (verb) ask.ask(verb.verb, verb.request);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -166,7 +180,7 @@ const Asking = ({ ask, field }: { ask: TaskAsk; field: React.RefObject<HTMLInput
           </>
         ) : (
           matches.map((verb, index) => {
-            const Icon = VERB_ICONS[verb.id];
+            const Icon = verb.icon;
             return (
               <li
                 key={verb.id}
@@ -190,14 +204,14 @@ const Asking = ({ ask, field }: { ask: TaskAsk; field: React.RefObject<HTMLInput
           LifeOS AI needs a connection. Writing, Tasks and undo all still work.
         </p>
       ) : (
-        <p className="px-2.5 pt-1.5 pb-1 text-micro text-faint-foreground">Reads this Task and your days. Nothing changes until you keep it.</p>
+        <p className="px-2.5 pt-1.5 pb-1 text-micro text-faint-foreground">{reads}</p>
       )}
     </>
   );
 };
 
-const Working = ({ phase, ask }: { phase: Extract<AskPhase, { kind: "reading" | "writing" }>; ask: TaskAsk }) => {
-  const verb = TASK_VERBS.find((candidate) => candidate.id === phase.verb);
+const Working = ({ phase, ask, verbs }: { phase: Extract<AskPhase, { kind: "reading" | "writing" }>; ask: Asker; verbs: readonly AskVerb[] }) => {
+  const verb = verbs.find((candidate) => (phase.verb ? candidate.verb === phase.verb : candidate.request === phase.request));
   return (
     <div className="grid gap-1.5">
       <div className="flex h-10 items-center gap-2.5 pr-1 pl-2.5">
@@ -215,7 +229,7 @@ const Working = ({ phase, ask }: { phase: Extract<AskPhase, { kind: "reading" | 
   );
 };
 
-const Proposed = ({ phase, ask, field }: { phase: Extract<AskPhase, { kind: "proposed" }>; ask: TaskAsk; field: React.RefObject<HTMLInputElement | null> }) => {
+const Proposed = ({ phase, ask, field }: { phase: Extract<AskPhase, { kind: "proposed" }>; ask: Asker; field: React.RefObject<HTMLInputElement | null> }) => {
   const { proposal } = phase;
   return (
     <>
@@ -279,7 +293,19 @@ const Proposed = ({ phase, ask, field }: { phase: Extract<AskPhase, { kind: "pro
   );
 };
 
-export const AskBox = ({ ask, via }: { ask: TaskAsk; via: "keys" | "pointer" }) => {
+export const AskBox = ({
+  ask,
+  via,
+  verbs = TASK_ASK_VERBS,
+  reads = TASK_READS,
+  label = "LifeOS AI",
+}: {
+  ask: Asker;
+  via: "keys" | "pointer";
+  verbs?: readonly AskVerb[];
+  reads?: string;
+  label?: string;
+}) => {
   const field = useRef<HTMLInputElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const { phase } = ask;
@@ -300,14 +326,14 @@ export const AskBox = ({ ask, via }: { ask: TaskAsk; via: "keys" | "pointer" }) 
       ref={box}
       tabIndex={-1}
       role="dialog"
-      aria-label="LifeOS AI"
+      aria-label={label}
       aria-busy={busy}
       data-ask-phase={phase.kind}
       onKeyDown={onKeyDown}
       className={cn(BOX, AI_RING, via === "pointer" && phase.kind === "asking" && "animate-screen-in motion-reduce:animate-none")}
     >
-      {phase.kind === "asking" && <Asking ask={ask} field={field} />}
-      {busy && <Working phase={phase} ask={ask} />}
+      {phase.kind === "asking" && <Asking ask={ask} field={field} verbs={verbs} reads={reads} />}
+      {busy && <Working phase={phase} ask={ask} verbs={verbs} />}
       {phase.kind === "proposed" && <Proposed phase={phase} ask={ask} field={field} />}
       {phase.kind === "failed" && (
         <div className="flex flex-wrap items-center gap-2 px-2.5 py-1.5">

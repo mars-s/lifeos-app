@@ -33,10 +33,15 @@ export const DayHeader = ({ date, size }: { date: string; size: "reading" | "com
   const isToday = date === shell.today;
   return (
     <div className={cn("mx-auto w-full max-w-[49.75rem] pt-6", size === "compact" ? "px-6" : "px-6 min-[672px]:px-12")}>
-      <p className="flex items-baseline gap-2.5 text-small text-muted-foreground">
-        {dayTitle(date)}
-        {isToday && <span className="text-brand">Today</span>}
-      </p>
+      <div className="flex items-center gap-2.5 text-small text-muted-foreground">
+        <p className="flex items-baseline gap-2.5">
+          {dayTitle(date)}
+          {isToday && <span className="text-brand">Today</span>}
+        </p>
+        <Button variant="quiet" size="sm" icon={Kanban} className="-my-1 ml-auto h-7 px-2.5" onClick={() => shell.navigate({ kind: "planner" }, "pointer")}>
+          Planner
+        </Button>
+      </div>
       {tasks.length > 0 && (
         <section aria-label={isToday ? "Planned today" : "Planned that day"} className="mt-3 rounded-xl bg-foreground/[0.03] p-3">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -49,9 +54,6 @@ export const DayHeader = ({ date, size }: { date: string; size: "reading" | "com
                 </>
               )}
             </span>
-            <Button variant="quiet" size="sm" icon={Kanban} className="-my-1 ml-auto h-7 px-2.5" onClick={() => shell.navigate({ kind: "planner" }, "pointer")}>
-              Planner
-            </Button>
           </div>
           <ul className="mt-2.5 space-y-0.5">
             {tasks.map((task) => {

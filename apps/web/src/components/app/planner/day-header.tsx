@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowsOutLineVertical } from "@phosphor-icons/react";
+import { ArrowsOutLineVertical, Notebook } from "@phosphor-icons/react";
 import type { IsoDate } from "@lifeos/backend/date";
 import { useEffect, useState, type PointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -11,6 +11,8 @@ import { IconButton } from "@/components/ui/action-button";
 import { Popover } from "@/components/ui/popover-panel";
 import { RollingNumber } from "@/components/ui/rolling-number";
 import { cn } from "@/lib/utils";
+import { dailyDocId } from "../../notes/library";
+import { openBeside } from "../../notes/note-beside";
 import { dayMonth, longDay, weekdayShort } from "../dates";
 import type { PlanActions } from "./actions";
 import type { PlanDay } from "./model";
@@ -130,15 +132,25 @@ export const DayHeader = ({
         <span className="font-semibold">{weekdayShort(day.date)}</span>
         <span className="text-muted-foreground">{dayMonth(day.date)}</span>
         {isToday && <span className="text-small font-medium text-brand">Today</span>}
-        {spreadable && (
+        <span className="ml-auto flex items-center">
           <IconButton
-            icon={ArrowsOutLineVertical}
-            iconWeight="bold"
-            label={`Spread ${isToday ? "today" : longDay(day.date)} across the day`}
-            onClick={() => onSpread(day.date)}
-            className="ml-auto text-muted-foreground"
+            icon={Notebook}
+            label={`Open the note for ${isToday ? "today" : longDay(day.date)}`}
+            tooltip="The day’s note"
+            data-day-note={day.date}
+            onClick={() => openBeside(dailyDocId(day.date))}
+            className="text-muted-foreground"
           />
-        )}
+          {spreadable && (
+            <IconButton
+              icon={ArrowsOutLineVertical}
+              iconWeight="bold"
+              label={`Spread ${isToday ? "today" : longDay(day.date)} across the day`}
+              onClick={() => onSpread(day.date)}
+              className="text-muted-foreground"
+            />
+          )}
+        </span>
       </h2>
       <Popover
         side="bottom"

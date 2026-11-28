@@ -222,7 +222,7 @@ export const NotesBoard = () => {
           <Section
             id="modes"
             title="Modes"
-            lede="A proposal, not built. Planner and Notes as two modes of one window, with a switch where the Notes row is now. Avi decides."
+            lede="Built on 28 Nov 2026. Planner and Notes as two modes of one window, with a switch where the Notes row was."
           >
             <ModeSpecimens />
           </Section>
