@@ -1,13 +1,15 @@
 import type { WithoutSystemFields } from "convex/server";
 import { v, type GenericValidator, type Infer } from "convex/values";
-import { err, ok } from "neverthrow";
-import { internalMutation, internalQuery, type MutationCtx, type QueryCtx } from "../_generated/server";
+import { Clock, Effect } from "effect";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { sameValue, startRecording, type Recorder } from "../platform/activity";
-import { serialise } from "../../shared/result";
+import { asWire } from "../../shared/effect/wire";
+import { Writes, internalMutation, internalQuery, reading, writing } from "../platform/effect";
 import { labelNamed } from "./labels";
 import { keyAfter, lastTaskOrder } from "./model";
 import type { Parent } from "./tables";
+import { Retired } from "./thingsErrors";
 import {
   vIncomingArea,
   vIncomingChecklistItem,
@@ -102,26 +104,35 @@ const parentFor = async (ctx: QueryCtx, parent: ThingsParent) => {
 const lastOrder = async (ctx: QueryCtx, table: "areas" | "labels") =>
   (await ctx.db.query(table).withIndex("by_order").order("desc").first())?.order;
 
+const stayOpen = Effect.fn("thingsImport.stayOpen")(function* () {
+  const retiredAt = yield* reading(retiredAtOf);
+  if (retiredAt !== undefined) return yield* new Retired({ retiredAt });
+});
+
 const stage = <V extends GenericValidator>(
   records: V,
   importOne: (ctx: MutationCtx, record: Recorder, incoming: Infer<V>) => Promise<Outcome | Skipped>,
 ) =>
   internalMutation({
     args: { records: v.array(records) },
-    handler: async (ctx, { records: batch }) => {
-      const retiredAt = await retiredAtOf(ctx);
-      if (retiredAt !== undefined) return serialise(err<never, ImportError>({ kind: "retired", retiredAt }));
-      const record = startRecording(ctx, { kind: "things" }, "things.import");
-      const counts: StageCounts = { inserted: 0, updated: 0, unchanged: 0 };
-      const skipped: Skipped[] = [];
-      for (const incoming of batch as Infer<V>[]) {
-        const outcome = await importOne(ctx, record, incoming);
-        if (typeof outcome === "string") counts[outcome] += 1;
-        else skipped.push(outcome);
-      }
-      await record.finish();
-      return serialise(ok<{ counts: StageCounts; skipped: Skipped[] }, ImportError>({ counts, skipped }));
-    },
+    handler: Effect.fn("thingsImport.stage")(function* ({ records: batch }) {
+      return yield* asWire(
+        Effect.gen(function* () {
+          yield* stayOpen();
+          const ctx = yield* Writes;
+          const record = startRecording(ctx, { kind: "things" }, "things.import");
+          const counts: StageCounts = { inserted: 0, updated: 0, unchanged: 0 };
+          const skipped: Skipped[] = [];
+          for (const incoming of batch as Infer<V>[]) {
+            const outcome = yield* writing((writes) => importOne(writes, record, incoming));
+            if (typeof outcome === "string") counts[outcome] += 1;
+            else skipped.push(outcome);
+          }
+          yield* Effect.promise(() => record.finish());
+          return { counts, skipped };
+        }),
+      );
+    }),
   });
 
 export const importAreas = stage(vIncomingArea, async (ctx, record, { uuid, title, colour }) => {
@@ -220,19 +231,21 @@ const vTableCounts = v.object({
 
 export const finish = internalMutation({
   args: { counts: vTableCounts },
-  handler: async (ctx, { counts }) => {
-    const state = await syncState(ctx);
-    if (state?.retiredAt !== undefined) {
-      return serialise(err<never, ImportError>({ kind: "retired", retiredAt: state.retiredAt }));
-    }
-    const synced = { syncedAt: Date.now(), counts };
-    if (state) await ctx.db.replace("thingsSync", state._id, synced);
-    else await ctx.db.insert("thingsSync", synced);
-    return serialise(ok<{ syncedAt: number }, ImportError>({ syncedAt: synced.syncedAt }));
-  },
+  handler: Effect.fn("thingsImport.finish")(function* ({ counts }) {
+    return yield* asWire(
+      Effect.gen(function* () {
+        const state = yield* reading(syncState);
+        if (state?.retiredAt !== undefined) return yield* new Retired({ retiredAt: state.retiredAt });
+        const synced = { syncedAt: yield* Clock.currentTimeMillis, counts };
+        if (state) yield* writing((ctx) => ctx.db.replace("thingsSync", state._id, synced));
+        else yield* writing((ctx) => ctx.db.insert("thingsSync", synced));
+        return { syncedAt: synced.syncedAt };
+      }),
+    );
+  }),
 });
 
 export const retiredAt = internalQuery({
   args: {},
-  handler: async (ctx) => (await retiredAtOf(ctx)) ?? null,
+  handler: () => reading(async (ctx) => (await retiredAtOf(ctx)) ?? null),
 });

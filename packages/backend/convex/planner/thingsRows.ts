@@ -1,6 +1,6 @@
 import { v, type Infer } from "convex/values";
-import { Result, err, ok } from "neverthrow";
-import { parseIsoDate } from "../../shared/date";
+import { Result } from "effect";
+import { parseIsoDate } from "../../shared/effect/date";
 import {
   colours,
   vAreaBase,
@@ -99,41 +99,45 @@ export const unpackDate = (packed: number) => {
   const year = packed >> 16;
   const month = (packed >> 12) & 15;
   const day = (packed >> 7) & 31;
-  return parseIsoDate(`${pad(year, 4)}-${pad(month)}-${pad(day)}`).mapErr<SkipReason>(() => "invalid_date");
+  return parseIsoDate(`${pad(year, 4)}-${pad(month)}-${pad(day)}`).pipe(Result.mapError(() => "invalid_date" as const));
 };
 
 const msFrom = (seconds: number | null) => Math.round((seconds ?? 0) * 1000);
 
 const whenOf = (item: Item) => {
   const { startDate, evening } = item;
-  if (startDate !== null) return unpackDate(startDate).map<When>((date) => ({ kind: "scheduled", date, evening }));
+  if (startDate !== null) {
+    return unpackDate(startDate).pipe(Result.map((date) => ({ kind: "scheduled", date, evening }) satisfies When));
+  }
   const kind = STARTS[item.start];
-  return kind ? ok<When, SkipReason>({ kind }) : err<When, SkipReason>("unknown_start");
+  return kind ? Result.succeed<When>({ kind }) : Result.fail<SkipReason>("unknown_start");
 };
 
 const deadlineOf = (item: Item) =>
   item.deadline === null
-    ? ok<{ deadline?: string }, SkipReason>({})
-    : unpackDate(item.deadline).map<{ deadline?: string }>((deadline) => ({ deadline }));
+    ? Result.succeed<{ deadline?: string }>({})
+    : unpackDate(item.deadline).pipe(Result.map((deadline) => ({ deadline })));
 
 const statusOf = (item: Item) => {
   const at = msFrom(item.stopDate ?? item.modifiedAt);
-  if (item.status === 0) return ok<Status, SkipReason>({ kind: "open" });
-  if (item.status === 2) return ok<Status, SkipReason>({ kind: "canceled", at });
-  if (item.status === 3) return ok<Status, SkipReason>({ kind: "completed", at });
-  return err<Status, SkipReason>("unknown_status");
+  if (item.status === 0) return Result.succeed<Status>({ kind: "open" });
+  if (item.status === 2) return Result.succeed<Status>({ kind: "canceled", at });
+  if (item.status === 3) return Result.succeed<Status>({ kind: "completed", at });
+  return Result.fail<SkipReason>("unknown_status");
 };
 
 const commonFields = (item: Item) =>
-  Result.combine([whenOf(item), deadlineOf(item), statusOf(item)]).map(([when, deadline, status]) => ({
-    title: item.title,
-    notes: item.notes,
-    when,
-    ...deadline,
-    status,
-    ...(item.trashed ? { trashedAt: msFrom(item.modifiedAt) } : {}),
-    tags: item.tags,
-  }));
+  Result.all([whenOf(item), deadlineOf(item), statusOf(item)]).pipe(
+    Result.map(([when, deadline, status]) => ({
+      title: item.title,
+      notes: item.notes,
+      when,
+      ...deadline,
+      status,
+      ...(item.trashed ? { trashedAt: msFrom(item.modifiedAt) } : {}),
+      tags: item.tags,
+    })),
+  );
 
 const parentOf = (item: Item, headingProjects: ReadonlyMap<string, string>) => {
   const headingProject = item.heading === null ? undefined : headingProjects.get(item.heading);
@@ -165,16 +169,17 @@ export const fromThingsRows = (rows: ThingsRows) => {
       if (item.project === null) skip(item, "missing_parent");
       else headings.push({ uuid: item.uuid, title: item.title, project: item.project });
     } else if (item.type === PROJECT) {
-      commonFields(item).match(
-        (fields) => projects.push({ uuid: item.uuid, ...fields, ...(item.area === null ? {} : { area: item.area }) }),
-        (reason) => skip(item, reason),
-      );
+      Result.match(commonFields(item), {
+        onSuccess: (fields) =>
+          projects.push({ uuid: item.uuid, ...fields, ...(item.area === null ? {} : { area: item.area }) }),
+        onFailure: (reason) => skip(item, reason),
+      });
     } else if (item.type === TO_DO) {
-      commonFields(item).match(
-        (fields) =>
+      Result.match(commonFields(item), {
+        onSuccess: (fields) =>
           tasks.push({ uuid: item.uuid, ...fields, todayIndex: item.todayIndex, parent: parentOf(item, headingProjects) }),
-        (reason) => skip(item, reason),
-      );
+        onFailure: (reason) => skip(item, reason),
+      });
     } else {
       skip(item, "unknown_type");
     }
