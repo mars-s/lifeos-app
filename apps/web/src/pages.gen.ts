@@ -48,6 +48,8 @@ import type { getConfig as File_DesignGenui_getConfig } from './pages/design/gen
 // prettier-ignore
 import type { getConfig as File_DesignNotes_getConfig } from './pages/design/notes';
 // prettier-ignore
+import type { getConfig as File_DesignTimeline_getConfig } from './pages/design/timeline';
+// prettier-ignore
 import type { getConfig as File_DesignWidgets_getConfig } from './pages/design/widgets';
 // prettier-ignore
 import type { getConfig as File_AppLayout_getConfig } from './pages/(app)/_layout';
@@ -78,6 +80,7 @@ type Page =
 | ({ path: '/design/canvas' } & GetConfigResponse<typeof File_DesignCanvas_getConfig>)
 | ({ path: '/design/genui' } & GetConfigResponse<typeof File_DesignGenui_getConfig>)
 | ({ path: '/design/notes' } & GetConfigResponse<typeof File_DesignNotes_getConfig>)
+| ({ path: '/design/timeline' } & GetConfigResponse<typeof File_DesignTimeline_getConfig>)
 | ({ path: '/design/widgets' } & GetConfigResponse<typeof File_DesignWidgets_getConfig>);
 
 // prettier-ignore

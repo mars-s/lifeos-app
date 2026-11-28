@@ -56,6 +56,16 @@ Picked by Avi on 28 November 2026 as the style for the iPhone and Mac widgets. T
 
 Leave behind: the hover tooltip and the wide chart (a widget is a still snapshot), and the health subject itself.
 
+## Timeline (Exoplan)
+
+A promo shot of the Exoplan iPhone app, picked by Avi on 28 November 2026 for the Planner's day and week views. The design that uses it is [timeline.md](../timeline.md).
+
+| File | Take from it |
+| --- | --- |
+| `exoplan/01-exoplan-day.png` | A time rail down the left with hour labels and a line that traces the day. Blocks as tall as they are long, with the gaps between them labelled. Travel folded into a block ("Commute included"). A week strip across the top with today marked and a ring for the day on the right. A tick on the block, "Tap to complete", and a floating + button. |
+
+Leave behind: the glow and the bending line, the dark glass, the icons on blocks, and the score out of 100 (ours is Capacity, in time).
+
 Avi's notes alongside these:
 
 - Keep the deadline and the allocated time separate.
