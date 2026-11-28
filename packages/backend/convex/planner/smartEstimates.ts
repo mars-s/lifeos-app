@@ -1,18 +1,20 @@
 import { v } from "convex/values";
+import { Clock, Effect, Result } from "effect";
 import { internal } from "../_generated/api";
-import { internalAction, internalMutation, internalQuery, type MutationCtx, type QueryCtx } from "../_generated/server";
+import type { FunctionReference } from "convex/server";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { focusedMs, MINUTE_MS } from "../../shared/focus";
-import { ownerMutation, ownerQuery } from "../platform/access";
+import { acting, internalAction, internalMutation, internalQuery, ownerMutation, ownerQuery, reading, writing } from "../platform/effect";
 import type { ModelId } from "../../shared/ai";
 import { attemptsFor, capabilityChain, capabilityReady } from "../ai/capabilities";
-import { askChoice } from "../ai/transport";
 import { featureUses } from "../platform/features";
 import { roundTripMinutes } from "../places/model";
 import { chosenTrip } from "../places/trips";
 import { workingHoursOf } from "../calendar/workingHours";
 import { sha256Hex } from "../platform/workers";
 import {
+  askDecision,
   calibrationOf,
   canonicalJson,
   bucketsFor,
@@ -21,7 +23,6 @@ import {
   isTooVague,
   estimateAsk,
   nearestExamples,
-  parseDecision,
   reasonFor,
   trimNotes,
   type Calibration,
@@ -65,7 +66,7 @@ export const requestSuggestion = async (ctx: MutationCtx, taskId: Id<"tasks">, {
 
 export const request = ownerMutation({
   args: { taskId: v.id("tasks") },
-  handler: async (ctx, { taskId }) => ({ requested: await requestSuggestion(ctx, taskId, { onlyFirst: true }) }),
+  handler: ({ taskId }) => writing(async (ctx) => ({ requested: await requestSuggestion(ctx, taskId, { onlyFirst: true }) })),
 });
 
 const workingDayMinutes = ({ startMinute, endMinute }: { startMinute: number; endMinute: number }) => endMinute - startMinute;
@@ -100,14 +101,16 @@ const viewOf = (task: Doc<"tasks">, row: Doc<"estimateSuggestions"> | null, dayM
   return { kind: "presets" } satisfies EstimateView;
 };
 
+const estimateViewFor = async (ctx: QueryCtx, taskId: Id<"tasks">) => {
+  const task = await ctx.db.get("tasks", taskId);
+  if (!task || !(await smartEstimatesOn(ctx))) return { kind: "presets" } satisfies EstimateView;
+  const [row, hours, trip] = await Promise.all([suggestionRow(ctx, taskId), workingHoursOf(ctx), tripTime(ctx, taskId)]);
+  return viewOf(task, row, workingDayMinutes(hours), trip);
+};
+
 export const forTask = ownerQuery({
   args: { taskId: v.id("tasks") },
-  handler: async (ctx, { taskId }) => {
-    const task = await ctx.db.get("tasks", taskId);
-    if (!task || !(await smartEstimatesOn(ctx))) return { kind: "presets" } satisfies EstimateView;
-    const [row, hours, trip] = await Promise.all([suggestionRow(ctx, taskId), workingHoursOf(ctx), tripTime(ctx, taskId)]);
-    return viewOf(task, row, workingDayMinutes(hours), trip);
-  },
+  handler: ({ taskId }) => reading((ctx) => estimateViewFor(ctx, taskId)),
 });
 
 export const guessesFor = async (ctx: QueryCtx, tasks: readonly Doc<"tasks">[]) => {
@@ -205,9 +208,7 @@ export type SuggestionPlan =
   | { kind: "gone" }
   | { kind: "ask"; signal: EstimateSignal; calibration: Calibration | null; dayMinutes: number; chain: ModelId[]; cachedHash: string | null };
 
-export const planFor = internalQuery({
-  args: { taskId: v.id("tasks"), requestedAt: v.number() },
-  handler: async (ctx, { taskId, requestedAt }) => {
+const suggestionPlanFor = async (ctx: QueryCtx, taskId: Id<"tasks">, requestedAt: number) => {
     const skip = { kind: "skip" } satisfies SuggestionPlan;
     const row = await suggestionRow(ctx, taskId);
     if (!row || row.requestedAt !== requestedAt) return skip;
@@ -235,49 +236,70 @@ export const planFor = internalQuery({
       chain,
       cachedHash: row.outcome.kind === "suggested" || row.outcome.kind === "unclear" ? row.outcome.inputsHash : null,
     } satisfies SuggestionPlan;
-  },
+};
+
+export const planFor = internalQuery({
+  args: { taskId: v.id("tasks"), requestedAt: v.number() },
+  handler: ({ taskId, requestedAt }) => reading((ctx) => suggestionPlanFor(ctx, taskId, requestedAt)),
 });
 
 export const record = internalMutation({
   args: { taskId: v.id("tasks"), requestedAt: v.number(), outcome: v.optional(vSuggestionOutcome) },
   returns: v.null(),
-  handler: async (ctx, { taskId, requestedAt, outcome }) => {
-    const row = await suggestionRow(ctx, taskId);
-    if (row?.requestedAt !== requestedAt) return null;
-    await ctx.db.patch("estimateSuggestions", row._id, { answeredAt: requestedAt, ...(outcome ? { outcome } : {}) });
-    return null;
-  },
+  handler: ({ taskId, requestedAt, outcome }) =>
+    writing(async (ctx) => {
+      const row = await suggestionRow(ctx, taskId);
+      if (row?.requestedAt !== requestedAt) return null;
+      await ctx.db.patch("estimateSuggestions", row._id, { answeredAt: requestedAt, ...(outcome ? { outcome } : {}) });
+      return null;
+    }),
 });
 
 export const forget = internalMutation({
   args: { taskId: v.id("tasks") },
   returns: v.null(),
-  handler: async (ctx, { taskId }) => {
-    const row = await suggestionRow(ctx, taskId);
-    if (row) await ctx.db.delete("estimateSuggestions", row._id);
-    return null;
-  },
+  handler: ({ taskId }) =>
+    writing(async (ctx) => {
+      const row = await suggestionRow(ctx, taskId);
+      if (row) await ctx.db.delete("estimateSuggestions", row._id);
+      return null;
+    }),
 });
+
+type SuggestArgs = { taskId: Id<"tasks">; requestedAt: number };
+
+const planForQuery: FunctionReference<"query", "internal", SuggestArgs, SuggestionPlan> = internal.planner.smartEstimates.planFor;
+
+const recordOutcome = (args: SuggestArgs & { outcome?: SuggestionOutcome }) =>
+  acting(async (ctx) => {
+    await ctx.runMutation(internal.planner.smartEstimates.record, args);
+  });
+
+const forgetRow = (taskId: Id<"tasks">) =>
+  acting(async (ctx) => {
+    await ctx.runMutation(internal.planner.smartEstimates.forget, { taskId });
+  });
 
 export const suggest = internalAction({
   args: { taskId: v.id("tasks"), requestedAt: v.number() },
   returns: v.null(),
-  handler: async (ctx, args) => {
-    const plan: SuggestionPlan = await ctx.runQuery(internal.planner.smartEstimates.planFor, args);
-    if (plan.kind === "gone") await ctx.runMutation(internal.planner.smartEstimates.forget, { taskId: args.taskId });
-    if (plan.kind === "settle") await ctx.runMutation(internal.planner.smartEstimates.record, args);
+  handler: Effect.fn("smartEstimates.suggest")(function* (args) {
+    const plan = yield* acting((ctx) => ctx.runQuery(planForQuery, args));
+    if (plan.kind === "gone") yield* forgetRow(args.taskId);
+    if (plan.kind === "settle") yield* recordOutcome(args);
     if (plan.kind !== "ask") return null;
     const { signal, calibration, dayMinutes } = plan;
     const buckets = bucketsFor(dayMinutes);
-    const inputsHash = await sha256Hex(canonicalJson({ model: plan.chain[0], signal, calibration, buckets }));
+    const inputsHash = yield* Effect.promise(() => sha256Hex(canonicalJson({ model: plan.chain[0], signal, calibration, buckets })));
     if (plan.cachedHash === inputsHash) {
-      await ctx.runMutation(internal.planner.smartEstimates.record, args);
+      yield* recordOutcome(args);
       return null;
     }
-    const answer = await askChoice(await attemptsFor(ctx, plan.chain), estimateAsk(signal, buckets), (body) => parseDecision(buckets, body));
-    const at = Date.now();
-    const outcome: SuggestionOutcome = answer.match(
-      ({ answeredBy, value: { pick, confidence, probabilities, vague, model } }) => {
+    const attempts = yield* acting((ctx) => attemptsFor(ctx, plan.chain));
+    const answer = yield* Effect.result(askDecision(attempts, estimateAsk(signal, buckets), buckets));
+    const at = yield* Clock.currentTimeMillis;
+    const outcome: SuggestionOutcome = Result.match(answer, {
+      onSuccess: ({ answeredBy, value: { pick, confidence, probabilities, vague, model } }) => {
         if (isTooVague({ vague, confidence })) return { kind: "unclear" as const, vague, answeredBy, inputsHash, at };
         const { guesses, likely: minutes } = guessesFrom(buckets, { pick, confidence, probabilities }, calibration ?? undefined);
         return {
@@ -294,9 +316,9 @@ export const suggest = internalAction({
           at,
         };
       },
-      (error) => ({ kind: "failed" as const, error, inputsHash, at }),
-    );
-    await ctx.runMutation(internal.planner.smartEstimates.record, { ...args, outcome });
+      onFailure: (error) => ({ kind: "failed" as const, error, inputsHash, at }),
+    });
+    yield* recordOutcome({ ...args, outcome });
     return null;
-  },
+  }),
 });

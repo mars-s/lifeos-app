@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi 
 import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { DECISIONS_URL, newAiBackend as newBackend, unwrap, type Backend } from "../backend.test-utils";
+import { resultToWire } from "../../shared/effect/wire";
 import { bucketsFor, calibrationOf, guessesFrom, isPlaceholderTitle, isTooVague, nearestExamples, nudged, parseDecision, type PastTask } from "./smartEstimateModel";
 
 const BUCKETS = bucketsFor(510);
@@ -455,15 +456,18 @@ describe("the estimate model", () => {
   });
 
   test("answers are read by their labels, and one outside the offered choices is refused", () => {
-    expect(parseDecision(BUCKETS, { answers: [{ type: "choice", name: "estimate", choice: "37", confidence: 1 }] })._unsafeUnwrapErr()).toEqual({
-      kind: "invalid_response",
+    expect(resultToWire(parseDecision(BUCKETS, { answers: [{ type: "choice", name: "estimate", choice: "37", confidence: 1 }] }))).toEqual({
+      ok: false,
+      error: { kind: "invalid_response" },
     });
     expect(
-      parseDecision(BUCKETS, {
-        answers: [{ type: "choice", name: "estimate", choice: "1.5 hours", confidence: 0.6, probabilities: [{ value: "1.5 hours", probability: 0.6 }] }],
-        model: "gpt-6-luna",
-      })._unsafeUnwrap(),
-    ).toEqual({ pick: 90, confidence: 0.6, probabilities: [{ minutes: 90, probability: 0.6 }], vague: 0, model: "gpt-6-luna" });
+      resultToWire(
+        parseDecision(BUCKETS, {
+          answers: [{ type: "choice", name: "estimate", choice: "1.5 hours", confidence: 0.6, probabilities: [{ value: "1.5 hours", probability: 0.6 }] }],
+          model: "gpt-6-luna",
+        }),
+      ),
+    ).toEqual({ ok: true, value: { pick: 90, confidence: 0.6, probabilities: [{ minutes: 90, probability: 0.6 }], vague: 0, model: "gpt-6-luna" } });
   });
 });
 

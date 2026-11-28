@@ -1,6 +1,7 @@
-import { err, ok } from "neverthrow";
-import type { ChoiceAsk } from "../ai/transport";
-import type { SmartEstimateError } from "./tables";
+import { Predicate, Result } from "effect";
+import { askChoice, type Attempt, type ChoiceAsk } from "../ai/transport";
+import { effectFromNeverthrow, toNeverthrow } from "../../shared/effect/bridge";
+import { EstimateInvalidResponse, EstimateRefused, type DecisionFailure } from "./smartEstimateErrors";
 
 export const QUESTION_NAME = "estimate";
 export const VAGUE_QUESTION = "too_vague";
@@ -228,36 +229,53 @@ export const estimateAsk = (signal: EstimateSignal, buckets: readonly Bucket[]) 
   ],
 }) satisfies ChoiceAsk;
 
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
-
 const offeredMinutes = (buckets: readonly Bucket[], value: unknown) => buckets.find((bucket) => bucket.value === value)?.minutes;
 
 const probabilitiesOf = (buckets: readonly Bucket[], value: unknown) =>
   (Array.isArray(value) ? value : []).flatMap((entry: unknown) => {
-    if (!isRecord(entry) || typeof entry.probability !== "number") return [];
-    const minutes = offeredMinutes(buckets, entry.value);
+    if (!Predicate.hasProperty(entry, "probability") || !Predicate.isNumber(entry.probability)) return [];
+    const minutes = offeredMinutes(buckets, Predicate.hasProperty(entry, "value") ? entry.value : undefined);
     return minutes === undefined ? [] : [{ minutes, probability: Math.round(entry.probability * 1000) / 1000 }];
   });
 
+const decided = (decision: Decision) => {
+  const parsed: Result.Result<Decision, DecisionFailure> = Result.succeed(decision);
+  return parsed;
+};
+
+const invalidResponse = () => {
+  const parsed: Result.Result<Decision, DecisionFailure> = Result.fail(new EstimateInvalidResponse());
+  return parsed;
+};
+
+const numberOr = (value: unknown, fallback: number) => (Predicate.isNumber(value) ? value : fallback);
+
+const named = (answers: readonly unknown[], name: string) => answers.find((entry) => Predicate.hasProperty(entry, "name") && entry.name === name);
+
 export const parseDecision = (buckets: readonly Bucket[], body: unknown) => {
-  const invalid = err<Decision, SmartEstimateError>({ kind: "invalid_response" });
-  if (!isRecord(body) || !Array.isArray(body.answers)) return invalid;
-  const answers: unknown[] = body.answers;
-  const named = (name: string) => answers.find((entry): entry is Record<string, unknown> => isRecord(entry) && entry.name === name);
-  const answer = named(QUESTION_NAME);
-  if (!answer) return invalid;
-  if (answer.type === "refusal") return err<Decision, SmartEstimateError>({ kind: "refused" });
-  const pick = offeredMinutes(buckets, answer.choice);
-  if (answer.type !== "choice" || pick === undefined) return invalid;
-  const vague = named(VAGUE_QUESTION);
-  return ok<Decision, SmartEstimateError>({
+  if (!Predicate.hasProperty(body, "answers") || !Array.isArray(body.answers)) return invalidResponse();
+  const answer = named(body.answers, QUESTION_NAME);
+  if (!Predicate.isObjectOrArray(answer)) return invalidResponse();
+  const type = Predicate.hasProperty(answer, "type") ? answer.type : undefined;
+  if (type === "refusal") {
+    const refused: Result.Result<Decision, DecisionFailure> = Result.fail(new EstimateRefused());
+    return refused;
+  }
+  const pick = offeredMinutes(buckets, Predicate.hasProperty(answer, "choice") ? answer.choice : undefined);
+  if (type !== "choice" || pick === undefined) return invalidResponse();
+  const vague = named(body.answers, VAGUE_QUESTION);
+  const vagueness = Predicate.hasProperty(vague, "type") && vague.type === "predicate" && Predicate.hasProperty(vague, "probability") ? vague.probability : 0;
+  return decided({
     pick,
-    confidence: typeof answer.confidence === "number" ? answer.confidence : 0,
-    probabilities: probabilitiesOf(buckets, answer.probabilities),
-    vague: vague?.type === "predicate" && typeof vague.probability === "number" ? vague.probability : 0,
-    model: typeof body.model === "string" ? body.model : "unknown",
+    confidence: numberOr(Predicate.hasProperty(answer, "confidence") ? answer.confidence : undefined, 0),
+    probabilities: probabilitiesOf(buckets, Predicate.hasProperty(answer, "probabilities") ? answer.probabilities : undefined),
+    vague: numberOr(vagueness, 0),
+    model: Predicate.hasProperty(body, "model") && Predicate.isString(body.model) ? body.model : "unknown",
   });
 };
+
+export const askDecision = (attempts: readonly Attempt[], ask: ChoiceAsk, buckets: readonly Bucket[]) =>
+  effectFromNeverthrow(() => askChoice(attempts, ask, (body) => toNeverthrow(parseDecision(buckets, body))));
 
 const shown = (title: string) => (title.length > TITLE_SHOWN ? `${title.slice(0, TITLE_SHOWN - 1)}…` : title);
 
@@ -289,7 +307,7 @@ export const reasonFor = (signal: EstimateSignal, calibration: Calibration | und
 
 export const canonicalJson = (value: unknown) =>
   JSON.stringify(value, (_key, inner: unknown) =>
-    isRecord(inner) && !Array.isArray(inner)
+    Predicate.isObject(inner)
       ? Object.fromEntries(Object.entries(inner).toSorted(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
       : inner,
   );
