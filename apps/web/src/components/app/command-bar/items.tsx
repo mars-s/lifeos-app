@@ -1,5 +1,6 @@
 "use client";
 
+import { Result } from "effect";
 import { FEATURE_IDS, FEATURES, type FeatureId } from "@lifeos/backend/features";
 import { FEATURE_ICONS } from "../settings/feature-icons";
 import type { FeatureState } from "../settings/feature-state";
@@ -159,7 +160,7 @@ export const estimateItems = (tasks: readonly PlannerTask[], query: string, act:
       run: () => act.setEstimate(tasks, minutes),
       figure: minutes !== null,
     }) satisfies BarItem;
-  const typed = parseEstimateText(query).unwrapOr(null);
+  const typed = Result.getOrNull(parseEstimateText(query));
   return [
     ...(typed !== null && !ESTIMATES.includes(typed) ? [set(typed, query.trim().toLowerCase())] : []),
     ...ESTIMATES.map((minutes) => set(minutes)),

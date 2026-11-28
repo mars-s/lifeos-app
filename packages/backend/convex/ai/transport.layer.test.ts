@@ -3,11 +3,11 @@ import { MockLanguageModelV4 } from "ai/test";
 import { Effect, Layer, Result } from "effect";
 import { HttpClient, HttpClientError, HttpClientResponse } from "effect/http";
 import { PROVIDERS, USER_AGENT } from "../../shared/ai";
-import { asWire } from "../../shared/effect/wire";
+import { asWire } from "../../shared/result";
 import { embedTexts } from "./embeddings";
 import { AiRouter } from "./routing";
 import { parseSteps, stepsAsk } from "./steps";
-import { AiProvider, askChoiceFx, askJson, type Attempt, type ChoiceAsk } from "./transport";
+import { AiProvider, askChoice, askJson, type Attempt, type ChoiceAsk } from "./transport";
 
 type Asked = { url: string; headers: Record<string, string>; body: unknown };
 
@@ -66,7 +66,7 @@ describe("the live AiProvider on a canned HttpClient", () => {
     Effect.gen(function* () {
       const asked: Asked[] = [];
       const answer = { model: "gpt-6-luna", answers: [{ type: "predicate", name: "vague", probability: 0.1 }] };
-      const read = yield* askChoiceFx([decisions], choiceAsk, (body) => Result.succeed(body)).pipe(Effect.provide(answering(asked, () => Response.json(answer))));
+      const read = yield* askChoice([decisions], choiceAsk, (body) => Result.succeed(body)).pipe(Effect.provide(answering(asked, () => Response.json(answer))));
       expect(read).toStrictEqual({ answeredBy: "openai/decisions/gpt-6-luna", value: answer });
       expect(asked[0]?.body).toStrictEqual({
         model: "gpt-6-luna",

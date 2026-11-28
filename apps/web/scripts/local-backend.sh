@@ -21,6 +21,7 @@ import { settle } from "./planner/rollups";
 import { seedPlanner } from "./planner/seed.test-utils";
 import { seedTimebox } from "./planner/planSeed.test-utils";
 import { seedSleep } from "./health/sleepSeed.test-utils";
+import { Result } from "effect";
 import { addDays, parseIsoDate } from "../shared/date";
 import { generateNKeysBetween } from "fractional-indexing";
 import { zonedMoment } from "./calendar/model";
@@ -60,7 +61,7 @@ export const seed = internalMutation({
   args: { today: v.optional(v.string()), timeZone: v.optional(v.string()) },
   handler: async (ctx, args) => {
     for (const table of SEEDED) for (const row of await ctx.db.query(table).collect()) await ctx.db.delete(table, row._id);
-    const today = parseIsoDate(args.today ?? "").unwrapOr(localIsoDate(new Date()));
+    const today = Result.getOrElse(parseIsoDate(args.today ?? ""), () => localIsoDate(new Date()));
     await seedPlanner(ctx, today, Date.now());
     await seedTimebox(ctx, today, args.timeZone ?? "Australia/Sydney");
     await seedSleep(ctx, today, args.timeZone ?? "Australia/Sydney");
@@ -81,7 +82,7 @@ export const seedBulk = internalMutation({
     logbook: v.optional(v.number()),
   },
   handler: async (ctx, { inbox = 300, perDay = 12, anytime = 400, logbook = 1500, ...args }) => {
-    const today = parseIsoDate(args.today ?? "").unwrapOr(localIsoDate(new Date()));
+    const today = Result.getOrElse(parseIsoDate(args.today ?? ""), () => localIsoDate(new Date()));
     const timeZone = args.timeZone ?? "Australia/Sydney";
     const areas = await ctx.db.query("areas").collect();
     const projects = await ctx.db.query("projects").collect();

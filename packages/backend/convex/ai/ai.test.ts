@@ -5,7 +5,7 @@ import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { costLine, modelChain, PROVIDERS } from "../../shared/ai";
 import { DECISIONS_URL, GO_CHAT_URL, newAiBackend, newBackend, OPENAI_CHAT_URL, switchAiOn, unwrap, type Backend } from "../backend.test-utils";
-import { resultToWire } from "../../shared/effect/wire";
+import { resultToWire } from "../../shared/result";
 import { decisionsFromChat, type Question } from "./transport";
 
 type Call = { url: string; authorization: string | null; session: string | null; body: Record<string, unknown> };

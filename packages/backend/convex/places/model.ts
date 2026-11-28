@@ -1,6 +1,5 @@
 import { Effect, Option, Result, Schema } from "effect";
 import type { TravelMode } from "../../shared/features";
-import { toNeverthrow } from "../../shared/effect/bridge";
 import type { ChoiceAsk } from "../ai/transport";
 import { GeocoderInvalidResponse, PlacesInvalidResponse, PlacesRefused, PlacesUnavailable } from "./errors";
 import type { Place, Position } from "./tables";
@@ -106,7 +105,7 @@ const Answer = Schema.Struct({
 
 const decodeAnswer = Schema.decodeUnknownOption(Answer);
 
-export const parseTripDecisionFx = (body: unknown) =>
+export const parseTripDecision = (body: unknown) =>
   Result.gen(function* () {
     const { answers } = yield* Result.mapError(Schema.decodeUnknownResult(TripAnswers)(body), () => new PlacesInvalidResponse());
     const decoded = answers.flatMap((entry) => Option.toArray(decodeAnswer(entry)));
@@ -117,8 +116,6 @@ export const parseTripDecisionFx = (body: unknown) =>
     const chosen = place?.type === "choice" && place.choice !== undefined && place.choice !== NO_PLACE ? place.choice : null;
     return { trip: trip.probability, place: chosen } satisfies TripDecision;
   });
-
-export const parseTripDecision = (body: unknown) => toNeverthrow(parseTripDecisionFx(body));
 
 export const kindOf = (phrase: string) => {
   const key = phrase.trim().toLowerCase();

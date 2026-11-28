@@ -1,10 +1,9 @@
 import { v } from "convex/values";
 import { Effect, Result } from "effect";
-import { parseTimeZoneFx, zonedIso, zonedMoment } from "../calendar/model";
+import { parseTimeZone, zonedIso, zonedMoment } from "../calendar/model";
 import type { QueryCtx } from "../_generated/server";
-import { addDays, daysBetween, type IsoDate } from "../../shared/date";
-import { parseIsoDate } from "../../shared/effect/date";
-import { asWire } from "../../shared/effect/wire";
+import { addDays, daysBetween, type IsoDate, parseIsoDate } from "../../shared/date";
+import { asWire } from "../../shared/result";
 import { ownerQuery, reading } from "../platform/effect";
 import { InvalidHealthRange } from "./errors";
 import { DAY_MINUTES, MINUTE_MS, USUAL_NIGHTS, usualSleep } from "./model";
@@ -198,7 +197,7 @@ const parseArgs = (args: { from: string; to: string; today: string; timeZone: st
     const from = yield* Result.mapError(parseIsoDate(args.from), () => new InvalidHealthRange());
     const to = yield* Result.mapError(parseIsoDate(args.to), () => new InvalidHealthRange());
     const today = yield* Result.mapError(parseIsoDate(args.today), () => new InvalidHealthRange());
-    const timeZone = yield* Result.mapError(parseTimeZoneFx(args.timeZone), () => new InvalidHealthRange());
+    const timeZone = yield* Result.mapError(parseTimeZone(args.timeZone), () => new InvalidHealthRange());
     const span = yield* parseRange(from, to);
     return { from, span, today, timeZone };
   });

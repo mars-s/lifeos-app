@@ -12,11 +12,8 @@ import {
 import type { Doc } from "../_generated/dataModel";
 import * as access from "./access";
 import { startRecording, type Recorder as Recording } from "./activity";
-import { changeAs, registerChange } from "./change";
 import type { Actor } from "./tables";
-import { fromNeverthrow, toNeverthrow } from "../../shared/effect/bridge";
-import { resultToWire, valueOrThrow, type WireError } from "../../shared/effect/wire";
-import type { SerialisedResult } from "../../shared/result";
+import { resultToWire, valueOrThrow, wireError, type WireError, type SerialisedResult } from "../../shared/result";
 
 export class Reads extends Context.Service<Reads, QueryCtx>()("lifeos/platform/Reads") {}
 
@@ -25,6 +22,8 @@ export class Writes extends Context.Service<Writes, MutationCtx>()("lifeos/platf
 export class Acts extends Context.Service<Acts, ActionCtx>()("lifeos/platform/Acts") {}
 
 export class Recorder extends Context.Service<Recorder, Recording>()("lifeos/platform/Recorder") {}
+
+export class Unrecorded extends Context.Service<Unrecorded, MutationCtx>()("lifeos/platform/Unrecorded") {}
 
 export class CurrentActor extends Context.Service<CurrentActor, Actor>()("lifeos/platform/CurrentActor") {}
 
@@ -38,6 +37,9 @@ export const acting = <A>(act: (ctx: ActionCtx) => Promise<A>) => Acts.use((ctx)
 
 export const recording = <A>(write: (record: Recording) => Promise<A>) =>
   Recorder.use((record) => Effect.promise(() => write(record)));
+
+export const changing = <A>(write: (ctx: MutationCtx, record: Recording) => Promise<A>) =>
+  Effect.flatMap(Recorder, (record) => Unrecorded.use((ctx) => Effect.promise(() => write(ctx, record))));
 
 const insideConvex = new Scheduler.MixedScheduler("sync");
 
@@ -56,7 +58,7 @@ const withWrites =
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     effect.pipe(Effect.provideService(Writes, ctx), Effect.provideService(Reads, ctx));
 
-export type ChangeServices = Reads | Recorder | CurrentActor;
+export type ChangeServices = Reads | Recorder | Unrecorded | CurrentActor;
 
 type Handler<Args extends PropertyValidators, A, R> = (args: ObjectType<Args>) => Effect.Effect<A, never, R>;
 
@@ -70,32 +72,39 @@ export const runChange = <A extends object, E>(ctx: MutationCtx, actor: Actor, a
   Effect.gen(function* () {
     const record = startRecording(ctx, actor, action);
     const outcome = yield* Effect.result(
-      effect.pipe(Effect.provideService(Recorder, record), Effect.provideService(CurrentActor, actor), withReads(ctx)),
+      effect.pipe(
+        Effect.provideService(Recorder, record),
+        Effect.provideService(Unrecorded, ctx),
+        Effect.provideService(CurrentActor, actor),
+        withReads(ctx),
+      ),
     );
     const activityId = yield* Effect.promise(() => record.finish());
     if (Result.isFailure(outcome) && activityId !== null) return yield* Effect.die(refusedAfterWrite(action));
     return yield* Effect.fromResult(Result.map(outcome, (value) => ({ ...value, activityId })));
   });
 
-export const legacyRead = <A, E extends WireError>(ctx: QueryCtx, effect: Effect.Effect<A, E, Reads>) =>
-  runAtEdge(Effect.result(effect).pipe(withReads(ctx))).then(toNeverthrow);
+type ChangeRun = (ctx: MutationCtx, actor: Actor, args: never) => Effect.Effect<Result.Result<unknown, unknown>>;
 
-export const legacyWrite = <A, E extends WireError>(ctx: MutationCtx, effect: Effect.Effect<A, E, Reads | Writes>) =>
-  runAtEdge(Effect.result(effect).pipe(withWrites(ctx))).then(toNeverthrow);
+const changes = new WeakMap<object, ChangeRun>();
 
-export const legacyChange = <A, E extends WireError>(ctx: QueryCtx, record: Recording, effect: Effect.Effect<A, E, Reads | Recorder>) =>
-  runAtEdge(Effect.result(effect).pipe(Effect.provideService(Recorder, record), withReads(ctx))).then(toNeverthrow);
-
-export const readAsOwnerFx = <Args extends DefaultFunctionArgs, Output>(
+export const readAsOwner = <Args extends DefaultFunctionArgs, Output>(
   registered: RegisteredQuery<"public", Args, Promise<Output>>,
   args: Args,
 ) => reading((ctx) => access.readAsOwner(ctx, registered, args));
 
-export const changeAsFx = <Args extends DefaultFunctionArgs, T, E>(
+export const changeAs = <Args extends DefaultFunctionArgs, T, E>(
   actor: Actor,
   registered: RegisteredMutation<"public", Args, Promise<SerialisedResult<T, E>>>,
   args: Omit<Args, "agentRun">,
-) => writing((ctx) => changeAs(ctx, actor, registered, args)).pipe(Effect.flatMap((result) => Effect.fromResult(fromNeverthrow(result))));
+) =>
+  Effect.gen(function* () {
+    const run = changes.get(registered);
+    if (!run) return yield* Effect.die(new Error("changeAs needs a mutation built with changeMutation."));
+    const ctx = yield* Writes;
+    const outcome = yield* run(ctx, actor, args as never);
+    return yield* Effect.fromResult(outcome as Result.Result<T, E>);
+  });
 
 export const ownerQuery = <Args extends PropertyValidators, A>(spec: { args: Args; handler: Handler<Args, A, Reads> }) =>
   access.ownerQuery({ args: spec.args, handler: (ctx, args) => runAtEdge(spec.handler(args).pipe(withReads(ctx))) });
@@ -112,12 +121,12 @@ export const changeMutation = <Args extends PropertyValidators, A extends object
   handler: (args: ObjectType<Args>) => Effect.Effect<A, E, ChangeServices>;
 }) => {
   const change = (ctx: MutationCtx, actor: Actor, args: ObjectType<Args>) =>
-    runAtEdge(Effect.result(runChange(ctx, actor, spec.action, spec.handler(args))));
+    Effect.result(runChange(ctx, actor, spec.action, spec.handler(args)));
   const registered = access.ownerMutation({
     args: spec.args,
-    handler: async (ctx, args, actor) => resultToWire(await change(ctx, actor, args)),
+    handler: async (ctx, args, actor) => resultToWire(await runAtEdge(change(ctx, actor, args))),
   });
-  registerChange(registered, async (ctx, actor, args: ObjectType<Args>) => toNeverthrow(await change(ctx, actor, args)));
+  changes.set(registered, (ctx, actor, args: ObjectType<Args>) => Effect.map(change(ctx, actor, args), Result.mapError(wireError)));
   return registered;
 };
 

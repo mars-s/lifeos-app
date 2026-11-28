@@ -1,6 +1,7 @@
 import { expect, expectTypeOf, test } from "vitest";
 import type { Id } from "../_generated/dataModel";
-import { wireError, type SameWire } from "../../shared/effect/wire";
+import type { EntityRef, RecordRef } from "./tables";
+import { wireError, type SameWire } from "../../shared/result";
 import {
   ChangedSince,
   EntityNotFound,
@@ -12,10 +13,25 @@ import {
   type SecretFailure,
   type UndoFailure,
 } from "./errors";
-import type { JobError } from "./jobs";
-import type { LinkError } from "./links";
-import type { SecretError } from "./secrets";
-import type { UndoError } from "./undo";
+
+type JobError = { readonly kind: "not_claimed"; readonly jobId: Id<"jobs"> };
+
+type LinkError = { readonly kind: "not_found"; readonly entity: EntityRef };
+
+type SecretError =
+  | { readonly kind: "empty" }
+  | { readonly kind: "not_set_up" }
+  | { readonly kind: "refused" }
+  | { readonly kind: "unreachable" }
+  | { readonly kind: "unavailable"; readonly status: number };
+
+type UndoError =
+  | { readonly kind: "not_found" }
+  | { readonly kind: "not_undoable"; readonly reason: "undo" | "things" | "recurrence" | "permanent" }
+  | { readonly kind: "already_undone" }
+  | { readonly kind: "nothing_to_undo" }
+  | { readonly kind: "run_active" }
+  | { readonly kind: "changed_since"; readonly entity: RecordRef };
 
 test("every platform failure crosses the wire as the plain error the apps already read", () => {
   expectTypeOf<SameWire<UndoFailure, UndoError>>().toEqualTypeOf<true>();

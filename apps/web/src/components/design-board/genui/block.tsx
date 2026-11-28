@@ -2,6 +2,7 @@
 
 import interUrl from "@fontsource-variable/inter/files/inter-latin-opsz-normal.woff2?url";
 import monoUrl from "@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2?url";
+import { Result } from "effect";
 import { frameMarkup, parseSpec, readSpec, type UiNode } from "@lifeos/backend/client/genui";
 import { ArrowClockwise } from "@phosphor-icons/react";
 import { Suspense, use, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -257,7 +258,7 @@ export const GenBlock = ({
   useEffect(() => {
     world.load(nodes.filter((node) => node.tag === "Data"));
   }, [nodes, world]);
-  const layer = checked.isOk() ? checked.value.layer : 2;
+  const layer = Result.isSuccess(checked) ? checked.success.layer : 2;
 
   return (
     <article data-genui-block data-layer={layer} className={cn("flex min-w-0 flex-col rounded-2xl bg-popover shadow-lift", className)}>
@@ -277,10 +278,10 @@ export const GenBlock = ({
         </button>
       </header>
       <div className={cn("flex min-w-0 flex-col gap-3 px-3.5 pb-3.5 transition-opacity duration-(--dur-base)", state === "stale" && "opacity-60")}>
-        {checked.isErr() && !streaming ? (
+        {Result.isFailure(checked) && !streaming ? (
           <div role="alert" className="rounded-xl bg-foreground/[0.045] px-3 py-2.5">
             <p className="text-small font-medium">This block could not be drawn</p>
-            <p className="mt-0.5 text-micro text-pretty text-muted-foreground">{checked.error[0]}</p>
+            <p className="mt-0.5 text-micro text-pretty text-muted-foreground">{checked.failure[0]}</p>
           </div>
         ) : parts.length === 0 && streaming ? (
           <Wait />

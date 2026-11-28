@@ -9,10 +9,8 @@ import { commitmentsBetween } from "../calendar/commitments";
 import { blocksTime, MINUTE_MS, parseTimeZone, zonedDate, zonedMoment } from "../calendar/model";
 import { energyDays } from "../health/energy";
 import { chosenTrip } from "../places/trips";
-import { addDays, type IsoDate } from "../../shared/date";
-import { fromNeverthrow } from "../../shared/effect/bridge";
-import { parseIsoDate } from "../../shared/effect/date";
-import { asWire } from "../../shared/effect/wire";
+import { addDays, type IsoDate, parseIsoDate } from "../../shared/date";
+import { asWire } from "../../shared/result";
 import { dayShareCap } from "../../shared/plan";
 import { inkLoad, PREDICT_DAYS, predictDay } from "../../shared/timeline";
 import { InvalidPlan } from "./errors";
@@ -37,7 +35,7 @@ const parseNow = (now: number) => {
 };
 
 const parseZone = (timeZone: string) => {
-  const zone: Result.Result<string, unknown> = fromNeverthrow(parseTimeZone(timeZone));
+  const zone: Result.Result<string, unknown> = parseTimeZone(timeZone);
   return Result.mapError(zone, () => new InvalidPlan({ reason: "time_zone" }));
 };
 

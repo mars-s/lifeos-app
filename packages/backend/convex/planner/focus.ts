@@ -4,8 +4,7 @@ import type { WithoutSystemFields } from "convex/server";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { Recorder } from "../platform/activity";
-import { changeMutation, ownerQuery, Reads, reading, recording } from "../platform/effect";
-import { effectFromNeverthrow } from "../../shared/effect/bridge";
+import { changeMutation, ownerQuery, reading, recording } from "../platform/effect";
 import {
   DEFAULT_FOCUS_PLAN,
   MAX_EXTEND_MINUTES,
@@ -68,16 +67,14 @@ export const endFocusOnClosedTask = async (ctx: MutationCtx, record: Recorder, n
 
 const ending = (session: Session, now: number) => recording((record) => end(record, session, now));
 
-const loaded = <T extends "tasks" | "focusSessions">(table: T, id: Id<T>) => Reads.use((ctx) => effectFromNeverthrow(() => load(ctx, table, id)));
-
 const loadOpenTask = Effect.fn("focus.loadOpenTask")(function* (taskId: Id<"tasks">) {
-  const task = yield* loaded("tasks", taskId);
+  const task = yield* load("tasks", taskId);
   if (task.status.kind !== "open" || task.trashedAt !== undefined) return yield* new InvalidFocus({ reason: "task_closed" });
   return task;
 });
 
 const loadSession = Effect.fn("focus.loadSession")(function* (sessionId: Id<"focusSessions">) {
-  const session = yield* loaded("focusSessions", sessionId);
+  const session = yield* load("focusSessions", sessionId);
   if (session.removedAt !== undefined) return yield* new NotFound({ table: "focusSessions", id: sessionId });
   return session;
 });
@@ -200,7 +197,7 @@ export const advance = changeMutation({
     const { taskId, kind, pomodoro } = session;
     if (!pomodoro) return yield* new InvalidFocus({ reason: "not_pomodoro" });
     const next = nextStep(pomodoro, kind);
-    yield* next.kind === "focus" ? loadOpenTask(taskId) : loaded("tasks", taskId);
+    yield* next.kind === "focus" ? loadOpenTask(taskId) : load("tasks", taskId);
     const now = yield* Clock.currentTimeMillis;
     yield* ending(session, now);
     const nextId = yield* recording((record) => record.insert("focusSessions", sessionFor(taskId, next.pomodoro, next.kind, now)));

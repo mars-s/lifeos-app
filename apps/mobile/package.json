@@ -34,7 +34,6 @@
     "expo-web-browser": "~58.1.0",
     "fractional-indexing": "^3.4.0",
     "lucide-react-native": "^1.75.0",
-    "neverthrow": "^8.2.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-native": "0.88.1",

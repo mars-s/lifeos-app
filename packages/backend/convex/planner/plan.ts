@@ -1,15 +1,12 @@
 import { v } from "convex/values";
 import { Effect, Result } from "effect";
-import type { MutationCtx, QueryCtx } from "../_generated/server";
+import type { QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
-import type { Recorder } from "../platform/activity";
-import { changeMutation, legacyChange, ownerQuery, reading, recording } from "../platform/effect";
+import { changeMutation, ownerQuery, reading, recording } from "../platform/effect";
 import { capacityDays } from "../calendar/capacity";
 import { parseTimeZone, zonedMoment } from "../calendar/model";
-import { addDays, type IsoDate } from "../../shared/date";
-import { fromNeverthrow, toNeverthrow } from "../../shared/effect/bridge";
-import { parseIsoDate } from "../../shared/effect/date";
-import { asWire } from "../../shared/effect/wire";
+import { addDays, type IsoDate, parseIsoDate } from "../../shared/date";
+import { asWire } from "../../shared/result";
 import { byDayPlan, dayLoad, dayShareCap, goalMinutesOf, MAX_GOAL_MINUTES, placeInDay } from "../../shared/plan";
 import { uncreatedDates } from "../../shared/recurrence";
 import { InvalidPlan, NotFound } from "./errors";
@@ -38,7 +35,7 @@ const parseDays = (days: number) => {
 const parsePlanDate = (date: string) => parseIsoDate(date).pipe(Result.mapError(() => invalid("range")));
 
 const parseZone = (timeZone: string) => {
-  const zone: Result.Result<string, unknown> = fromNeverthrow(parseTimeZone(timeZone));
+  const zone: Result.Result<string, unknown> = parseTimeZone(timeZone);
   return Result.mapError(zone, () => invalid("time_zone"));
 };
 
@@ -164,12 +161,10 @@ const parseSpot = <P extends { order: Id<"tasks">[]; at: number }>(place: P) => 
   return parsed;
 };
 
-export const parseNewPlaceFx = (place: { date: string; order: Id<"tasks">[]; at: number }) =>
+export const parseNewPlace = (place: { date: string; order: Id<"tasks">[]; at: number }) =>
   Result.flatMap(parsePlanDate(place.date), (date) => parseSpot({ ...place, date }));
 
-export const parseNewPlace = (place: { date: string; order: Id<"tasks">[]; at: number }) => toNeverthrow(parseNewPlaceFx(place));
-
-export const placeOnDayFx = Effect.fn("plan.placeOnDay")(function* (
+export const placeOnDay = Effect.fn("plan.placeOnDay")(function* (
   task: Doc<"tasks">,
   date: IsoDate,
   order: Id<"tasks">[],
@@ -188,9 +183,6 @@ export const placeOnDayFx = Effect.fn("plan.placeOnDay")(function* (
   return { moved };
 });
 
-export const placeOnDay = (ctx: MutationCtx, record: Recorder, task: Doc<"tasks">, date: IsoDate, order: Id<"tasks">[], evening: boolean) =>
-  legacyChange(ctx, record, placeOnDayFx(task, date, order, evening));
-
 export const place = changeMutation({
   action: "plan.place",
   args: { taskId: v.id("tasks"), date: v.string(), order: v.array(v.id("tasks")), evening: v.optional(v.boolean()) },
@@ -198,7 +190,7 @@ export const place = changeMutation({
     const day = yield* Effect.fromResult(parsePlanDate(date));
     const task = yield* reading((ctx) => ctx.db.get("tasks", taskId));
     if (!task) return yield* new NotFound({ table: "tasks", id: taskId });
-    return yield* placeOnDayFx(task, day, order, evening ?? (task.when.kind === "scheduled" && task.when.evening));
+    return yield* placeOnDay(task, day, order, evening ?? (task.when.kind === "scheduled" && task.when.evening));
   }),
 });
 

@@ -1,3 +1,4 @@
+import { Result } from "effect";
 import { Bell, Plus, Square } from "lucide-react-native";
 import { useState } from "react";
 import { Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
@@ -114,7 +115,7 @@ const LengthField = ({ label, value, custom, onChange }: { label: string; value:
   const commit = () => {
     if (draft === null || draft.trim() === "") return setDraft(null);
     const parsed = parseEstimateText(draft.trim());
-    if (parsed.isErr() || parsed.value > MAX_FOCUS_MINUTES) {
+    if (Result.isFailure(parsed) || parsed.success > MAX_FOCUS_MINUTES) {
       haptic("error");
       setRefused(true);
       setDraft(null);
@@ -122,7 +123,7 @@ const LengthField = ({ label, value, custom, onChange }: { label: string; value:
     }
     setDraft(null);
     setRefused(false);
-    if (parsed.value !== value) onChange(parsed.value);
+    if (parsed.success !== value) onChange(parsed.success);
   };
   const on = custom && draft === null;
   return (

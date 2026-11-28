@@ -1,5 +1,5 @@
 import { expect, expectTypeOf, test } from "vitest";
-import { wireError, type SameWire } from "../../shared/effect/wire";
+import { wireError, type SameWire } from "../../shared/result";
 import { EstimateInvalidResponse, EstimateRefused, type DecisionFailure } from "./smartEstimateErrors";
 import type { SmartEstimateError } from "./tables";
 

@@ -3,9 +3,8 @@ import { Effect } from "effect";
 import type { QueryCtx } from "../_generated/server";
 import { ownerQuery, reading } from "../platform/effect";
 import type { Doc } from "../_generated/dataModel";
-import type { IsoDate } from "../../shared/date";
-import { parseIsoDate } from "../../shared/effect/date";
-import { asWire } from "../../shared/effect/wire";
+import { type IsoDate, parseIsoDate } from "../../shared/date";
+import { asWire } from "../../shared/result";
 import { areaSummary, loadContainers, projectProgress, projectSummary } from "./rows";
 import { openTodayTasks } from "./today";
 

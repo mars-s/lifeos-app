@@ -2,7 +2,7 @@
 
 import { useId, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { Result } from "effect";
-import { parseEstimateText } from "@lifeos/backend/effect/estimate";
+import { parseEstimateText } from "@lifeos/backend/estimate";
 import { RollingNumber } from "@/components/ui/rolling-number";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";

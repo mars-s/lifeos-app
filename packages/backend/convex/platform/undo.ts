@@ -2,19 +2,13 @@ import { v } from "convex/values";
 import { Clock, Effect } from "effect";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
-import { asWire } from "../../shared/effect/wire";
+import { asWire, type Wire } from "../../shared/result";
 import { fromStored, recordedFields, sameValue, startRecording } from "./activity";
-import { CurrentActor, legacyWrite, ownerMutation, reading, writing } from "./effect";
-import { ActivityNotFound, AlreadyUndone, ChangedSince, NothingToUndo, NotUndoable, RunActive } from "./errors";
+import { CurrentActor, ownerMutation, reading, writing } from "./effect";
+import { ActivityNotFound, AlreadyUndone, ChangedSince, NothingToUndo, NotUndoable, RunActive, type UndoFailure } from "./errors";
 import { vEntityRef, type Actor, type EntityRef, type RecordRef, type UndoTarget } from "./tables";
 
-export type UndoError =
-  | { readonly kind: "not_found" }
-  | { readonly kind: "not_undoable"; readonly reason: "undo" | "things" | "recurrence" | "permanent" }
-  | { readonly kind: "already_undone" }
-  | { readonly kind: "nothing_to_undo" }
-  | { readonly kind: "run_active" }
-  | { readonly kind: "changed_since"; readonly entity: RecordRef };
+export type UndoError = Wire<UndoFailure>;
 
 type Expected = { entity: RecordRef; fields: Map<string, unknown> | null; exact: boolean };
 
@@ -156,7 +150,7 @@ const revert = Effect.fn("undo.revert")(function* (actor: Actor, undoes: UndoTar
   return { undoActivityId: yield* writing((ctx) => revertAll(ctx, actor, undoes, changes)) };
 });
 
-export const undoActivityFx = Effect.fn("undo.activity")(function* (actor: Actor, activityId: Id<"activity">) {
+export const undoActivity = Effect.fn("undo.activity")(function* (actor: Actor, activityId: Id<"activity">) {
   const activity = yield* reading((ctx) => ctx.db.get("activity", activityId));
   if (!activity) return yield* new ActivityNotFound();
   if (activity.undoes) return yield* new NotUndoable({ reason: "undo" });
@@ -168,7 +162,7 @@ export const undoActivityFx = Effect.fn("undo.activity")(function* (actor: Actor
   return yield* revert(actor, { kind: "activity", activityId }, yield* changesOf(activityId));
 });
 
-export const undoAgentRunFx = Effect.fn("undo.agentRun")(function* (actor: Actor, jobId: Id<"jobs">) {
+export const undoAgentRun = Effect.fn("undo.agentRun")(function* (actor: Actor, jobId: Id<"jobs">) {
   if (yield* runUndone(jobId)) return yield* new AlreadyUndone();
   const run = yield* reading((ctx) => ctx.db.get("jobs", jobId));
   const now = yield* Clock.currentTimeMillis;
@@ -189,17 +183,12 @@ export const undoAgentRunFx = Effect.fn("undo.agentRun")(function* (actor: Actor
   return yield* revert(actor, { kind: "run", jobId }, changes);
 });
 
-export const undoActivity = (ctx: MutationCtx, actor: Actor, activityId: Id<"activity">) =>
-  legacyWrite(ctx, undoActivityFx(actor, activityId));
-
-export const undoAgentRun = (ctx: MutationCtx, actor: Actor, jobId: Id<"jobs">) => legacyWrite(ctx, undoAgentRunFx(actor, jobId));
-
 export const undo = ownerMutation({
   args: { activityId: v.id("activity") },
-  handler: ({ activityId }) => Effect.flatMap(CurrentActor, (actor) => asWire(undoActivityFx(actor, activityId))),
+  handler: ({ activityId }) => Effect.flatMap(CurrentActor, (actor) => asWire(undoActivity(actor, activityId))),
 });
 
 export const undoRun = ownerMutation({
   args: { jobId: v.id("jobs") },
-  handler: ({ jobId }) => Effect.flatMap(CurrentActor, (actor) => asWire(undoAgentRunFx(actor, jobId))),
+  handler: ({ jobId }) => Effect.flatMap(CurrentActor, (actor) => asWire(undoAgentRun(actor, jobId))),
 });

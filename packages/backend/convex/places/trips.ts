@@ -4,24 +4,22 @@ import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { internalMutation, internalQuery, type MutationCtx, type QueryCtx } from "../_generated/server";
 import { TRIP_LOOK_LIMIT_MS, type TravelMode } from "../../shared/features";
-import { effectFromNeverthrow } from "../../shared/effect/bridge";
-import { wireError } from "../../shared/effect/wire";
+import { wireError } from "../../shared/result";
 import { acting, changeMutation, internalAction, ownerMutation, ownerQuery, reading, recording, writing } from "../platform/effect";
 import { attemptsFor, capabilityChain } from "../ai/capabilities";
-import { askChoice } from "../ai/transport";
+import { AiProvider, askChoice } from "../ai/transport";
 import { featureReady, featureState } from "../platform/features";
 import { sha256Hex } from "../platform/workers";
 import type { ModelId } from "../../shared/ai";
 import { canonicalJson } from "../planner/smartEstimateModel";
-import { NoTrip, UnknownPlace } from "./errors";
+import type { AiFailure } from "../ai/errors";
+import { NoTrip, UnknownPlace, type PlacesFailure } from "./errors";
 import { parseTripDecision, placePhrases, roundedPosition, TRIP_THRESHOLD, tripAsk, type TripDecision } from "./model";
 import { Places } from "./provider";
 import { homeOf } from "./saved";
 import { vTripOutcome, type Position, type TripOutcome } from "./tables";
 
 export const DEBOUNCE_MS = 2_000;
-
-export type TripError = { readonly kind: "no_trip" } | { readonly kind: "unknown_place" };
 
 const tripRow = (ctx: QueryCtx, taskId: Id<"tasks">) =>
   ctx.db
@@ -228,11 +226,13 @@ export const locate = internalAction({
     const inputsHash = yield* Effect.promise(() => sha256Hex(canonicalJson({ model: plan.chain[0], title, phrases, from, mode })));
     if (plan.cachedHash === inputsHash) return null;
     const attempts = yield* acting((ctx) => attemptsFor(ctx, plan.chain));
-    const decided = yield* Effect.result(effectFromNeverthrow(() => askChoice(attempts, tripAsk(title, phrases), parseTripDecision)));
+    const decided = yield* Effect.result(askChoice(attempts, tripAsk(title, phrases), parseTripDecision).pipe(Effect.provide(AiProvider.layer)));
     const query = Result.isSuccess(decided) ? placeWanted(decided.success.value) : null;
     if (query) yield* markSearching({ ...args, query });
     const answeredBy = Result.isSuccess(decided) ? decided.success.answeredBy : undefined;
-    const searched = Result.isFailure(decided) ? Result.fail(decided.failure) : yield* Effect.result(tripFor(query, from, mode));
+    const searched: Result.Result<Effect.Success<ReturnType<typeof tripFor>>, AiFailure | PlacesFailure> = Result.isFailure(decided)
+      ? Result.fail(decided.failure)
+      : yield* Effect.result(tripFor(query, from, mode));
     const at = yield* Clock.currentTimeMillis;
     const outcome: TripOutcome = Result.isSuccess(searched)
       ? { ...searched.success, ...(answeredBy ? { answeredBy } : {}), inputsHash, at }

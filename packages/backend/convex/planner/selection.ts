@@ -2,11 +2,11 @@ import { v } from "convex/values";
 import type { WithoutSystemFields } from "convex/server";
 import { Clock, Effect, Result } from "effect";
 import type { Doc, Id } from "../_generated/dataModel";
-import { reading, recording, type ChangeServices } from "../platform/effect";
+import { changing, reading, recording, type ChangeServices } from "../platform/effect";
 import { SelectionTooLarge } from "./errors";
 import { endFocusOnClosedTask } from "./focus";
 import { followCompletion } from "./recurrence";
-import { changing, keyAfter, lastTaskOrder, loadFx, parseDeadline, parseEstimate, parseParent, parseWhen, plannerChange } from "./model";
+import { keyAfter, lastTaskOrder, load, parseDeadline, parseEstimate, parseParent, parseWhen, plannerChange } from "./model";
 import { vParent, vWhen, type Parent } from "./tables";
 
 const MAX_SELECTION = 500;
@@ -18,7 +18,7 @@ const loadAll = Effect.fn("selection.loadAll")(function* (taskIds: Id<"tasks">[]
   const unique = [...new Set(taskIds)];
   if (unique.length > MAX_SELECTION) return yield* new SelectionTooLarge({ limit: MAX_SELECTION });
   const tasks: Doc<"tasks">[] = [];
-  for (const id of unique) tasks.push(yield* loadFx("tasks", id));
+  for (const id of unique) tasks.push(yield* load("tasks", id));
   return tasks;
 });
 
@@ -71,7 +71,7 @@ export const setLabel = plannerChange({
   handler: ({ taskIds, labelId, on }) =>
     applyToAll(
       taskIds,
-      Effect.map(loadFx("labels", labelId), () =>
+      Effect.map(load("labels", labelId), () =>
         perTask((task) => {
           const others = task.labelIds.filter((id) => id !== labelId);
           return { labelIds: on ? [...others, labelId] : others };

@@ -3,7 +3,7 @@ import { Effect, Layer, Option, Redacted } from "effect";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import { TestClock } from "effect/testing";
 import { vi } from "vitest";
-import { asWire } from "../../shared/effect/wire";
+import { asWire } from "../../shared/result";
 import { OuraUnauthorised } from "./errors";
 import { Oura, OuraToken } from "./oura";
 

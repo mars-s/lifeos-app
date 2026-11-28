@@ -2,32 +2,27 @@ import type { RegisteredMutation } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { Effect, Schema } from "effect";
 import { expect, expectTypeOf, test } from "vitest";
-import type { ActionCtx, MutationCtx } from "../_generated/server";
+import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { newBackend, registerWorker, runIn, type Backend } from "../backend.test-utils";
-import { readAsOwner } from "./access";
-import { startRecording } from "./activity";
-import { changeAs } from "./change";
+import { readAsOwner as readAsOwnerIn } from "./access";
 import {
-  changeAsFx,
+  changeAs,
   changeMutation,
   CurrentActor,
   CurrentWorker,
   internalAction,
   internalMutation,
-  legacyChange,
-  legacyRead,
   ownerQuery,
   reading,
-  readAsOwnerFx,
+  readAsOwner,
   recording,
   runChange,
   workerMutation,
   writing,
   Writes,
 } from "./effect";
-import type { Wire } from "../../shared/effect/wire";
-import type { SerialisedResult } from "../../shared/result";
+import type { Wire, SerialisedResult } from "../../shared/result";
 
 class EmptyTitle extends Schema.TaggedError<EmptyTitle>()("EffectTestEmptyTitle", { kind: Schema.tag("empty_title") }) {}
 
@@ -126,7 +121,7 @@ test("a change that succeeds returns the same wire shape as before, with its Act
   const saved = await t.run((ctx) => handlerOf<{ title: string }, unknown>(addArea)(ctx, { title: " Home " }));
   expect(saved).toStrictEqual({ ok: true, value: { areaId: expect.any(String), named: "Home", by: "avi", activityId: expect.any(String) } });
   expect(await counts(t)).toEqual([1, 1]);
-  expect(await t.run((ctx) => readAsOwner(ctx, areaTitles, {}))).toEqual([" Home "]);
+  expect(await t.run((ctx) => readAsOwnerIn(ctx, areaTitles, {}))).toEqual([" Home "]);
 });
 
 test("a refusal before any write crosses the wire as { ok: false, error: { kind } }", async () => {
@@ -147,28 +142,24 @@ test("a change refused after it wrote keeps none of it", async () => {
 
 test("a throw inside an Effect leaves the function as the same error, not a wrapped one", async () => {
   const t = await newBackend();
-  const thrown = await t.run((ctx) => readAsOwner(ctx, strict, {})).catch((error: unknown) => error);
+  const thrown = await t.run((ctx) => readAsOwnerIn(ctx, strict, {})).catch((error: unknown) => error);
   expect(thrown).toBeInstanceOf(ConvexError);
   expect((thrown as ConvexError<{ kind: string }>).data.kind).toBe("not_owner");
 });
 
-test("changeAs runs a change built with the Effect builder, so agent tools reach both kinds", async () => {
+test("changeAs runs a change built with the Effect builder, and a refusal after a write is a defect", async () => {
   const t = await newBackend();
-  const areaId = await seedArea(t);
-  const renamed = await t.run(async (ctx) => (await changeAs(ctx, { kind: "avi" }, renameArea, { areaId, title: "Uni" }))._unsafeUnwrap());
-  expect(renamed).toStrictEqual({ changed: true, activityId: expect.any(String) });
-  const refused = await t.run(async (ctx) => (await changeAs(ctx, { kind: "avi" }, renameArea, { areaId, title: " " }))._unsafeUnwrapErr());
-  expect(refused).toStrictEqual({ kind: "empty_title" });
-  await expect(t.run((ctx) => changeAs(ctx, { kind: "avi" }, addArea, { title: " " }))).rejects.toThrow("refused after it had written");
+  await expect(runIn(t, changeAs({ kind: "avi" }, addArea, { title: " " }))).rejects.toThrow("refused after it had written");
+  expect(await counts(t)).toEqual([0, 0]);
 });
 
-test("changeAsFx and readAsOwnerFx give agent tools the same results as Effects", async () => {
+test("changeAs and readAsOwner give agent tools the same results as Effects", async () => {
   const t = await newBackend();
   const areaId = await seedArea(t);
   const run = Effect.gen(function* () {
-    const renamed = yield* changeAsFx({ kind: "avi" }, renameArea, { areaId, title: "Uni" });
-    const refused = yield* Effect.flip(changeAsFx({ kind: "avi" }, renameArea, { areaId, title: "" }));
-    const titles = yield* readAsOwnerFx(areaTitles, {});
+    const renamed = yield* changeAs({ kind: "avi" }, renameArea, { areaId, title: "Uni" });
+    const refused = yield* Effect.flip(changeAs({ kind: "avi" }, renameArea, { areaId, title: "" }));
+    const titles = yield* readAsOwner(areaTitles, {});
     return { renamed, refused, titles };
   });
   expect(await runIn(t, run)).toStrictEqual({
@@ -196,24 +187,6 @@ const renameBody = (areaId: Id<"areas">, title: string) =>
     const area = yield* loadArea(areaId);
     return { changed: yield* recording((record) => record.patch("areas", area._id, { title: named })) };
   });
-
-test("legacyRead and legacyChange hand an old caller a neverthrow Result with the plain wire error", async () => {
-  const t = await newBackend();
-  const areaId = await seedArea(t);
-  const found = await t.run(async (ctx) => (await legacyRead(ctx, loadArea(areaId)))._unsafeUnwrap().title);
-  expect(found).toBe("Home");
-  await t.run((ctx) => ctx.db.delete("areas", areaId));
-  const missing = await t.run(async (ctx) => (await legacyRead(ctx, loadArea(areaId)))._unsafeUnwrapErr());
-  expect(missing).toStrictEqual({ kind: "not_found", table: "areas", id: areaId });
-
-  const other = await seedArea(t);
-  const changed = await t.run(async (ctx) => {
-    const record = startRecording(ctx as MutationCtx, { kind: "avi" }, "effectTest.legacy");
-    const outcome = await legacyChange(ctx, record, renameBody(other, "Work"));
-    return { outcome: outcome._unsafeUnwrap(), activityId: await record.finish() };
-  });
-  expect(changed).toStrictEqual({ outcome: { changed: true }, activityId: expect.any(String) });
-});
 
 test("a Worker mutation gets its Worker and may write directly; an internal mutation keeps its returns validator", async () => {
   const t = await newBackend();

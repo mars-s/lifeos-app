@@ -2,7 +2,7 @@ import { v, type Infer } from "convex/values";
 import { Clock, Effect, Result } from "effect";
 import type { MutationCtx } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
-import { asWire } from "../../shared/effect/wire";
+import { asWire } from "../../shared/result";
 import { sameValue } from "../platform/activity";
 import { CurrentWorker, workerMutation, writing } from "../platform/effect";
 import { requireCapability } from "../platform/workers";

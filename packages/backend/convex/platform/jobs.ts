@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { Clock, Effect } from "effect";
 import type { MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
-import { asWire } from "../../shared/effect/wire";
+import { asWire } from "../../shared/result";
 import { CurrentWorker, internalMutation, reading, workerMutation, writing } from "./effect";
 import { NotClaimed } from "./errors";
 import { vJob, type Capability, type Job, type JobKind } from "./tables";
@@ -12,8 +12,6 @@ export const jobKinds = {
 } as const satisfies Record<JobKind, { maxAttempts: number; leaseMs: number }>;
 
 const retryDelayMs = (attempts: number) => Math.min(5 * 60_000, 5_000 * 2 ** Math.max(0, attempts - 1));
-
-export type JobError = { readonly kind: "not_claimed"; readonly jobId: Id<"jobs"> };
 
 export const enqueueJob = async (ctx: MutationCtx, job: Job, idempotencyKey: string) => {
   const existing = await ctx.db

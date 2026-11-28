@@ -1,17 +1,6 @@
 import { Result } from "effect";
 import { addDays, laterOf, type IsoDate } from "../date";
-import { parseEnd, parseSchedule } from "../effect/recurrence";
-import {
-  MAX_EVERY,
-  MAX_REPEAT_COUNT,
-  describeSchedule,
-  firstOnOrAfter,
-  type AfterCompletion,
-  type MonthDay,
-  type RepeatEnd,
-  type Schedule,
-  type Weekday,
-} from "../recurrence";
+import { parseEnd, parseSchedule, MAX_EVERY, MAX_REPEAT_COUNT, describeSchedule, firstOnOrAfter, type AfterCompletion, type MonthDay, type RepeatEnd, type Schedule, type Weekday } from "../recurrence";
 
 export type { RepeatEnd, Schedule };
 

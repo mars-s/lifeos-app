@@ -1,10 +1,9 @@
 import { v } from "convex/values";
 import { Effect, Result } from "effect";
 import type { QueryCtx } from "../_generated/server";
-import { parseTimeZoneFx } from "../calendar/model";
-import { addDays, type IsoDate } from "../../shared/date";
-import { parseIsoDate } from "../../shared/effect/date";
-import { asWire } from "../../shared/effect/wire";
+import { parseTimeZone } from "../calendar/model";
+import { addDays, type IsoDate, parseIsoDate } from "../../shared/date";
+import { asWire } from "../../shared/result";
 import { ownerQuery, reading } from "../platform/effect";
 import { InvalidHealthRange } from "./errors";
 import { nightsBetween, parseDayCount, sleepPlan, usualSleep, USUAL_NIGHTS } from "./model";
@@ -38,7 +37,7 @@ const parseArgs = (args: { from: string; days: number; today: string; timeZone: 
     Result.mapError(parseIsoDate(args.from), () => new InvalidHealthRange()),
     parseDayCount(args.days),
     Result.mapError(parseIsoDate(args.today), () => new InvalidHealthRange()),
-    Result.mapError(parseTimeZoneFx(args.timeZone), () => new InvalidHealthRange()),
+    Result.mapError(parseTimeZone(args.timeZone), () => new InvalidHealthRange()),
   ]);
 
 const nightsFor = async (ctx: QueryCtx, from: IsoDate, count: number, today: IsoDate, timeZone: string) => {

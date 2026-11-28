@@ -1,9 +1,13 @@
 import { expect, expectTypeOf, test } from "vitest";
-import type { DateError } from "../date";
-import type { EstimateTextError } from "../estimate";
-import type { ScheduleError } from "../recurrence";
 import { InvalidDate, InvalidSchedule, UnreadableEstimate } from "./errors";
-import { wireError, type SameWire } from "./wire";
+import { wireError, type SameWire } from "./result";
+
+type DateError = { readonly kind: "invalid_date"; readonly input: string };
+type EstimateTextError = { readonly kind: "unreadable_estimate"; readonly input: string };
+type ScheduleError = {
+  readonly kind: "invalid_schedule";
+  readonly reason: "every" | "days" | "day" | "month" | "end" | "count" | "time_zone";
+};
 
 test("the shared parse failures cross the wire as the plain errors the apps already read", () => {
   expectTypeOf<SameWire<InvalidDate, DateError>>().toEqualTypeOf<true>();

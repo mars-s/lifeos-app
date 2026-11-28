@@ -1,4 +1,6 @@
+import { Result } from "effect";
 import { expect, test } from "vitest";
+import { InvalidSchedule } from "./errors";
 import type { IsoDate } from "./date";
 import {
   afterCompletionDate,
@@ -121,11 +123,13 @@ test("the local date turns over at local midnight on both daylight-saving change
   }
 });
 
+const failureOf = <A, E>(result: Result.Result<A, E>) => Result.getOrThrow(Result.flip(result));
+
 const reason = (schedule: Schedule) =>
-  parseSchedule(schedule).match(
-    () => null,
-    (error) => error.reason,
-  );
+  Result.match(parseSchedule(schedule), {
+    onSuccess: () => null,
+    onFailure: (error) => error.reason,
+  });
 
 test("schedules outside their bounds are refused with a reason, and chosen days are tidied", () => {
   expect(reason({ kind: "days", every: 0 })).toBe("every");
@@ -139,12 +143,12 @@ test("schedules outside their bounds are refused with a reason, and chosen days 
   expect(reason({ kind: "years", every: 1, month: 13, day: 1 })).toBe("month");
   expect(reason({ kind: "years", every: 1, month: 4, day: 31 })).toBe("day");
   expect(reason({ kind: "years", every: 1, month: 2, day: 29 })).toBeNull();
-  expect(parseSchedule({ kind: "weeks", every: 1, days: [4, 1, 4] })._unsafeUnwrap()).toEqual({ kind: "weeks", every: 1, days: [1, 4] });
-  expect(parseEnd({ kind: "after", count: 0 })._unsafeUnwrapErr().reason).toBe("count");
-  expect(parseEnd({ kind: "after", count: 1000 })._unsafeUnwrapErr().reason).toBe("count");
-  expect(parseEnd({ kind: "on", date: "2026-02-30" })._unsafeUnwrapErr().reason).toBe("end");
-  expect(parseTimeZone("Mars/Olympus")._unsafeUnwrapErr().reason).toBe("time_zone");
-  expect(parseTimeZone("Australia/Melbourne").isOk()).toBe(true);
+  expect(Result.getOrThrow(parseSchedule({ kind: "weeks", every: 1, days: [4, 1, 4] }))).toEqual({ kind: "weeks", every: 1, days: [1, 4] });
+  expect(failureOf(parseEnd({ kind: "after", count: 0 })).reason).toBe("count");
+  expect(failureOf(parseEnd({ kind: "after", count: 1000 })).reason).toBe("count");
+  expect(failureOf(parseEnd({ kind: "on", date: "2026-02-30" })).reason).toBe("end");
+  expect(failureOf(parseTimeZone("Mars/Olympus")).reason).toBe("time_zone");
+  expect(Result.isSuccess(parseTimeZone("Australia/Melbourne"))).toBe(true);
 });
 
 test("a Recurrence Rule reads as plain Australian English", () => {
@@ -231,7 +235,7 @@ test("the local date follows the zone on both sides of the date line", () => {
 
 test("an nth weekday month schedule is accepted as given", () => {
   const schedule = { kind: "months", every: 1, on: { kind: "weekday", nth: -1, weekday: 5 } } as const;
-  expect(parseSchedule(schedule)._unsafeUnwrap()).toEqual(schedule);
+  expect(Result.getOrThrow(parseSchedule(schedule))).toEqual(schedule);
 });
 
 test("month days read with the right ordinal suffix", () => {
@@ -239,4 +243,23 @@ test("month days read with the right ordinal suffix", () => {
   expect([1, 2, 3, 4, 11, 12, 13, 21, 23, 30].map((n) => describeSchedule({ kind: "months", every: 1, on: { kind: "day", day: n } }, never))).toEqual(
     ["1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "23rd", "30th"].map((suffix) => `Every month on the ${suffix}`),
   );
+});
+
+const refused = (fault: InvalidSchedule["reason"]) => Result.fail(new InvalidSchedule({ reason: fault }));
+
+test("a schedule is checked and tidied, and each fault names its reason", () => {
+  expect(parseSchedule({ kind: "weeks", every: 1, days: [4, 1, 4] })).toStrictEqual(Result.succeed({ kind: "weeks", every: 1, days: [1, 4] }));
+  expect(parseSchedule({ kind: "days", every: 0 })).toStrictEqual(refused("every"));
+  expect(parseSchedule({ kind: "weeks", every: 1, days: [] })).toStrictEqual(refused("days"));
+  expect(parseSchedule({ kind: "months", every: 1, on: { kind: "day", day: 32 } })).toStrictEqual(refused("day"));
+  expect(parseSchedule({ kind: "years", every: 1, month: 13, day: 1 })).toStrictEqual(refused("month"));
+  expect(parseSchedule({ kind: "years", every: 1, month: 2, day: 30 })).toStrictEqual(refused("day"));
+});
+
+test("an end and a time zone are checked", () => {
+  expect(parseEnd({ kind: "on", date: "2026-12-31" })).toStrictEqual(Result.succeed({ kind: "on", date: "2026-12-31" }));
+  expect(parseEnd({ kind: "on", date: "2026-02-30" })).toStrictEqual(refused("end"));
+  expect(parseEnd({ kind: "after", count: 1000 })).toStrictEqual(refused("count"));
+  expect(parseTimeZone("Australia/Melbourne")).toStrictEqual(Result.succeed("Australia/Melbourne"));
+  expect(parseTimeZone("Mars/Olympus")).toStrictEqual(refused("time_zone"));
 });

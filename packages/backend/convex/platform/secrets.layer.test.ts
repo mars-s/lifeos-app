@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { Effect, Layer, Option, Redacted } from "effect";
 import { HttpClient, HttpClientResponse } from "effect/http";
 import type { ActionCtx } from "../_generated/server";
-import { asWire } from "../../shared/effect/wire";
+import { asWire } from "../../shared/result";
 import { Acts } from "./effect";
 import { saveSecret, Secrets } from "./secrets";
 

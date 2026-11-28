@@ -1,8 +1,7 @@
 import { v } from "convex/values";
 import { Effect, Result } from "effect";
 import type { QueryCtx } from "../_generated/server";
-import { toNeverthrow } from "../../shared/effect/bridge";
-import { asWire } from "../../shared/effect/wire";
+import { asWire } from "../../shared/result";
 import { ownerQuery, reading } from "../platform/effect";
 import { InvalidCalendarRange } from "./errors";
 import { DAY_MS, MAX_COMMITMENT_SPAN_MS } from "./model";
@@ -28,7 +27,7 @@ export const commitmentsBetween = async (ctx: QueryCtx, from: number, to: number
   });
 };
 
-export const parseRangeFx = (from: number, to: number) => {
+export const parseRange = (from: number, to: number) => {
   const parsed: Result.Result<{ from: number; to: number }, InvalidCalendarRange> =
     Number.isFinite(from) && Number.isFinite(to) && to > from && to - from <= MAX_RANGE_MS
       ? Result.succeed({ from, to })
@@ -36,12 +35,10 @@ export const parseRangeFx = (from: number, to: number) => {
   return parsed;
 };
 
-export const parseRange = (from: number, to: number) => toNeverthrow(parseRangeFx(from, to));
-
 export const range = ownerQuery({
   args: { from: v.number(), to: v.number() },
   handler: Effect.fn("commitments.range")(function* ({ from, to }) {
-    const window = yield* Effect.fromResult(parseRangeFx(from, to));
+    const window = yield* Effect.fromResult(parseRange(from, to));
     return yield* reading((ctx) => commitmentsBetween(ctx, window.from, window.to));
   }, asWire),
 });

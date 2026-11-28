@@ -3,20 +3,18 @@ import { Clock, Effect, Result } from "effect";
 import type { WithoutSystemFields } from "convex/server";
 import type { QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
-import { changeMutation, ownerQuery, Reads, reading, recording } from "../platform/effect";
+import { changeMutation, ownerQuery, reading, recording } from "../platform/effect";
 import { featureReady, featureState } from "../platform/features";
 import { capacityDays } from "../calendar/capacity";
 import { commitmentsBetween } from "../calendar/commitments";
 import { blocksTime, MINUTE_MS, parseTimeZone, zonedMoment } from "../calendar/model";
-import { addDays, type IsoDate } from "../../shared/date";
-import { effectFromNeverthrow, fromNeverthrow } from "../../shared/effect/bridge";
-import { parseIsoDate } from "../../shared/effect/date";
-import { InvalidSchedule } from "../../shared/effect/errors";
-import { parseSchedule } from "../../shared/effect/recurrence";
-import { asWire } from "../../shared/effect/wire";
+import { addDays, type IsoDate, parseIsoDate } from "../../shared/date";
+import { InvalidSchedule } from "../../shared/errors";
+import { parseSchedule } from "../../shared/recurrence";
+import { asWire } from "../../shared/result";
 import { FOREVER, isWindow, occursOnDate, type FillSnapshot, type FillTask } from "../../shared/smartBlocks";
 import { FeatureOff, InvalidSmartBlock, NotFound } from "./errors";
-import { load, parseTitle, type PlannerError } from "./model";
+import { load, parseTitle } from "./model";
 import { isLive } from "./rows";
 import { guessesFor } from "./smartEstimates";
 import { vCalendarSchedule, vColour, vSmartBlockFilter, type CalendarSchedule, type SmartBlockFilter } from "./tables";
@@ -41,12 +39,12 @@ const refused = (reason: SmartBlockFault) => new InvalidSmartBlock({ reason });
 const smartBlocksOn = (ctx: QueryCtx) => featureReady(ctx, "smartBlocks");
 
 const parseZone = (timeZone: string) => {
-  const zone: Result.Result<string, unknown> = fromNeverthrow(parseTimeZone(timeZone));
+  const zone: Result.Result<string, unknown> = parseTimeZone(timeZone);
   return Result.mapError(zone, () => refused("time_zone"));
 };
 
 const parseName = (title: string) => {
-  const named: Result.Result<string, PlannerError> = fromNeverthrow(parseTitle(title));
+  const named = parseTitle(title);
   return named;
 };
 
@@ -92,7 +90,7 @@ export const windowOf = (block: Pick<SmartBlock, "startMinute" | "endMinute" | "
 });
 
 const liveBlock = Effect.fn("smartBlocks.liveBlock")(function* (blockId: Id<"smartBlocks">) {
-  const block = yield* Reads.use((ctx) => effectFromNeverthrow(() => load(ctx, "smartBlocks", blockId)));
+  const block = yield* load("smartBlocks", blockId);
   if (block.removedAt !== undefined) return yield* new NotFound({ table: "smartBlocks", id: blockId });
   return block;
 });

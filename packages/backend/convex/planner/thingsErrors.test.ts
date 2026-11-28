@@ -1,8 +1,10 @@
 import { expect, expectTypeOf, test } from "vitest";
-import { wireError, type SameWire } from "../../shared/effect/wire";
-import type { RetireError } from "./things";
-import type { ImportError } from "./thingsImport";
+import { wireError, type SameWire } from "../../shared/result";
 import { NeverImported, Retired } from "./thingsErrors";
+
+type RetireError = { readonly kind: "never_imported" };
+
+type ImportError = { readonly kind: "retired"; readonly retiredAt: number };
 
 test("the Things failures cross the wire as the plain errors the importer already reads", () => {
   expectTypeOf<SameWire<Retired, ImportError>>().toEqualTypeOf<true>();

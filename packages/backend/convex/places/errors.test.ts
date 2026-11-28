@@ -1,5 +1,5 @@
 import { expect, expectTypeOf, test } from "vitest";
-import { wireError, type SameWire } from "../../shared/effect/wire";
+import { wireError, type SameWire } from "../../shared/result";
 import {
   GeocoderUnavailable,
   NoTrip,
@@ -10,9 +10,16 @@ import {
   type SavePlaceFailure,
   type TripFailure,
 } from "./errors";
-import type { SavePlaceError } from "./saved";
 import type { PlacesError } from "./tables";
-import type { TripError } from "./trips";
+
+type SavePlaceError =
+  | { readonly kind: "empty" }
+  | { readonly kind: "not_found" }
+  | { readonly kind: "unreachable" }
+  | { readonly kind: "unavailable"; readonly status: number }
+  | { readonly kind: "invalid_response" };
+
+type TripError = { readonly kind: "no_trip" } | { readonly kind: "unknown_place" };
 
 test("every Places failure crosses the wire as the error the apps and the database already read", () => {
   expectTypeOf<SameWire<PlacesFailure, PlacesError>>().toEqualTypeOf<true>();

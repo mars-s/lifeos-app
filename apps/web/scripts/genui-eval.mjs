@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Result } from "effect";
 import { readSpec } from "../../../packages/backend/shared/client/genui.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -28,7 +29,7 @@ const score = (request) => {
   const layer = /<Frame[\s>]/.test(source) ? 3 : 2;
   const framed = source.match(/<Frame[\s\S]*<\/Frame>/)?.[0] ?? "";
   const clean = request.id === "palette-picker" || !HARD_COLOUR.test(framed);
-  return { id: request.id, valid: read.isOk(), layer, right: request.layer.includes(layer), issues: read.isOk() ? [] : read.error, clean, chars: source.length };
+  return { id: request.id, valid: Result.isSuccess(read), layer, right: request.layer.includes(layer), issues: Result.isSuccess(read) ? [] : read.failure, clean, chars: source.length };
 };
 
 if (command === "score") {

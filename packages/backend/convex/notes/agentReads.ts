@@ -2,7 +2,8 @@ import { tool, type ToolDefinition } from "@convex-dev/mcp";
 import { ConvexError, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { QueryCtx } from "../_generated/server";
-import { agentQuery, MCP_SCOPES } from "../platform/access";
+import { MCP_SCOPES } from "../platform/access";
+import { agentQuery, reading } from "../platform/effect";
 import { linksOf, noteRow, searchNotes, type NoteRow } from "./notes";
 
 const DEFAULT_LIMIT = 30;
@@ -51,50 +52,53 @@ const clamp = (limit: number | undefined) => Math.max(1, Math.min(limit ?? DEFAU
 
 export const listNotes = agentQuery({
   args: { limit: v.optional(v.number()) },
-  handler: async (ctx, { limit }) => {
-    const live = (
-      await ctx.db
-        .query("notes")
-        .withIndex("by_trashed", (q) => q.eq("trashedAt", undefined))
-        .take(1000)
-    ).toSorted((a, b) => b.updatedAt - a.updatedAt || b._creationTime - a._creationTime);
-    const shown = live.slice(0, clamp(limit));
-    return {
-      notes: await Promise.all(shown.map((note) => summarise(ctx, noteRow(note)))),
-      omitted: live.length - shown.length,
-    };
-  },
+  handler: ({ limit }) =>
+    reading(async (ctx) => {
+      const live = (
+        await ctx.db
+          .query("notes")
+          .withIndex("by_trashed", (q) => q.eq("trashedAt", undefined))
+          .take(1000)
+      ).toSorted((a, b) => b.updatedAt - a.updatedAt || b._creationTime - a._creationTime);
+      const shown = live.slice(0, clamp(limit));
+      return {
+        notes: await Promise.all(shown.map((note) => summarise(ctx, noteRow(note)))),
+        omitted: live.length - shown.length,
+      };
+    }),
 });
 
 export const searchNotesTool = agentQuery({
   args: { query: v.string(), limit: v.optional(v.number()) },
-  handler: async (ctx, { query, limit }) => {
-    const hits = await searchNotes(ctx, query, Math.min(clamp(limit), 50));
-    return { notes: await Promise.all(hits.map((row) => summarise(ctx, row))), omitted: 0 };
-  },
+  handler: ({ query, limit }) =>
+    reading(async (ctx) => {
+      const hits = await searchNotes(ctx, query, Math.min(clamp(limit), 50));
+      return { notes: await Promise.all(hits.map((row) => summarise(ctx, row))), omitted: 0 };
+    }),
 });
 
 export const getNote = agentQuery({
   args: { noteId: v.string() },
-  handler: async (ctx, { noteId }) => {
-    const note = await ctx.db
-      .query("notes")
-      .withIndex("by_doc", (q) => q.eq("docId", noteId))
-      .unique();
-    if (!note || note.trashedAt !== undefined) {
-      throw new ConvexError(`No note has the id "${noteId}". Use list_notes or search_notes to find one.`);
-    }
-    const links = await linksOf(ctx, note);
-    return {
-      note: await summarise(ctx, noteRow(note)),
-      linksOut: links.linksOut.map((link) =>
-        link.kind === "note"
-          ? { kind: "note", id: link.note.docId, title: link.note.title }
-          : { kind: link.table.replace(/s$/, ""), id: link.id, title: link.title },
-      ),
-      linkedFrom: links.linkedFrom.map((row) => ({ noteId: row.docId, title: row.title })),
-    };
-  },
+  handler: ({ noteId }) =>
+    reading(async (ctx) => {
+      const note = await ctx.db
+        .query("notes")
+        .withIndex("by_doc", (q) => q.eq("docId", noteId))
+        .unique();
+      if (!note || note.trashedAt !== undefined) {
+        throw new ConvexError(`No note has the id "${noteId}". Use list_notes or search_notes to find one.`);
+      }
+      const links = await linksOf(ctx, note);
+      return {
+        note: await summarise(ctx, noteRow(note)),
+        linksOut: links.linksOut.map((link) =>
+          link.kind === "note"
+            ? { kind: "note", id: link.note.docId, title: link.note.title }
+            : { kind: link.table.replace(/s$/, ""), id: link.id, title: link.title },
+        ),
+        linkedFrom: links.linkedFrom.map((row) => ({ noteId: row.docId, title: row.title })),
+      };
+    }),
 });
 
 export const notesReadTools: Record<string, ToolDefinition> = {

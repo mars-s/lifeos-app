@@ -1,5 +1,5 @@
 import { expect, expectTypeOf, test } from "vitest";
-import { wireError, type SameWire } from "../../shared/effect/wire";
+import { wireError, type SameWire } from "../../shared/result";
 import {
   AiNotConfigured,
   AiUnavailable,
@@ -10,10 +10,16 @@ import {
   type RouteFailure,
   type RunFailure,
 } from "./errors";
-import type { MemoryError } from "./memory";
-import type { RouteError } from "./routing";
-import type { RunError } from "./runs";
 import type { AiError } from "./tables";
+
+type RouteError =
+  | { readonly kind: "unknown_model"; readonly model: string }
+  | { readonly kind: "model_cannot_answer"; readonly model: string }
+  | { readonly kind: "switched_elsewhere"; readonly feature: "places" };
+
+type MemoryError = { readonly kind: "not_found" } | { readonly kind: "empty" } | { readonly kind: "memory_off" };
+
+type RunError = { readonly kind: "not_configured" } | { readonly kind: "empty_request" } | { readonly kind: "not_waiting" };
 
 test("every AI failure crosses the wire as the plain error the apps and the stored outcomes already read", () => {
   expectTypeOf<SameWire<AiFailure, AiError>>().toEqualTypeOf<true>();

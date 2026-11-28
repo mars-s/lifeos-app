@@ -4,9 +4,8 @@ import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import type { ModelId } from "../../shared/ai";
-import { effectFromNeverthrow } from "../../shared/effect/bridge";
-import { asWire, wireError } from "../../shared/effect/wire";
-import { acting, CurrentActor, internalAction, internalMutation, internalQuery, ownerMutation, ownerQuery, Reads, reading, recording, runChange, writing, Writes } from "../platform/effect";
+import { asWire, wireError } from "../../shared/result";
+import { acting, CurrentActor, internalAction, internalMutation, internalQuery, ownerMutation, ownerQuery, reading, recording, runChange, writing, Writes } from "../platform/effect";
 import { sha256Hex } from "../platform/workers";
 import { keyAfter, load, parseTitle } from "../planner/model";
 import { canonicalJson, clock, trimNotes } from "../planner/smartEstimateModel";
@@ -128,9 +127,8 @@ export const forTask = ownerQuery({
 const MAX_ACCEPTED = 20;
 
 const addSteps = Effect.fn("steps.addSteps")(function* (taskId: Id<"tasks">, titles: readonly string[]) {
-  const ctx = yield* Reads;
-  yield* effectFromNeverthrow(() => load(ctx, "tasks", taskId));
-  const valid = yield* Effect.forEach(titles.slice(0, MAX_ACCEPTED), (title) => effectFromNeverthrow(() => parseTitle(title)));
+  yield* load("tasks", taskId);
+  const valid = yield* Effect.forEach(titles.slice(0, MAX_ACCEPTED), (title) => Effect.fromResult(parseTitle(title)));
   const last = yield* reading((reads) =>
     reads.db
       .query("checklistItems")

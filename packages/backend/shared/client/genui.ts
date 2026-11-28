@@ -1,5 +1,4 @@
 import { Result } from "effect";
-import { err, ok } from "neverthrow";
 
 type Kind = "text" | "number" | "name" | readonly string[];
 type Body = "none" | "children" | "text" | "raw";
@@ -252,17 +251,12 @@ export const checkSpec = (nodes: readonly UiNode[], context: UiContext = {}) => 
   return issues;
 };
 
-export const readSpecFx = (source: string, context: UiContext = {}) => {
+export const readSpec = (source: string, context: UiContext = {}) => {
   const parsed = parseSpec(source.replace(/^\s*```\w*\n|\n```\s*$/g, ""));
   const issues = [...(parsed.complete ? [] : ["The spec stops before its last tag closes."]), ...checkSpec(parsed.nodes, context)];
   const read: Result.Result<{ nodes: UiNode[]; layer: number }, string[]> =
     issues.length > 0 ? Result.fail(issues) : Result.succeed({ nodes: parsed.nodes, layer: layerOf(parsed.nodes) });
   return read;
-};
-
-export const readSpec = (source: string, context: UiContext = {}) => {
-  const read = readSpecFx(source, context);
-  return Result.isSuccess(read) ? ok(read.success) : err(read.failure);
 };
 
 const escapeAttr = (value: string) => value.replaceAll("&", "&amp;").replaceAll('"', "&quot;");

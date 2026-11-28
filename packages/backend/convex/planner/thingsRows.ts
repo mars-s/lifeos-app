@@ -1,6 +1,6 @@
 import { v, type Infer } from "convex/values";
 import { Result } from "effect";
-import { parseIsoDate } from "../../shared/effect/date";
+import { parseIsoDate } from "../../shared/date";
 import {
   colours,
   vAreaBase,

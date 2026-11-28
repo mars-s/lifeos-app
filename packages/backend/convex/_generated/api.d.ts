@@ -96,7 +96,6 @@ import type * as platform_access from "../platform/access.js";
 import type * as platform_activity from "../platform/activity.js";
 import type * as platform_agentRuns from "../platform/agentRuns.js";
 import type * as platform_agentTools from "../platform/agentTools.js";
-import type * as platform_change from "../platform/change.js";
 import type * as platform_effect from "../platform/effect.js";
 import type * as platform_errors from "../platform/errors.js";
 import type * as platform_features from "../platform/features.js";
@@ -203,7 +202,6 @@ declare const fullApi: ApiFromModules<{
   "platform/activity": typeof platform_activity;
   "platform/agentRuns": typeof platform_agentRuns;
   "platform/agentTools": typeof platform_agentTools;
-  "platform/change": typeof platform_change;
   "platform/effect": typeof platform_effect;
   "platform/errors": typeof platform_errors;
   "platform/features": typeof platform_features;

@@ -5,19 +5,13 @@ import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { env, type ActionCtx, type QueryCtx } from "../_generated/server";
 import { PROVIDERS, USER_AGENT } from "../../shared/ai";
-import { asWire } from "../../shared/effect/wire";
-import type { SerialisedResult } from "../../shared/result";
+import { asWire, type SerialisedResult, type Wire } from "../../shared/result";
 import type { ownerAction as guardedAction } from "./access";
 import { Acts, acting, internalMutation, internalQuery, ownerAction, ownerQuery, reading, runAtEdge, writing } from "./effect";
-import { EmptySecret, KeyCheckUnavailable, KeyCheckUnreachable, KeyRefused, SecretsNotSetUp } from "./errors";
+import { EmptySecret, KeyCheckUnavailable, KeyCheckUnreachable, KeyRefused, SecretsNotSetUp, type SecretFailure } from "./errors";
 import { vSecretName, type SecretName } from "./tables";
 
-export type SecretError =
-  | { readonly kind: "empty" }
-  | { readonly kind: "not_set_up" }
-  | { readonly kind: "refused" }
-  | { readonly kind: "unreachable" }
-  | { readonly kind: "unavailable"; readonly status: number };
+export type SecretError = Wire<SecretFailure>;
 
 export type SavedSecret = { readonly last4: string; readonly savedAt: number };
 

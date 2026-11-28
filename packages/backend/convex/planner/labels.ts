@@ -1,9 +1,9 @@
 import { v } from "convex/values";
 import { Effect } from "effect";
 import type { QueryCtx } from "../_generated/server";
-import { ownerQuery, reading, recording } from "../platform/effect";
+import { changing, ownerQuery, reading, recording } from "../platform/effect";
 import { NameTaken } from "./errors";
-import { changing, keyAfter, loadFx, parseTitleFx, plannerChange } from "./model";
+import { keyAfter, load, parseTitle, plannerChange } from "./model";
 import { vColour } from "./tables";
 
 const LABEL_LIMIT = 500;
@@ -37,8 +37,8 @@ export const create = plannerChange({
   action: "label.create",
   args: { name: v.string(), colour: vColour, taskId: v.optional(v.id("tasks")) },
   handler: Effect.fn("labels.create")(function* ({ name, colour, taskId }) {
-    const validName = yield* Effect.fromResult(parseTitleFx(name));
-    const task = taskId ? yield* loadFx("tasks", taskId) : undefined;
+    const validName = yield* Effect.fromResult(parseTitle(name));
+    const task = taskId ? yield* load("tasks", taskId) : undefined;
     const existing = yield* reading((ctx) => labelNamed(ctx, validName));
     const last = existing ? undefined : yield* reading((ctx) => ctx.db.query("labels").withIndex("by_order").order("desc").first());
     const labelId = existing?._id ?? (yield* recording((record) => record.insert("labels", { name: validName, colour, order: keyAfter(last?.order) })));
@@ -53,7 +53,7 @@ export const setColour = plannerChange({
   action: "label.setColour",
   args: { labelId: v.id("labels"), colour: vColour },
   handler: Effect.fn("labels.setColour")(function* ({ labelId, colour }) {
-    yield* loadFx("labels", labelId);
+    yield* load("labels", labelId);
     return { changed: yield* recording((record) => record.patch("labels", labelId, { colour })) };
   }),
 });
@@ -62,8 +62,8 @@ export const rename = plannerChange({
   action: "label.rename",
   args: { labelId: v.id("labels"), name: v.string() },
   handler: Effect.fn("labels.rename")(function* ({ labelId, name }) {
-    const validName = yield* Effect.fromResult(parseTitleFx(name));
-    yield* loadFx("labels", labelId);
+    const validName = yield* Effect.fromResult(parseTitle(name));
+    yield* load("labels", labelId);
     const holder = yield* reading((ctx) => labelNamed(ctx, validName));
     if (holder && holder._id !== labelId) return yield* new NameTaken({ taken: holder.name });
     return { changed: yield* recording((record) => record.patch("labels", labelId, { name: validName })) };
@@ -74,7 +74,7 @@ export const remove = plannerChange({
   action: "label.remove",
   args: { labelId: v.id("labels") },
   handler: Effect.fn("labels.remove")(function* ({ labelId }) {
-    const label = yield* loadFx("labels", labelId);
+    const label = yield* load("labels", labelId);
     const open = yield* reading((ctx) =>
       ctx.db
         .query("tasks")

@@ -1,3 +1,4 @@
+import { Result } from "effect";
 import { addDays, parseIsoDate, type IsoDate } from "./date";
 import { MAX_ESTIMATE_MINUTES } from "./estimate";
 
@@ -52,9 +53,9 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const dayInMonth = (today: IsoDate, day: number, month: number) => {
   const year = Number(today.slice(0, 4));
   const thisYear = parseIsoDate(`${year}-${pad(month + 1)}-${pad(day)}`);
-  if (thisYear.isOk() && thisYear.value >= today) return thisYear.value;
+  if (Result.isSuccess(thisYear) && thisYear.success >= today) return thisYear.success;
   const nextYear = parseIsoDate(`${year + 1}-${pad(month + 1)}-${pad(day)}`);
-  return nextYear.isOk() ? nextYear.value : undefined;
+  return Result.getOrUndefined(nextYear);
 };
 
 const dateOf = (phrase: string, today: IsoDate) => {

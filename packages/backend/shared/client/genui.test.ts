@@ -1,3 +1,4 @@
+import { Result } from "effect";
 import { expect, test } from "vitest";
 import { CATALOGUE, checkSpec, frameMarkup, layerOf, parseSpec, readSpec } from "./genui";
 
@@ -10,7 +11,7 @@ const CONTEXT = { tools: ["start_focus", "stop_focus", "create_task", "set_task_
 
 test("every example in the prompt is a valid spec", () => {
   expect(EXAMPLES).toHaveLength(4);
-  for (const example of EXAMPLES) expect(readSpec(example.source, CONTEXT).isOk(), example.name).toBe(true);
+  for (const example of EXAMPLES) expect(Result.isSuccess(readSpec(example.source, CONTEXT)), example.name).toBe(true);
 });
 
 test("the prompt names every tag in the catalogue and its examples are the example files", () => {
@@ -20,7 +21,7 @@ test("the prompt names every tag in the catalogue and its examples are the examp
 
 test("the replies Haiku wrote from the prompt alone are valid and pick the expected layer", () => {
   expect(REPLIES).toHaveLength(18);
-  const framed = REPLIES.filter((reply) => readSpec(reply.source, CONTEXT)._unsafeUnwrap().layer === 3).map((reply) => reply.name);
+  const framed = REPLIES.filter((reply) => Result.getOrThrow(readSpec(reply.source, CONTEXT)).layer === 3).map((reply) => reply.name);
   expect(framed.toSorted()).toEqual(["breathing.ui", "dice-roller.ui", "noughts-and-crosses.ui", "signature.ui", "spinning-logo.ui"]);
 });
 

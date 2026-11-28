@@ -1,6 +1,6 @@
-import { Predicate, Result } from "effect";
-import { askChoice, type Attempt, type ChoiceAsk } from "../ai/transport";
-import { effectFromNeverthrow, toNeverthrow } from "../../shared/effect/bridge";
+import { Effect, Predicate, Result } from "effect";
+import { AiProvider, askChoice, type Attempt, type ChoiceAsk } from "../ai/transport";
+import { wireError } from "../../shared/result";
 import { EstimateInvalidResponse, EstimateRefused, type DecisionFailure } from "./smartEstimateErrors";
 
 export const QUESTION_NAME = "estimate";
@@ -275,7 +275,7 @@ export const parseDecision = (buckets: readonly Bucket[], body: unknown) => {
 };
 
 export const askDecision = (attempts: readonly Attempt[], ask: ChoiceAsk, buckets: readonly Bucket[]) =>
-  effectFromNeverthrow(() => askChoice(attempts, ask, (body) => toNeverthrow(parseDecision(buckets, body))));
+  askChoice(attempts, ask, (body) => parseDecision(buckets, body)).pipe(Effect.mapError(wireError), Effect.provide(AiProvider.layer));
 
 const shown = (title: string) => (title.length > TITLE_SHOWN ? `${title.slice(0, TITLE_SHOWN - 1)}…` : title);
 

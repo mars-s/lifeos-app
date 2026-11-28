@@ -11,8 +11,6 @@ const SEARCH_LIMIT = 20;
 const CHANGED_LIMIT = 500;
 const LINK_LIMIT = 200;
 
-export type NoteError = { readonly kind: "not_found" };
-
 export const noteRow = (note: Doc<"notes">) => ({
   id: note._id,
   docId: note.docId,

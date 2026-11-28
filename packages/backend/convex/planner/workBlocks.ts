@@ -2,11 +2,10 @@ import { v } from "convex/values";
 import { Clock, Effect, Result } from "effect";
 import type { WithoutSystemFields } from "convex/server";
 import type { Doc, Id } from "../_generated/dataModel";
-import { changeMutation, ownerQuery, Reads, reading, recording } from "../platform/effect";
+import { changeMutation, ownerQuery, reading, recording } from "../platform/effect";
 import { parseRange } from "../calendar/commitments";
-import { parseIsoDate } from "../../shared/effect/date";
-import { effectFromNeverthrow, fromNeverthrow, toNeverthrow } from "../../shared/effect/bridge";
-import { asWire } from "../../shared/effect/wire";
+import { parseIsoDate } from "../../shared/date";
+import { asWire } from "../../shared/result";
 import { MAX_SPREAD_BLOCKS } from "../../shared/spread";
 import { InvalidBlock, NotFound, SelectionTooLarge } from "./errors";
 import { load } from "./model";
@@ -50,22 +49,18 @@ const parseTimeZone = (timeZone: string) => {
 
 export const vNewBlock = v.object({ start: v.number(), minutes: v.number(), timeZone: v.string() });
 
-export const parseNewBlockFx = (block: { start: number; minutes: number; timeZone: string }) =>
+export const parseNewBlock = (block: { start: number; minutes: number; timeZone: string }) =>
   Result.all([parseStart(block.start), parseMinutes(block.minutes), parseTimeZone(block.timeZone)]).pipe(
     Result.map(([start, minutes, timeZone]) => ({ start, minutes, timeZone })),
   );
 
-export const parseNewBlock = (block: { start: number; minutes: number; timeZone: string }) => toNeverthrow(parseNewBlockFx(block));
-
 const parseDay = (date: string | undefined) => (date === undefined ? Result.succeed(undefined) : parseIsoDate(date));
-
-const loaded = <T extends "tasks" | "workBlocks">(table: T, id: Id<T>) => Reads.use((ctx) => effectFromNeverthrow(() => load(ctx, table, id)));
 
 export const create = changeMutation({
   action: "workBlock.create",
   args: { taskId: v.id("tasks"), start: v.number(), minutes: v.number(), timeZone: v.string(), date: v.optional(v.string()) },
   handler: Effect.fn("workBlocks.create")(function* ({ taskId, start, minutes, timeZone, date }) {
-    const task = yield* loaded("tasks", taskId);
+    const task = yield* load("tasks", taskId);
     const [validStart, validMinutes, validZone, day] = yield* Effect.fromResult(
       Result.all([parseStart(start), parseMinutes(minutes), parseTimeZone(timeZone), parseDay(date)]),
     );
@@ -119,7 +114,7 @@ export const spread = changeMutation({
 });
 
 const liveBlock = Effect.fn("workBlocks.liveBlock")(function* (blockId: Id<"workBlocks">) {
-  const block = yield* loaded("workBlocks", blockId);
+  const block = yield* load("workBlocks", blockId);
   if (block.removedAt !== undefined) return yield* new NotFound({ table: "workBlocks", id: blockId });
   return block;
 });
@@ -177,7 +172,7 @@ export const range = ownerQuery({
   handler: ({ from, to }) =>
     asWire(
       Effect.gen(function* () {
-        const window = yield* Effect.fromResult(fromNeverthrow(parseRange(from, to)));
+        const window = yield* Effect.fromResult(parseRange(from, to));
         return yield* blocksBetween(window.from, window.to);
       }),
     ),

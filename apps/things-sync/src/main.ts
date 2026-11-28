@@ -2,7 +2,7 @@ import { parseArgs } from "node:util";
 import { ConvexHttpClient } from "convex/browser";
 import { Clock, Console, Duration, Effect, Schema } from "effect";
 import { api } from "@lifeos/backend/api";
-import { wireToEffect } from "@lifeos/backend/effect/wire";
+import { wireToEffect } from "@lifeos/backend/result";
 import { dryRunCounts, importLines, readErrorLine, retiredLine } from "./report.ts";
 import { ThingsSource, readSyncToken } from "./things.ts";
 

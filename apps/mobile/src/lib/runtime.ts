@@ -1,4 +1,4 @@
-import { Effect, Layer, ManagedRuntime } from "effect";
+import { Effect, Layer } from "effect";
 import { KeyValueStore } from "effect/persistence";
 import { SQLiteStorage } from "expo-sqlite/kv-store";
 
@@ -33,5 +33,3 @@ export const PrefsStore = Layer.sync(KeyValueStore.KeyValueStore)(() =>
     keys: Effect.sync(() => prefs.getAllKeysSync()),
   }),
 );
-
-export const appRuntime = ManagedRuntime.make(PrefsStore);

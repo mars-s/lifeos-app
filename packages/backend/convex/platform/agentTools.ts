@@ -8,7 +8,7 @@ import { MCP_SCOPES, type AgentRunActor } from "./access";
 import { endMcpRun, isLiveRun, isRunOf, latestMcpRun } from "./agentRuns";
 import { agentMutation, agentQuery, reading, writing } from "./effect";
 import type { UndoFailure } from "./errors";
-import { undoActivityFx, undoAgentRunFx, type UndoError } from "./undo";
+import { undoActivity, undoAgentRun, type UndoError } from "./undo";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
@@ -135,7 +135,7 @@ const undoOneChange = Effect.fn("agentTools.undoOneChange")(function* (
   const owner = entry.actor.kind === "agentRun" ? yield* readJob(entry.actor.jobId) : null;
   if (!isRunOf(owner, connectionId)) return yield* refuse(notYours);
   const actor = yield* run;
-  return { ...(yield* undone(undoActivityFx(actor, id))), undid: "activity" as const };
+  return { ...(yield* undone(undoActivity(actor, id))), undid: "activity" as const };
 });
 
 const readJob = (jobId: Id<"jobs">) => reading((ctx) => ctx.db.get("jobs", jobId));
@@ -148,7 +148,7 @@ const undoWholeRun = Effect.fn("agentTools.undoWholeRun")(function* (runId: stri
   const target = yield* readJob(jobId);
   if (!target || !isRunOf(target, connectionId)) return yield* refuse(notYours);
   if (isLiveRun(target, now)) yield* writing((ctx) => endMcpRun(ctx, target, now));
-  return { ...(yield* undone(undoAgentRunFx({ kind: "agentRun", jobId }, jobId))), undid: "run" as const, runId: jobId as string };
+  return { ...(yield* undone(undoAgentRun({ kind: "agentRun", jobId }, jobId))), undid: "run" as const, runId: jobId as string };
 });
 
 export const undo = agentMutation({

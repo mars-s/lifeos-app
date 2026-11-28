@@ -44,7 +44,6 @@
     "lib0": "0.2.120",
     "maplibre-gl": "^6.19.0",
     "motion": "^14.14.0",
-    "neverthrow": "^8.2.0",
     "radix-ui": "^1.8.1",
     "react": "~19.3.1",
     "react-dom": "~19.3.1",

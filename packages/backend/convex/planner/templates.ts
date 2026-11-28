@@ -5,10 +5,10 @@ import { Effect, Result } from "effect";
 import type { Doc } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { featureState } from "../platform/features";
-import { ownerQuery, reading, recording } from "../platform/effect";
-import { parseIsoDate } from "../../shared/effect/date";
+import { changing, ownerQuery, reading, recording } from "../platform/effect";
+import { parseIsoDate } from "../../shared/date";
 import { FeatureOff, InvalidTemplate, type EmptyTitle } from "./errors";
-import { changing, keyAfter, liveHome, loadFx, parseEstimate, parseLabels, parseParent, parseTitleFx, parseWhen, plannerChange } from "./model";
+import { keyAfter, liveHome, load, parseEstimate, parseLabels, parseParent, parseTitle, parseWhen, plannerChange } from "./model";
 import {
   MAX_DEADLINE_OFFSET_DAYS,
   MAX_SHAPE_CHECKLIST,
@@ -25,7 +25,7 @@ type TemplateFields = Partial<WithoutSystemFields<Doc<"templates">>>;
 
 const parseChecklist = (titles: string[]) => {
   const parsed: Result.Result<string[], InvalidTemplate | EmptyTitle> =
-    titles.length > MAX_SHAPE_CHECKLIST ? Result.fail(new InvalidTemplate({ reason: "checklist" })) : Result.all(titles.map(parseTitleFx));
+    titles.length > MAX_SHAPE_CHECKLIST ? Result.fail(new InvalidTemplate({ reason: "checklist" })) : Result.all(titles.map(parseTitle));
   return parsed;
 };
 
@@ -73,7 +73,7 @@ export const saveFromTask = plannerChange({
   args: { taskId: v.id("tasks"), today: v.string() },
   handler: Effect.fn("templates.saveFromTask")(function* ({ taskId, today }) {
     yield* requireTemplates();
-    const [task, day] = yield* Effect.all([loadFx("tasks", taskId), Effect.fromResult(parseIsoDate(today))]);
+    const [task, day] = yield* Effect.all([load("tasks", taskId), Effect.fromResult(parseIsoDate(today))]);
     const last = yield* reading((ctx) => ctx.db.query("templates").withIndex("by_order").order("desc").first());
     const shape = yield* reading((ctx) => snapshotTask(ctx, task, day));
     const templateId = yield* recording((record) => record.insert("templates", { ...shape, order: keyAfter(last?.order) }));
@@ -87,7 +87,7 @@ export const createTask = plannerChange({
   handler: Effect.fn("templates.createTask")(function* ({ templateId, when, parent, today }) {
     yield* requireTemplates();
     const [template, validWhen, day, given] = yield* Effect.all([
-      loadFx("templates", templateId),
+      load("templates", templateId),
       Effect.fromResult(parseWhen(when)),
       Effect.fromResult(parseIsoDate(today)),
       parseParent(parent ?? { kind: "loose" }),
@@ -114,9 +114,9 @@ export const update = plannerChange({
   },
   handler: Effect.fn("templates.update")(function* ({ templateId, ...input }) {
     yield* requireTemplates();
-    yield* loadFx("templates", templateId);
+    yield* load("templates", templateId);
     const fields = yield* Effect.all([
-      input.title === undefined ? unchanged : Effect.fromResult(Result.map(parseTitleFx(input.title), (title) => ({ title }))),
+      input.title === undefined ? unchanged : Effect.fromResult(Result.map(parseTitle(input.title), (title) => ({ title }))),
       Effect.succeed(input.notes === undefined ? {} : { notes: input.notes }),
       input.estimateMinutes === undefined
         ? unchanged
@@ -138,7 +138,7 @@ export const reorder = plannerChange({
   args: { templateId: v.id("templates"), targetId: v.id("templates"), placement: v.union(v.literal("before"), v.literal("after")) },
   handler: Effect.fn("templates.reorder")(function* ({ templateId, targetId, placement }) {
     yield* requireTemplates();
-    const [template, target] = yield* Effect.all([loadFx("templates", templateId), loadFx("templates", targetId)]);
+    const [template, target] = yield* Effect.all([load("templates", templateId), load("templates", targetId)]);
     const before = placement === "before";
     const neighbour = yield* reading((ctx) =>
       ctx.db
@@ -160,7 +160,7 @@ export const remove = plannerChange({
   args: { templateId: v.id("templates") },
   handler: Effect.fn("templates.remove")(function* ({ templateId }) {
     yield* requireTemplates();
-    yield* loadFx("templates", templateId);
+    yield* load("templates", templateId);
     return { changed: yield* recording((record) => record.remove("templates", templateId)) };
   }),
 });

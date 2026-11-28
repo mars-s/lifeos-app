@@ -4,7 +4,7 @@ import { Clock, Effect, Result } from "effect";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
-import { asWire } from "../../shared/effect/wire";
+import { asWire } from "../../shared/result";
 import { changeMutation, internalMutation, ownerMutation, ownerQuery, Reads, reading, recording, runChange, writing, Writes } from "../platform/effect";
 import { featureState, writeFeature } from "../platform/features";
 import { EmptyMemory, MemoryNotFound } from "./errors";
@@ -16,8 +16,6 @@ const PINNED = 20;
 const LISTED = 300;
 const INDEX_COUNTED = 1000;
 const KINDS = ["preference", "routine", "person", "place", "goal"] as const satisfies readonly MemoryKind[];
-
-export type MemoryError = { readonly kind: "not_found" } | { readonly kind: "empty" } | { readonly kind: "memory_off" };
 
 const clean = (text: string) => text.trim().replace(/\s+/g, " ").slice(0, MAX_TEXT);
 

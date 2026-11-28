@@ -5,7 +5,7 @@ import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { env, type ActionCtx } from "../_generated/server";
 import { addDays, type IsoDate } from "../../shared/date";
-import { asWire, wireError } from "../../shared/effect/wire";
+import { asWire, wireError } from "../../shared/result";
 import { Acts, acting, internalAction, internalMutation, internalQuery, ownerMutation, reading, runAtEdge, writing } from "../platform/effect";
 import {
   OuraForbidden,

@@ -4,14 +4,12 @@ import { Clock, Effect, Result } from "effect";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { MCP_SCOPES } from "../platform/access";
-import { agentQuery, Reads, readAsOwnerFx, reading } from "../platform/effect";
+import { agentQuery, Reads, readAsOwner, reading } from "../platform/effect";
 import { commitmentsBetween } from "../calendar/commitments";
 import { blocksTime, zonedDate, zonedIso, zonedMoment } from "../calendar/model";
 import { nights } from "../health/sleep";
-import { addDays } from "../../shared/date";
-import { parseIsoDate } from "../../shared/effect/date";
-import { parseTimeZone } from "../../shared/effect/recurrence";
-import { describeSchedule } from "../../shared/recurrence";
+import { addDays, parseIsoDate } from "../../shared/date";
+import { parseTimeZone, describeSchedule } from "../../shared/recurrence";
 import type { SerialisedResult } from "../../shared/result";
 import { anytime, inbox, logbook, someday, upcoming } from "./lists";
 import { get as today } from "./today";
@@ -190,21 +188,21 @@ export const listTasks = agentQuery({
     const date = yield* agentDate(args.date, timeZone);
     switch (args.view) {
       case "today": {
-        const day = yield* unwrapRead(yield* readAsOwnerFx(today, { date }));
+        const day = yield* unwrapRead(yield* readAsOwner(today, { date }));
         return { view: args.view, date, ...limited([...day.tasks, ...day.evening], limit) };
       }
       case "inbox":
-        return { view: args.view, ...limited((yield* readAsOwnerFx(inbox, {})).tasks, limit) };
+        return { view: args.view, ...limited((yield* readAsOwner(inbox, {})).tasks, limit) };
       case "upcoming": {
-        const { days } = yield* unwrapRead(yield* readAsOwnerFx(upcoming, { date, days: args.days ?? 14 }));
+        const { days } = yield* unwrapRead(yield* readAsOwner(upcoming, { date, days: args.days ?? 14 }));
         return { view: args.view, date, ...limited(uniqueRows(days.flatMap((day) => [...day.tasks, ...day.deadlines])), limit) };
       }
       case "anytime": {
-        const { groups } = yield* unwrapRead(yield* readAsOwnerFx(anytime, { date }));
+        const { groups } = yield* unwrapRead(yield* readAsOwner(anytime, { date }));
         return { view: args.view, date, ...limited(groups.flatMap((group) => group.tasks), limit) };
       }
       case "someday": {
-        const parked = yield* readAsOwnerFx(someday, {});
+        const parked = yield* readAsOwner(someday, {});
         return {
           view: args.view,
           ...limited(parked.groups.flatMap((group) => group.tasks), limit),
@@ -212,7 +210,7 @@ export const listTasks = agentQuery({
         };
       }
       case "logbook": {
-        const page = yield* readAsOwnerFx(logbook, { paginationOpts: { numItems: limit, cursor: args.cursor ?? null } });
+        const page = yield* readAsOwner(logbook, { paginationOpts: { numItems: limit, cursor: args.cursor ?? null } });
         return {
           view: args.view,
           tasks: page.page.map(summarise),
@@ -300,7 +298,7 @@ export const listAreas = agentQuery({
     return {
       areas: areas.map(({ area, projects }) => ({ id: area._id, title: area.title, projects: projects.map(projectRef) })),
       projectsWithoutArea: standalone.map(projectRef),
-      labels: (yield* readAsOwnerFx(labelList, {})).map((label) => label.name),
+      labels: (yield* readAsOwner(labelList, {})).map((label) => label.name),
     };
   }),
 });
@@ -341,15 +339,15 @@ export const getDayPlan = agentQuery({
   handler: Effect.fn("agentReads.getDayPlan")(function* (args) {
     const timeZone = yield* agentTimeZone(args.timeZone);
     const date = yield* agentDate(args.date, timeZone);
-    const plan = yield* unwrapRead(yield* readAsOwnerFx(week, { from: date, days: 1, timeZone }));
+    const plan = yield* unwrapRead(yield* readAsOwner(week, { from: date, days: 1, timeZone }));
     const day = plan.days[0];
     if (!day) return yield* refuse(`LifeOS has no plan for ${date}.`);
     const start = zonedMoment(date, 0, timeZone);
     const end = zonedMoment(addDays(date, 1), 0, timeZone);
-    const blocks = yield* unwrapRead(yield* readAsOwnerFx(blocksInRange, { from: start, to: end }));
+    const blocks = yield* unwrapRead(yield* readAsOwner(blocksInRange, { from: start, to: end }));
     const commitments = yield* reading((ctx) => commitmentsBetween(ctx, start, end));
     const now = zonedDate(yield* Clock.currentTimeMillis, timeZone);
-    const sleep = yield* unwrapRead(yield* readAsOwnerFx(nights, { from: date, days: 1, today: now, timeZone }));
+    const sleep = yield* unwrapRead(yield* readAsOwner(nights, { from: date, days: 1, today: now, timeZone }));
     const at = (instant: number) => zonedIso(instant, timeZone);
     return {
       date,
@@ -409,8 +407,8 @@ export const listRepeatsAndTemplates = agentQuery({
   args: { days: v.optional(v.number()), timeZone: v.optional(v.string()) },
   handler: Effect.fn("agentReads.listRepeatsAndTemplates")(function* (args) {
     const date = yield* agentDate(undefined, yield* agentTimeZone(args.timeZone));
-    const repeats = yield* unwrapRead(yield* readAsOwnerFx(upcomingRepeats, { date, days: Math.min(Math.max(args.days ?? 30, 1), 366) }));
-    const templates = yield* readAsOwnerFx(templateList, {});
+    const repeats = yield* unwrapRead(yield* readAsOwner(upcomingRepeats, { date, days: Math.min(Math.max(args.days ?? 30, 1), 366) }));
+    const templates = yield* readAsOwner(templateList, {});
     return {
       repeats: repeats.map((occurrence) => ({
         ruleId: occurrence.ruleId,

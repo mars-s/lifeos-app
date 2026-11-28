@@ -1,7 +1,7 @@
 import { jsonSchema, tool, type JSONSchema7 } from "ai";
 import { Result } from "effect";
 import { zonedMoment } from "../calendar/model";
-import { parseIsoDate } from "../../shared/effect/date";
+import { parseIsoDate } from "../../shared/date";
 
 export const MAX_PROPOSED_STEPS = 8;
 

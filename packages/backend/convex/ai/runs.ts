@@ -8,7 +8,7 @@ import { components, internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx, QueryCtx } from "../_generated/server";
 import type { ModelId } from "../../shared/ai";
-import { asWire } from "../../shared/effect/wire";
+import { asWire } from "../../shared/result";
 import { MCP_SCOPES, mcpOwnerUserId, type AgentCaller } from "../platform/access";
 import { IN_APP_CONNECTION, IN_APP_WORKER_NAME, namedWorker } from "../platform/agentRuns";
 import { describeActivity } from "../platform/agentTools";
@@ -33,8 +33,6 @@ const RUN_LEASE_MS = 10 * 60_000;
 const MAX_REQUEST = 2000;
 const STEPS = { ask: 4, run: 30 } as const satisfies Record<RunMode, number>;
 const RUN_ONLY_TOOLS = new Set(["undo"]);
-
-export type RunError = { readonly kind: "not_configured" } | { readonly kind: "empty_request" } | { readonly kind: "not_waiting" };
 
 export type RunStatus = "working" | "needsYou" | "done" | "failed";
 

@@ -3,10 +3,10 @@ import { Effect } from "effect";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { Recorder } from "../platform/activity";
-import { ownerQuery, reading, recording } from "../platform/effect";
+import { changing, ownerQuery, reading, recording } from "../platform/effect";
 import { restoreArea, restoreProject } from "./containers";
 import { NotFound, NotTrashed } from "./errors";
-import { changing, keyAfter, lastTaskOrder, liveHome, plannerChange } from "./model";
+import { keyAfter, lastTaskOrder, liveHome, plannerChange } from "./model";
 import { stopWithLatest } from "./recurrence";
 import type { Parent } from "./tables";
 

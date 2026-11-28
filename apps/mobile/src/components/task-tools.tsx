@@ -1,3 +1,4 @@
+import { Result } from "effect";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Archive, Check, Inbox, Layers, Moon, Search, SkipForward, Sparkles, Star, type LucideIcon } from "lucide-react-native";
 import { useMemo, useState, type ReactNode } from "react";
@@ -138,9 +139,12 @@ const EstimateTool = ({ task, today, close }: ToolProps) => {
     close();
   };
   const submit = () =>
-    parseEstimateText(typed).match(set, () => {
-      haptic("error");
-      setUnreadable(true);
+    Result.match(parseEstimateText(typed), {
+      onSuccess: set,
+      onFailure: () => {
+        haptic("error");
+        setUnreadable(true);
+      },
     });
   return (
     <>

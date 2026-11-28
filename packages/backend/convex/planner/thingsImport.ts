@@ -4,7 +4,7 @@ import { Clock, Effect } from "effect";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { sameValue, startRecording, type Recorder } from "../platform/activity";
-import { asWire } from "../../shared/effect/wire";
+import { asWire, type Wire } from "../../shared/result";
 import { Writes, internalMutation, internalQuery, reading, writing } from "../platform/effect";
 import { labelNamed } from "./labels";
 import { keyAfter, lastTaskOrder } from "./model";
@@ -25,7 +25,7 @@ type Linked = "areas" | "labels" | "projects" | "headings" | "tasks" | "checklis
 type Link<T extends Linked> = NonNullable<Doc<T>["things"]>;
 type Outcome = "inserted" | "updated" | "unchanged";
 
-export type ImportError = { readonly kind: "retired"; readonly retiredAt: number };
+export type ImportError = Wire<Retired>;
 export type StageCounts = Record<Outcome, number>;
 
 export const syncState = (ctx: QueryCtx) => ctx.db.query("thingsSync").first();

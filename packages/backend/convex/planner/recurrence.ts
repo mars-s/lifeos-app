@@ -4,15 +4,14 @@ import { internal } from "../_generated/api";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { sameValue, startRecording, type Recorder } from "../platform/activity";
-import { changeMutation, internalMutation, ownerQuery, Reads, reading, recording, writing } from "../platform/effect";
+import { changeMutation, changing, internalMutation, ownerQuery, reading, recording, writing } from "../platform/effect";
 import type { Actor } from "../platform/tables";
-import { addDays, laterOf, type IsoDate } from "../../shared/date";
-import { effectFromNeverthrow } from "../../shared/effect/bridge";
-import { parseIsoDate } from "../../shared/effect/date";
-import { InvalidSchedule } from "../../shared/effect/errors";
-import { parseEnd, parseSchedule, parseTimeZone } from "../../shared/effect/recurrence";
-import { asWire } from "../../shared/effect/wire";
+import { addDays, laterOf, type IsoDate, parseIsoDate } from "../../shared/date";
+import { InvalidSchedule } from "../../shared/errors";
 import {
+  parseEnd,
+  parseSchedule,
+  parseTimeZone,
   afterCompletionDate,
   firstAfter,
   firstOnOrAfter,
@@ -24,6 +23,7 @@ import {
   type RepeatNext,
   type Schedule,
 } from "../../shared/recurrence";
+import { asWire } from "../../shared/result";
 import { StaleOccurrence } from "./errors";
 import { liveHome, load } from "./model";
 import { createFromShape, homeSummary, scheduledDate, snapshotTask } from "./shape";
@@ -137,8 +137,7 @@ export const generate = internalMutation({
   }),
 });
 
-const settling = (ruleId: Id<"recurrenceRules">, now: number) =>
-  Reads.use((ctx) => recording((record) => settle(ctx as MutationCtx, record, ruleId, now)));
+const settling = (ruleId: Id<"recurrenceRules">, now: number) => changing((ctx, record) => settle(ctx, record, ruleId, now));
 
 const afterCompletionStart = (schedule: AfterCompletion, { end, timeZone, today, task }: Terms) => ({
   anchor: today,
@@ -195,13 +194,11 @@ const reviseRule = Effect.fn("recurrence.reviseRule")(function* (rule: Rule, ter
   return rule._id;
 });
 
-const loaded = <T extends "tasks" | "recurrenceRules">(table: T, id: Id<T>) => Reads.use((ctx) => effectFromNeverthrow(() => load(ctx, table, id)));
-
 export const setRepeat = changeMutation({
   action: "recurrence.set",
   args: { taskId: v.id("tasks"), schedule: vSchedule, end: vRepeatEnd, timeZone: v.string() },
   handler: Effect.fn("recurrence.setRepeat")(function* (args) {
-    const task = yield* loaded("tasks", args.taskId);
+    const task = yield* load("tasks", args.taskId);
     const [schedule, end, timeZone] = yield* Effect.fromResult(
       Result.all([parseSchedule(args.schedule), parseEnd(args.end), parseTimeZone(args.timeZone)]),
     );
@@ -221,7 +218,7 @@ export const stopRepeat = changeMutation({
   action: "recurrence.stop",
   args: { taskId: v.id("tasks") },
   handler: Effect.fn("recurrence.stopRepeat")(function* ({ taskId }) {
-    const task = yield* loaded("tasks", taskId);
+    const task = yield* load("tasks", taskId);
     const ruleId = task.repeat?.ruleId;
     return { changed: ruleId ? yield* recording((record) => record.patch("recurrenceRules", ruleId, { next: ENDED })) : false };
   }),
@@ -231,7 +228,7 @@ export const stopRule = changeMutation({
   action: "recurrence.stop",
   args: { ruleId: v.id("recurrenceRules") },
   handler: Effect.fn("recurrence.stopRule")(function* ({ ruleId }) {
-    yield* loaded("recurrenceRules", ruleId);
+    yield* load("recurrenceRules", ruleId);
     return { changed: yield* recording((record) => record.patch("recurrenceRules", ruleId, { next: ENDED })) };
   }),
 });
@@ -240,7 +237,7 @@ export const skip = changeMutation({
   action: "recurrence.skip",
   args: { ruleId: v.id("recurrenceRules"), date: v.string() },
   handler: Effect.fn("recurrence.skip")(function* ({ ruleId, date }) {
-    const { next, schedule, anchor, end, count } = yield* loaded("recurrenceRules", ruleId);
+    const { next, schedule, anchor, end, count } = yield* load("recurrenceRules", ruleId);
     if (next.kind !== "due" || next.date !== date) return yield* new StaleOccurrence({ ruleId, date });
     yield* recording((record) =>
       record.patch("recurrenceRules", ruleId, { next: dueWithin(end, following(schedule, anchor as IsoDate, date as IsoDate), count) }),

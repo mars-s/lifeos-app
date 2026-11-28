@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Result } from "effect";
-import { parseEstimateText } from "@lifeos/backend/effect/estimate";
+import { parseEstimateText } from "@lifeos/backend/estimate";
 import { Tooltip } from "@/components/ui/tooltip-hint";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";

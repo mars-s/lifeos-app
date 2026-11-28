@@ -1,7 +1,6 @@
 import { getFunctionName, type DefaultFunctionArgs, type FunctionArgs, type FunctionReference } from "convex/server";
 import { Context, Effect, Layer } from "effect";
-import type { SerialisedResult } from "../result";
-import { wireToEffect } from "../effect/wire";
+import { type SerialisedResult, wireToEffect } from "../result";
 
 type AnyWire = SerialisedResult<unknown, { readonly kind: string }>;
 type WireMutation = FunctionReference<"mutation", "public", DefaultFunctionArgs, AnyWire>;

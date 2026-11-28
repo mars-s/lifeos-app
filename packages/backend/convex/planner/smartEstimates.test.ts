@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi 
 import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { DECISIONS_URL, newAiBackend as newBackend, unwrap, type Backend } from "../backend.test-utils";
-import { resultToWire } from "../../shared/effect/wire";
+import { resultToWire } from "../../shared/result";
 import { bucketsFor, calibrationOf, guessesFrom, isPlaceholderTitle, isTooVague, nearestExamples, nudged, parseDecision, type PastTask } from "./smartEstimateModel";
 
 const BUCKETS = bucketsFor(510);

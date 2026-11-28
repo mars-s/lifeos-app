@@ -3,21 +3,15 @@ import { Clock, Effect } from "effect";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { internalMutation, internalQuery, type QueryCtx } from "../_generated/server";
-import type { SerialisedResult } from "../../shared/result";
-import { asWire } from "../../shared/effect/wire";
+import { asWire, type SerialisedResult, type Wire } from "../../shared/result";
 import { vPlaceLabel, type PlaceLabel } from "../../shared/features";
 import { acting, ownerAction, ownerQuery, reading } from "../platform/effect";
-import { AddressEmpty, AddressNotFound } from "./errors";
+import { AddressEmpty, AddressNotFound, type SavePlaceFailure } from "./errors";
 import { normalisedAddress } from "./model";
 import { Places } from "./provider";
 import { vPosition, type Position } from "./tables";
 
-export type SavePlaceError =
-  | { readonly kind: "empty" }
-  | { readonly kind: "not_found" }
-  | { readonly kind: "unreachable" }
-  | { readonly kind: "unavailable"; readonly status: number }
-  | { readonly kind: "invalid_response" };
+export type SavePlaceError = Wire<SavePlaceFailure>;
 
 export type SavedPlace = { readonly label: PlaceLabel; readonly address: string; readonly found: string; readonly savedAt: number };
 

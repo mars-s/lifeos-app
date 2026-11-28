@@ -5,7 +5,7 @@ import { api } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { DECISIONS_URL, newAiBackend as newBackend, newSignedOutBackend, strangerSession, unwrap, type Backend } from "../backend.test-utils";
 import { Result } from "effect";
-import { wireError } from "../../shared/effect/wire";
+import { wireError } from "../../shared/result";
 import { kindOf, nearestPlaces, NOMINATIM_URL, OVERPASS_URL, overpassQuery, placePhrases, ROUTING_URL } from "./model";
 
 const failureOf = (result: ReturnType<typeof nearestPlaces>) => (Result.isFailure(result) ? wireError(result.failure) : undefined);

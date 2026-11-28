@@ -1,13 +1,9 @@
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import { Context, Effect, Layer, Predicate, Result, Schema } from "effect";
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
-import type { Result as Outcome } from "neverthrow";
 import { MODELS, PROVIDERS, USER_AGENT, type ModelId } from "../../shared/ai";
-import { fromNeverthrow, toNeverthrow } from "../../shared/effect/bridge";
-import { runAtEdge } from "../platform/effect";
 import { AiInvalidResponse, AiNotConfigured, AiRateLimited, AiRefused, AiUnauthorised, AiUnavailable, type AiFailure } from "./errors";
 import { languageModelFor } from "./models";
-import type { AiError } from "./tables";
 
 export type Part = { type: "input_text"; text: string } | { type: "input_json"; data: unknown };
 
@@ -246,11 +242,8 @@ const firstAnswer = Effect.fn("transport.firstAnswer")(function* <T, E>(
   return yield* Effect.fail(last);
 });
 
-export const askChoiceFx = <T, E>(attempts: readonly Attempt[], ask: ChoiceAsk, parse: (body: unknown) => Result.Result<T, E>) =>
+export const askChoice = <T, E>(attempts: readonly Attempt[], ask: ChoiceAsk, parse: (body: unknown) => Result.Result<T, E>) =>
   firstAnswer(attempts, (attempt) => choiceOnce(attempt, ask), parse);
 
 export const askJson = <T, E>(attempts: readonly Attempt[], ask: JsonAsk, parse: (body: unknown) => Result.Result<T, E>) =>
   firstAnswer(attempts, (attempt) => jsonOnce(attempt, ask), parse);
-
-export const askChoice = <T>(attempts: readonly Attempt[], ask: ChoiceAsk, parse: (body: unknown) => Outcome<T, AiError>) =>
-  runAtEdge(Effect.result(askChoiceFx(attempts, ask, (body) => fromNeverthrow(parse(body)))).pipe(Effect.provide(AiProvider.layer))).then(toNeverthrow);

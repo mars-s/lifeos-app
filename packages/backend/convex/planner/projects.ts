@@ -2,19 +2,19 @@ import { v } from "convex/values";
 import type { WithoutSystemFields } from "convex/server";
 import { Clock, Effect, Result } from "effect";
 import type { Doc, Id } from "../_generated/dataModel";
-import { reading, recording } from "../platform/effect";
+import { changing, reading, recording } from "../platform/effect";
 import { closeProjectTasks, lastProjectOrder, reopenProjectTasks, restoreProject, trashProject } from "./containers";
 import { endFocusOnClosedTask } from "./focus";
-import { changing, keyAfter, loadFx, parseDeadline, parseOrder, parseTitleFx, parseWhen, plannerChange } from "./model";
+import { keyAfter, load, parseDeadline, parseOrder, parseTitle, parseWhen, plannerChange } from "./model";
 import { vWhen } from "./tables";
 
 type ProjectFields = Partial<WithoutSystemFields<Doc<"projects">>>;
 
 const parseArea = (areaId: Id<"areas"> | null) =>
-  areaId === null ? Effect.succeed(undefined) : Effect.map(loadFx("areas", areaId), (area) => area._id);
+  areaId === null ? Effect.succeed(undefined) : Effect.map(load("areas", areaId), (area) => area._id);
 
 const edit = Effect.fn("projects.edit")(function* <E>(projectId: Id<"projects">, fields: Result.Result<ProjectFields, E>) {
-  yield* loadFx("projects", projectId);
+  yield* load("projects", projectId);
   const valid = yield* Effect.fromResult(fields);
   return { changed: yield* recording((record) => record.patch("projects", projectId, valid)) };
 });
@@ -30,7 +30,7 @@ export const create = plannerChange({
   },
   handler: Effect.fn("projects.create")(function* (args) {
     const [title, areaId, when, deadline] = yield* Effect.all([
-      Effect.fromResult(parseTitleFx(args.title)),
+      Effect.fromResult(parseTitle(args.title)),
       parseArea(args.areaId ?? null),
       Effect.fromResult(parseWhen(args.when ?? { kind: "anytime" })),
       Effect.fromResult(parseDeadline(args.deadline ?? null)),
@@ -55,7 +55,7 @@ export const create = plannerChange({
 export const rename = plannerChange({
   action: "project.rename",
   args: { projectId: v.id("projects"), title: v.string() },
-  handler: ({ projectId, title }) => edit(projectId, Result.map(parseTitleFx(title), (valid) => ({ title: valid }))),
+  handler: ({ projectId, title }) => edit(projectId, Result.map(parseTitle(title), (valid) => ({ title: valid }))),
 });
 
 export const setNotes = plannerChange({
@@ -90,7 +90,7 @@ export const complete = plannerChange({
   action: "project.complete",
   args: { projectId: v.id("projects") },
   handler: Effect.fn("projects.complete")(function* ({ projectId }) {
-    const project = yield* loadFx("projects", projectId);
+    const project = yield* load("projects", projectId);
     if (project.status.kind !== "open") return { changed: false };
     const at = yield* Clock.currentTimeMillis;
     yield* recording((record) => record.patch("projects", projectId, { status: { kind: "completed", at } }));
@@ -106,7 +106,7 @@ export const reopen = plannerChange({
   action: "project.reopen",
   args: { projectId: v.id("projects") },
   handler: Effect.fn("projects.reopen")(function* ({ projectId }) {
-    const project = yield* loadFx("projects", projectId);
+    const project = yield* load("projects", projectId);
     const status = project.status;
     if (status.kind === "open") return { changed: false };
     yield* recording((record) => record.patch("projects", projectId, { status: { kind: "open" } }));
@@ -120,7 +120,7 @@ export const trash = plannerChange({
   action: "project.trash",
   args: { projectId: v.id("projects") },
   handler: Effect.fn("projects.trash")(function* ({ projectId }) {
-    const project = yield* loadFx("projects", projectId);
+    const project = yield* load("projects", projectId);
     const at = yield* Clock.currentTimeMillis;
     yield* trashProject(project, at);
     yield* changing((ctx, record) => endFocusOnClosedTask(ctx, record, at));
@@ -132,7 +132,7 @@ export const restore = plannerChange({
   action: "project.restore",
   args: { projectId: v.id("projects") },
   handler: Effect.fn("projects.restore")(function* ({ projectId }) {
-    const project = yield* loadFx("projects", projectId);
+    const project = yield* load("projects", projectId);
     yield* restoreProject(project);
     return { changed: project.trashedAt !== undefined };
   }),

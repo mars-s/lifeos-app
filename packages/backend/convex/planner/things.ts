@@ -3,8 +3,7 @@ import { internal } from "../_generated/api";
 import type { ActionCtx } from "../_generated/server";
 import { CurrentWorker, acting, ownerQuery, reading, workerAction, workerMutation, writing } from "../platform/effect";
 import { requireCapability } from "../platform/workers";
-import { asWire, wireToEffect } from "../../shared/effect/wire";
-import type { SerialisedResult } from "../../shared/result";
+import { asWire, wireToEffect, type SerialisedResult } from "../../shared/result";
 import { NeverImported, Retired } from "./thingsErrors";
 import { syncState, type ImportError, type StageCounts } from "./thingsImport";
 import { fromThingsRows, vThingsRows, type Skipped, type ThingsRows } from "./thingsRows";
@@ -17,7 +16,6 @@ type Table = (typeof tables)[number];
 type StageResult = SerialisedResult<{ counts: StageCounts; skipped: Skipped[] }, ImportError>;
 
 export type ImportReport = Record<Table, StageCounts> & { skipped: Skipped[] };
-export type RetireError = { readonly kind: "never_imported" };
 
 const importArgs = { rows: vThingsRows };
 

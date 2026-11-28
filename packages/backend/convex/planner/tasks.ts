@@ -3,19 +3,18 @@ import type { WithoutSystemFields } from "convex/server";
 import { Clock, Effect, Result } from "effect";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
-import { ownerQuery, reading, recording, type ChangeServices } from "../platform/effect";
+import { changing, ownerQuery, reading, recording, type ChangeServices } from "../platform/effect";
 import {
-  changing,
   keyAfter,
   lastTaskOrder,
-  loadFx,
+  load,
   nextTaskOrder,
   parseDeadline,
   parseEstimate,
   parseLabels,
   parseOrder,
   parseParent,
-  parseTitleFx,
+  parseTitle,
   parseWhen,
   plannerChange,
 } from "./model";
@@ -24,11 +23,11 @@ import { endFocusOnClosedTask } from "./focus";
 import { requestTrip } from "../places/trips";
 import { requestSuggestion } from "./smartEstimates";
 import { followCompletion } from "./recurrence";
-import { parseNewPlaceFx, placeOnDayFx } from "./plan";
+import { parseNewPlace, placeOnDay } from "./plan";
 import { enrich } from "./rows";
 import { vParent, vWhen } from "./tables";
 import type { IsoDate } from "../../shared/date";
-import { parseNewBlockFx, vNewBlock } from "./workBlocks";
+import { parseNewBlock, vNewBlock } from "./workBlocks";
 
 const CARD_LIMIT = 500;
 
@@ -38,7 +37,7 @@ const edit = Effect.fn("tasks.edit")(function* <E, R extends ChangeServices>(
   taskId: Id<"tasks">,
   fieldsFor: (task: Doc<"tasks">) => Effect.Effect<TaskFields, E, R>,
 ) {
-  const task = yield* loadFx("tasks", taskId);
+  const task = yield* load("tasks", taskId);
   const fields = yield* fieldsFor(task);
   return { changed: yield* recording((record) => record.patch("tasks", taskId, fields)) };
 });
@@ -59,7 +58,7 @@ const placeNewTask = Effect.fn("tasks.placeNewTask")(function* (taskId: Id<"task
   if (!task) return yield* new NotFound({ table: "tasks", id: taskId });
   const order = [...place.order.slice(0, place.at), taskId, ...place.order.slice(place.at)];
   const evening = task.when.kind === "scheduled" && task.when.evening;
-  yield* placeOnDayFx(task, place.date, order, evening);
+  yield* placeOnDay(task, place.date, order, evening);
 });
 
 export const create = plannerChange({
@@ -77,16 +76,16 @@ export const create = plannerChange({
     place: v.optional(v.object({ date: v.string(), order: v.array(v.id("tasks")), at: v.number() })),
   },
   handler: Effect.fn("tasks.create")(function* (args) {
-    const block = args.block ? yield* Effect.fromResult(parseNewBlockFx(args.block)) : undefined;
+    const block = args.block ? yield* Effect.fromResult(parseNewBlock(args.block)) : undefined;
     const [title, when, deadline, estimateMinutes, parent, labelIds, order, place] = yield* Effect.all([
-      Effect.fromResult(parseTitleFx(args.title)),
+      Effect.fromResult(parseTitle(args.title)),
       Effect.fromResult(parseWhen(args.when ?? { kind: "inbox" })),
       Effect.fromResult(parseDeadline(args.deadline ?? null)),
       Effect.fromResult(parseEstimate(args.estimateMinutes ?? null)),
       parseParent(args.parent ?? { kind: "loose" }),
       parseLabels(args.labelIds ?? []),
       args.order === undefined ? Effect.succeed(undefined) : Effect.fromResult(parseOrder(args.order)),
-      args.place === undefined ? Effect.succeed(undefined) : Effect.fromResult(parseNewPlaceFx(args.place)),
+      args.place === undefined ? Effect.succeed(undefined) : Effect.fromResult(parseNewPlace(args.place)),
     ]);
     const key = order ?? keyAfter(yield* reading((ctx) => lastTaskOrder(ctx, parent)));
     const taskId = yield* recording((record) =>
@@ -115,7 +114,7 @@ export const duplicate = plannerChange({
   action: "task.duplicate",
   args: { taskId: v.id("tasks") },
   handler: Effect.fn("tasks.duplicate")(function* ({ taskId }) {
-    const task = yield* loadFx("tasks", taskId);
+    const task = yield* load("tasks", taskId);
     const order = yield* reading((ctx) => nextTaskOrder(ctx, task.parent, task.order));
     const copyId = yield* recording((record) =>
       record.insert("tasks", {
@@ -148,7 +147,7 @@ export const rename = plannerChange({
   action: "task.rename",
   args: { taskId: v.id("tasks"), title: v.string() },
   handler: Effect.fn("tasks.rename")(function* ({ taskId, title }) {
-    const result = yield* edit(taskId, fieldsFrom(Result.map(parseTitleFx(title), (valid) => ({ title: valid }))));
+    const result = yield* edit(taskId, fieldsFrom(Result.map(parseTitle(title), (valid) => ({ title: valid }))));
     if (result.changed) yield* suggestFor(taskId);
     return result;
   }),

@@ -4,7 +4,7 @@ import { Check, Coffee, Pause, Play, SkipForward, Stop, Trash, type Icon } from 
 import { useEffect, useEffectEvent, useState, type ReactNode } from "react";
 import type { FocusView as FocusPillView } from "@lifeos/backend/client/focus";
 import { Result } from "effect";
-import { parseEstimateText } from "@lifeos/backend/effect/estimate";
+import { parseEstimateText } from "@lifeos/backend/estimate";
 import { MAX_FOCUS_MINUTES, type FocusPlanChoice } from "@lifeos/backend/focus";
 import { MorphText } from "@/components/ui/morph-text";
 import { Popover, PopoverClose } from "@/components/ui/popover-panel";

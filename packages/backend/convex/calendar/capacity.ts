@@ -1,13 +1,12 @@
 import { v } from "convex/values";
 import { Effect, Result } from "effect";
 import type { QueryCtx } from "../_generated/server";
-import { addDays, type IsoDate } from "../../shared/date";
-import { parseIsoDate } from "../../shared/effect/date";
-import { asWire } from "../../shared/effect/wire";
+import { addDays, type IsoDate, parseIsoDate } from "../../shared/date";
+import { asWire } from "../../shared/result";
 import { ownerQuery, reading } from "../platform/effect";
 import { commitmentsBetween } from "./commitments";
 import { InvalidCalendarRange } from "./errors";
-import { capacityOfDay, parseTimeZoneFx, workingWindow } from "./model";
+import { capacityOfDay, parseTimeZone, workingWindow } from "./model";
 import { workingHoursOf } from "./workingHours";
 
 const MAX_DAYS = 62;
@@ -38,7 +37,7 @@ export const days = ownerQuery({
   handler: Effect.fn("capacity.days")(function* (args) {
     const from = yield* Effect.fromResult(Result.mapError(parseIsoDate(args.from), () => new InvalidCalendarRange()));
     const count = yield* Effect.fromResult(parseDays(args.days));
-    const timeZone = yield* Effect.fromResult(parseTimeZoneFx(args.timeZone));
+    const timeZone = yield* Effect.fromResult(parseTimeZone(args.timeZone));
     return yield* reading((ctx) => capacityDays(ctx, from, count, timeZone));
   }, asWire),
 });

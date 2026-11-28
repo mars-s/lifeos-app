@@ -4,8 +4,6 @@ import { changeMutation, ownerQuery, reading, recording } from "./effect";
 import { EntityNotFound } from "./errors";
 import { vEntityRef, type EntityRef } from "./tables";
 
-export type LinkError = { readonly kind: "not_found"; readonly entity: EntityRef };
-
 const requireAll = Effect.fn("links.requireAll")(function* (refs: EntityRef[]) {
   for (const entity of refs) {
     if (!(yield* reading((ctx) => ctx.db.get(entity.id)))) return yield* new EntityNotFound({ entity });

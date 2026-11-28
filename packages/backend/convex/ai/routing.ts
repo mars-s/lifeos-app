@@ -9,11 +9,6 @@ import { keyedAttempts, keyedProviders } from "./capabilities";
 import { ModelCannotAnswer, SwitchedElsewhere, UnknownModel } from "./errors";
 import type { Attempt } from "./transport";
 
-export type RouteError =
-  | { readonly kind: "unknown_model"; readonly model: string }
-  | { readonly kind: "model_cannot_answer"; readonly model: string }
-  | { readonly kind: "switched_elsewhere"; readonly feature: "places" };
-
 export class AiRouter extends Context.Service<
   AiRouter,
   { attemptsFor(chain: readonly ModelId[]): Effect.Effect<ReadonlyArray<Attempt>> }

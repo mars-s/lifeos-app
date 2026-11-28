@@ -1,7 +1,13 @@
 import { expect, expectTypeOf, test } from "vitest";
-import { wireError, type SameWire } from "../../shared/effect/wire";
+import { wireError, type SameWire } from "../../shared/result";
 import { CalendarNotFound, InvalidCalendarRange, InvalidCalendarTimeZone, InvalidWindow, type CalendarFailure } from "./errors";
-import type { CalendarError } from "./model";
+
+type CalendarError =
+  | { readonly kind: "invalid_window" }
+  | { readonly kind: "invalid_range" }
+  | { readonly kind: "invalid_time_zone"; readonly timeZone: string }
+  | { readonly kind: "invalid_hours" }
+  | { readonly kind: "not_found" };
 
 test("every calendar failure crosses the wire as the CalendarError the apps already read", () => {
   expectTypeOf<SameWire<CalendarFailure, CalendarError>>().toEqualTypeOf<true>();

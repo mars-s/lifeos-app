@@ -7,7 +7,8 @@ import type { EntityRef } from "../platform/tables";
 import { requestTrip } from "../places/trips";
 import { lastProjectOrder } from "./containers";
 import { endFocusOnClosedTask } from "./focus";
-import { changing, keyAfter, loadFx, plannerChange } from "./model";
+import { keyAfter, load, plannerChange } from "./model";
+import { changing } from "../platform/effect";
 import { requestSuggestion } from "./smartEstimates";
 import type { When } from "./tables";
 
@@ -107,7 +108,7 @@ export const toProject = plannerChange({
   action: "task.convertToProject",
   args: { taskId: v.id("tasks") },
   handler: Effect.fn("convert.toProject")(function* ({ taskId }) {
-    const task = yield* loadFx("tasks", taskId);
+    const task = yield* load("tasks", taskId);
     const at = yield* Clock.currentTimeMillis;
     return yield* changing((ctx, record) => convert(ctx, record, task, at));
   }),

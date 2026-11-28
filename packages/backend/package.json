@@ -22,8 +22,7 @@
     "./types": {
       "types": "./shared/types.ts"
     },
-    "./client/*": "./shared/client/*.ts",
-    "./effect/*": "./shared/effect/*.ts"
+    "./client/*": "./shared/client/*.ts"
   },
   "scripts": {
     "dev": "convex dev",
@@ -43,8 +42,7 @@
     "convex": "^1.51.0",
     "convex-helpers": "^0.1.137",
     "effect": "4.1.7",
-    "fractional-indexing": "^3.2.0",
-    "neverthrow": "^8.2.0"
+    "fractional-indexing": "^3.2.0"
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",

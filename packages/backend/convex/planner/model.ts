@@ -1,15 +1,12 @@
 import { Effect, Result } from "effect";
 import { generateKeyBetween } from "fractional-indexing";
-import type { MutationCtx, QueryCtx } from "../_generated/server";
-import type { Doc, Id } from "../_generated/dataModel";
-import type { Recorder as Recording } from "../platform/activity";
+import type { QueryCtx } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
 import type { ObjectType, PropertyValidators } from "convex/values";
-import { changeMutation, legacyRead, reading, Recorder, type ChangeServices } from "../platform/effect";
-import { toNeverthrow } from "../../shared/effect/bridge";
-import type { InvalidDate } from "../../shared/effect/errors";
-import { parseIsoDate } from "../../shared/effect/date";
-import { MAX_ESTIMATE_MINUTES } from "../../shared/effect/estimate";
-import type { ScheduleError } from "../../shared/recurrence";
+import { changeMutation, reading, type ChangeServices } from "../platform/effect";
+import type { InvalidDate } from "../../shared/errors";
+import { parseIsoDate } from "../../shared/date";
+import { MAX_ESTIMATE_MINUTES } from "../../shared/estimate";
 import { EmptyTitle, HeadingOutsideProject, InvalidEstimate, InvalidOrder, NotFound, type PlannerFailure } from "./errors";
 import type { Parent, When } from "./tables";
 
@@ -26,45 +23,14 @@ export type PlannerTable =
   | "recurrenceRules"
   | "smartBlocks";
 
-export type PlannerError =
-  | { readonly kind: "not_found"; readonly table: PlannerTable; readonly id: string }
-  | { readonly kind: "invalid_date"; readonly input: string }
-  | { readonly kind: "invalid_estimate"; readonly minutes: number }
-  | { readonly kind: "invalid_order"; readonly order: string }
-  | { readonly kind: "empty_title" }
-  | { readonly kind: "name_taken"; readonly name: string }
-  | { readonly kind: "not_trashed"; readonly table: PlannerTable; readonly id: string }
-  | { readonly kind: "invalid_icon"; readonly icon: string }
-  | { readonly kind: "selection_too_large"; readonly limit: number }
-  | { readonly kind: "heading_outside_project"; readonly headingId: string }
-  | { readonly kind: "invalid_block"; readonly reason: "start" | "minutes" | "time_zone" | "overlap" }
-  | { readonly kind: "invalid_plan"; readonly reason: "range" | "time_zone" | "order" | "goal" }
-  | ScheduleError
-  | { readonly kind: "stale_occurrence"; readonly ruleId: string; readonly date: string }
-  | { readonly kind: "invalid_template"; readonly reason: "checklist" | "deadline_offset" }
-  | { readonly kind: "feature_off"; readonly feature: "templates" }
-  | {
-      readonly kind: "invalid_smart_block";
-      readonly reason: "window" | "time_zone" | "occurrence" | "outside" | "overlap" | "release" | "too_many";
-    }
-  | { readonly kind: "feature_off"; readonly feature: "smartBlocks" }
-  | {
-      readonly kind: "invalid_focus";
-      readonly reason: "minutes" | "task_closed" | "not_active" | "not_ended" | "not_timed" | "not_pomodoro" | "on_break";
-    };
-
-export const loadFx = <T extends PlannerTable>(table: T, id: Id<T>) =>
+export const load = <T extends PlannerTable>(table: T, id: Id<T>) =>
   Effect.flatMap(reading((ctx) => ctx.db.get(id)), (doc) => (doc ? Effect.succeed(doc) : Effect.fail(new NotFound({ table, id }))));
 
-export const load = <T extends PlannerTable>(ctx: QueryCtx, table: T, id: Id<T>) => legacyRead<Doc<T>, PlannerFailure>(ctx, loadFx(table, id));
-
-export const parseTitleFx = (title: string) => {
+export const parseTitle = (title: string) => {
   const trimmed = title.trim();
   const parsed: Result.Result<string, EmptyTitle> = trimmed ? Result.succeed(trimmed) : Result.fail(new EmptyTitle());
   return parsed;
 };
-
-export const parseTitle = (title: string) => toNeverthrow<string, PlannerFailure>(parseTitleFx(title));
 
 export const parseWhen = (when: When) => {
   const parsed: Result.Result<When, InvalidDate> = when.kind === "scheduled" ? Result.map(parseIsoDate(when.date), () => when) : Result.succeed(when);
@@ -92,18 +58,18 @@ export const parseOrder = (order: string) =>
 export const keyAfter = (last: string | undefined) => generateKeyBetween(last ?? null, null);
 
 export const parseParent = Effect.fn("model.parseParent")(function* (parent: Parent) {
-  if (parent.kind === "area") yield* loadFx("areas", parent.areaId);
+  if (parent.kind === "area") yield* load("areas", parent.areaId);
   if (parent.kind !== "project") return parent;
-  yield* loadFx("projects", parent.projectId);
+  yield* load("projects", parent.projectId);
   if (!parent.headingId) return parent;
-  const heading = yield* loadFx("headings", parent.headingId);
+  const heading = yield* load("headings", parent.headingId);
   if (heading.projectId !== parent.projectId) return yield* new HeadingOutsideProject({ headingId: heading._id });
   return parent;
 });
 
 export const parseLabels = Effect.fn("model.parseLabels")(function* (labelIds: Id<"labels">[]) {
   const unique = [...new Set(labelIds)];
-  for (const id of unique) yield* loadFx("labels", id);
+  for (const id of unique) yield* load("labels", id);
   return unique;
 });
 
@@ -112,9 +78,6 @@ export const plannerChange = <Args extends PropertyValidators, A extends object>
   args: Args;
   handler: (args: ObjectType<Args>) => Effect.Effect<A, PlannerFailure, ChangeServices>;
 }) => changeMutation(spec);
-
-export const changing = <A>(write: (ctx: MutationCtx, record: Recording) => Promise<A>) =>
-  Effect.flatMap(Recorder, (record) => reading((ctx) => write(ctx as MutationCtx, record)));
 
 export const nextTaskOrder = async (ctx: QueryCtx, parent: Parent, after: string) => {
   const next =

@@ -5,10 +5,9 @@ import { Effect, Option, Result } from "effect";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { MCP_SCOPES, type AgentRunActor } from "../platform/access";
-import { agentMutation, changeAsFx, readAsOwnerFx, reading } from "../platform/effect";
+import { agentMutation, changeAs, readAsOwner, reading } from "../platform/effect";
 import { zonedMoment } from "../calendar/model";
-import { addDays, type IsoDate } from "../../shared/date";
-import { parseIsoDate } from "../../shared/effect/date";
+import { addDays, type IsoDate, parseIsoDate } from "../../shared/date";
 import type { SerialisedResult } from "../../shared/result";
 import * as areas from "./areas";
 import * as checklist from "./checklist";
@@ -81,7 +80,7 @@ export const writer = Effect.fn("agentWrites.writer")(function* (run: Effect.Eff
     registered: RegisteredMutation<"public", Args, Promise<SerialisedResult<T, E>>>,
     args: Omit<Args, "agentRun">,
   ) =>
-    changeAsFx(actor, registered, args).pipe(
+    changeAs(actor, registered, args).pipe(
       Effect.catch((error) => refuse(refusalMessage(error))),
       Effect.tap(({ activityId }) => Effect.sync(() => activityId && activityIds.push(activityId))),
     );
@@ -345,7 +344,7 @@ export const startFocus = agentMutation({
   args: { taskId: v.string(), minutes: v.optional(v.number()) },
   handler: Effect.fn("agentWrites.startFocus")(function* (args, run) {
     const write = yield* writer(run);
-    const { breakMinutes, longBreakMinutes } = yield* readAsOwnerFx(focus.plan, {});
+    const { breakMinutes, longBreakMinutes } = yield* readAsOwner(focus.plan, {});
     const { sessionId } = yield* write.change(focus.start, {
       taskId: yield* agentId("tasks", args.taskId, "Task"),
       plan: args.minutes === undefined ? { kind: "open" } : { kind: "pomodoro", focusMinutes: args.minutes, breakMinutes, longBreakMinutes },
@@ -357,7 +356,7 @@ export const startFocus = agentMutation({
 export const stopFocus = agentMutation({
   args: {},
   handler: Effect.fn("agentWrites.stopFocus")(function* (_args, run) {
-    const current = yield* readAsOwnerFx(focus.current, {});
+    const current = yield* readAsOwner(focus.current, {});
     if (!current) return yield* refuse("No Focus Session is running.");
     const write = yield* writer(run);
     yield* write.change(focus.stop, { sessionId: current._id });

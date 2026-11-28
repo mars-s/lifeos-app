@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { InvalidDate, InvalidSchedule } from "../../shared/effect/errors";
+import { InvalidDate, InvalidSchedule } from "../../shared/errors";
 
 const PlannerTable = Schema.Literals([
   "areas",

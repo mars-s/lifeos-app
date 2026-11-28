@@ -1,16 +1,8 @@
 import { Result } from "effect";
 import type { IsoDate } from "../../shared/date";
-import { toNeverthrow } from "../../shared/effect/bridge";
 import { localDateIn, zonedFormatter } from "../../shared/recurrence";
 import { InvalidCalendarTimeZone, InvalidWorkingHours } from "./errors";
 import type { Availability, CalendarKind, Response } from "./tables";
-
-export type CalendarError =
-  | { readonly kind: "invalid_window" }
-  | { readonly kind: "invalid_range" }
-  | { readonly kind: "invalid_time_zone"; readonly timeZone: string }
-  | { readonly kind: "invalid_hours" }
-  | { readonly kind: "not_found" };
 
 export type Interval = { readonly start: number; readonly end: number };
 
@@ -54,7 +46,7 @@ export const capacityOfDay = (window: Interval, commitments: readonly (Interval 
   return { workingMinutes, busyMinutes, freeMinutes: workingMinutes - busyMinutes };
 };
 
-export const parseTimeZoneFx = (timeZone: string) =>
+export const parseTimeZone = (timeZone: string) =>
   Result.try({
     try: () => {
       zonedFormatter(timeZone);
@@ -62,8 +54,6 @@ export const parseTimeZoneFx = (timeZone: string) =>
     },
     catch: () => new InvalidCalendarTimeZone({ timeZone }),
   });
-
-export const parseTimeZone = (timeZone: string) => toNeverthrow(parseTimeZoneFx(timeZone));
 
 const offsetAt = (instant: number, timeZone: string) => {
   const parts = zonedFormatter(timeZone).formatToParts(instant);

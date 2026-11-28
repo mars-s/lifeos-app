@@ -1,5 +1,5 @@
 import { expect, expectTypeOf, test } from "vitest";
-import { wireError, type SameWire } from "../../shared/effect/wire";
+import { wireError, type SameWire } from "../../shared/result";
 import { InvalidHealthRange, OuraForbidden, OuraRateLimited, OuraUnavailable, type OuraFailure } from "./errors";
 import type { OuraError } from "./tables";
 
