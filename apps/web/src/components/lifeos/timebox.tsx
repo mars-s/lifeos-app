@@ -596,7 +596,6 @@ export const Timebox = ({
             className="tl-rail absolute inset-y-0 w-[5px] [--tl-dot:color-mix(in_oklab,var(--foreground)_38%,transparent)]"
             style={{ right: 5, backgroundSize: `5px ${HOUR_PX}px, 5px ${15 * scale}px`, backgroundPosition: `0 ${-HOUR_PX / 2}px, 0 ${-7.5 * scale}px` }}
           />
-          <span className="tl-now absolute top-0 w-px rounded-full bg-foreground/55" style={{ height: toPx(clamp(reached, 0, DAY_MINUTES)), right: 7 }} />
           {energy && <EnergyLane curve={energy.curve} from={0} to={DAY_MINUTES} scale={scale} now={now?.minute ?? 0} mode={energy.mode} className="right-[7.5px]" />}
           {now && (
             <>

@@ -245,7 +245,6 @@ const hint = (day: TimelineDay["energy"], minute: number) => {
 const Rail = ({ day, today, nowMinute, tones }: { day: TimelineDay; today: string; nowMinute: number; tones: Tones }) => {
   const { area } = usePlanner();
   const live = day.date === today;
-  const reached = day.date < today ? DAY_MINUTES : live ? nowMinute : 0;
   const curve = curveOf(day.energy);
   const mode = day.date < today ? "past" : live && curve?.kind === "solid" ? "today" : "usual";
   const points = (curve?.points ?? []).filter((point) => point.minute <= DAY_MINUTES);
@@ -273,7 +272,6 @@ const Rail = ({ day, today, nowMinute, tones }: { day: TimelineDay; today: strin
           <Circle key={index} cx={3} cy={index * 15 * MINUTE_PX} r={index % 4 === 0 ? 1.8 : 0.95} fill={alpha(tones.foreground, 0.38)} />
         ))}
       </Svg>
-      <View style={[styles.reached, { right: RAIL - 0.5, height: reached * MINUTE_PX, backgroundColor: alpha(tones.foreground, 0.55) }]} />
       {curve ? (
         <Svg width={LANE} height={DAY_MINUTES * MINUTE_PX} style={[styles.dots, { right: RAIL }]}>
           <Rect x={0} y={(curve.bedtime - 30) * MINUTE_PX} width={LANE} height={45 * MINUTE_PX} rx={3} fill={alpha(tones.sleep, 0.18)} />
@@ -542,7 +540,6 @@ const styles = StyleSheet.create({
   gutter: { position: "absolute", top: 0, left: 0, width: GUTTER },
   hour: { position: "absolute", fontFamily: fonts.mono, fontSize: 10, lineHeight: 14, paddingHorizontal: 2, borderRadius: 3, overflow: "hidden" },
   dots: { position: "absolute", top: 0 },
-  reached: { position: "absolute", top: 0, width: 1, borderRadius: 1 },
   nowAnchor: { position: "absolute", top: 0, left: 0, right: 0, height: 0 },
   bead: { position: "absolute", top: -5, width: 10, height: 10, borderRadius: 5, borderWidth: 2 },
   pill: { position: "absolute", top: -8, height: 16, paddingHorizontal: 6, borderRadius: 8, justifyContent: "center" },
