@@ -15,6 +15,8 @@ const WEB_PORT = Number(process.env.E2E_WEB_PORT ?? 4290);
 export const RELAY_URL = `http://127.0.0.1:${process.env.E2E_RELAY_PORT ?? 8791}`;
 const DIST = { WAKU_DIST_DIR: `dist-e2e-${WEB_PORT}`, WAKU_REACT_PROFILING: process.env.E2E_PROFILING ?? "0", WAKU_PUBLIC_NOTES_RELAY_URL: RELAY_URL };
 
+const CAP = { GOMAXPROCS: process.env.E2E_BUILD_THREADS ?? "4", TOKIO_WORKER_THREADS: process.env.E2E_BUILD_THREADS ?? "4", UV_THREADPOOL_SIZE: "4" };
+
 export type Stack = { base: string; convexUrl: string; scratch: string; pids: number[] };
 
 export const stackFile = join(OUT, "stack.json");
@@ -41,7 +43,7 @@ const waitFor = async (what: string, url: string, ms: number) => {
 
 const run = (what: string, command: string, args: string[], cwd: string, env: NodeJS.ProcessEnv) => {
   const started = Date.now();
-  const result = spawnSync(command, args, { cwd, env: { ...process.env, ...env }, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  const result = spawnSync(command, args, { cwd, env: { ...process.env, ...CAP, ...env }, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
   if (result.status !== 0) throw new Error(`${what} failed:\n${result.stdout}\n${result.stderr}`);
   console.log(`[e2e] ${what} (${((Date.now() - started) / 1000).toFixed(1)} s)`);
   return result.stdout;
@@ -49,7 +51,7 @@ const run = (what: string, command: string, args: string[], cwd: string, env: No
 
 const detach = (command: string, args: string[], cwd: string, env: NodeJS.ProcessEnv, log: string) => {
   const out = openSync(log, "a");
-  const child = spawn(command, args, { cwd, env: { ...process.env, ...env }, detached: true, stdio: ["ignore", out, out] });
+  const child = spawn(command, args, { cwd, env: { ...process.env, ...CAP, ...env }, detached: true, stdio: ["ignore", out, out] });
   child.unref();
   return child;
 };

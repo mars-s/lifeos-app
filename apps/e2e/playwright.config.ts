@@ -27,7 +27,7 @@ export default defineConfig({
   outputDir: "out/results",
   globalSetup: "./src/global-setup.ts",
   fullyParallel: true,
-  workers: process.env.E2E_WORKERS ?? "100%",
+  workers: process.env.E2E_WORKERS ?? "50%",
   retries: Number(process.env.E2E_RETRIES ?? 1),
   timeout: 90_000,
   expect: { timeout: 15_000 },

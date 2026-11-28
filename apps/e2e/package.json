@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "e2e": "playwright test",
+    "e2e": "nice -n 15 playwright test",
     "e2e:perf": "playwright test --config playwright.perf.config.ts",
     "report": "playwright show-report out/report",
     "typecheck": "tsc --noEmit",
