@@ -1,6 +1,6 @@
 # Timeline Planner design
 
-The design for a timeline view of the Planner: a day view on iPhone, the Timebox pane on web and Mac, and a week view on both. It is a design only. Nothing is built until Avi approves it. The live specimen is the Waku route `/design/timeline` in `apps/web` (run `pnpm dev:web`, open `/design/timeline`). It uses sample data, and the blocks can be kept, ticked and dragged. The shared look is in [system.md](system.md). The plan is tracked in issue #88.
+The design for a timeline view of the Planner: a day view on iPhone, the Timebox pane on web and Mac, and a week view on both. Avi approved it on 28 November 2026 ("make sure it's like Exoplan: the curves are on the left and the events are normal"), and it is being built: see Built below. The live specimen is the Waku route `/design/timeline` in `apps/web` (run `pnpm dev:web`, open `/design/timeline`). It uses sample data, and the blocks can be kept, ticked and dragged. The shared look is in [system.md](system.md). The plan is tracked in issue #88.
 
 Avi's request, 28 November 2026: bring in something like [Exoplan's day view](references/exoplan/01-exoplan-day.png) for the Planner on the phone, on web and Mac, plus a week view. Predicted blocks are hollow and slashed, today's are filled and coloured, past ones are grey.
 
@@ -169,8 +169,15 @@ Taken by `apps/web/scripts/check-timeline-design.py` at 1440 px and double densi
 7. Widgets: the day strip draws predictions hatched
 8. The Energy Curve: a pure function in `convex/health` from sleep periods, Usual Wake, sleep debt and readiness, with tests against known nights; the `planner/timeline` query returns it per day; the rail, the week headers and the reading card draw it; then predictions and gap hints use it
 
-## Open questions
+## Decided
 
-1. **Earlier today.** The design turns a block graphite as soon as now passes it, so today is graphite above the line and colour below. Should today stay all colour until midnight instead?
-2. **How far ahead to predict.** The design predicts every coming day that has Tasks. Would today and tomorrow only be calmer, with later days left as lists?
-3. **Where it lives on iPhone.** The design makes the timeline a second face of the Today tab. Should it replace Upcoming instead, since the week strip already moves between days?
+1. **Earlier today.** A block turns graphite once now passes it: grey above the now line, colour below.
+2. **How far ahead to predict.** Today and tomorrow only. Later days show only what is kept.
+3. **Where it lives on iPhone.** A second face of the Today tab.
+
+The Energy Curve lives only in the left rail, beside the dots. The blocks keep their normal widths and look.
+
+## Built
+
+- **Core.** `planner/timeline:days` returns each day's Work Blocks, External Commitments, predictions, Capacity, load in three inks and Energy Curve. `predictDay` in `packages/backend/shared/timeline.ts` places the predictions, and the web app runs the same function on the client so a keep or a drag answers in the same frame.
+- **Web and Mac day.** The Timebox pane (`components/lifeos/timebox.tsx`) draws the dotted rail, the solid line up to now, the Energy Curve (`components/lifeos/energy-curve.tsx`), the now bead and pill, the three inks, outlined External Commitments, Trips as drive bands with "leave by", and Buffer and Free gaps with the energy hint. A prediction is kept by a click, Enter, a drag or the arrow keys, and Keep all is Cmd+Enter or the button under the title; each keep is one undoable change. A block keeps its React key when it is kept, so the hatch thickens into the fill. The Spread command keeps all on today and tomorrow and still previews on later days. `apps/web/scripts/check-timeline.py` checks it (shots: `timeline-app-*.png`).

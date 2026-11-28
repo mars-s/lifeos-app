@@ -10,7 +10,8 @@ import { cn } from "@/lib/utils";
 import { Fit } from "../widgets/parts";
 import { EnergySpark } from "./energy";
 import { at, clock, energyModeOf, lookOf, span, visibleAt, type Day } from "./model";
-import { DayTimeline, DayTrack, HatchSwatch, LoadDots, NowLine, Rail, useDayFacts, useEntries, useWorld } from "./parts";
+import { HatchSwatch, LoadDots } from "@/components/lifeos/timeline-dots";
+import { DayTimeline, DayTrack, NowLine, Rail, useDayFacts, useEntries, useWorld } from "./parts";
 import { AREAS, BRAIN_DUMP, NOW, TODAY_INDEX, WEEK } from "./sample";
 
 type Mode = "day" | "week";

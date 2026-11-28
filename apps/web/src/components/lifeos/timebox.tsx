@@ -6,15 +6,19 @@ import { MorphText } from "@/components/ui/morph-text";
 import { haptic } from "@/lib/haptics";
 import { EASE_OUT, exit, instant, springSettle } from "@/lib/motion-tokens";
 import { cn } from "@/lib/utils";
+import { Car } from "@phosphor-icons/react";
+import type { CSSProperties } from "react";
 import { areaVar, type AreaColour } from "./area";
 import { calendarInk } from "./commitments";
+import { EnergyLane, energyHint, type EnergyCurve, type EnergyMode } from "./energy-curve";
 import { formatClock, formatMinutes, formatRange } from "./format";
 
 export const HOUR_PX = 56;
 export const SNAP_MINUTES = 15;
 const DAY_MINUTES = 24 * 60;
 const DRAG_START_PX = 4;
-const GUTTER_REM = 3;
+const GUTTER_PX = 84;
+const LANE_PX = 26;
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 
 export const toPx = (minutes: number) => (minutes / 60) * HOUR_PX;
@@ -35,6 +39,7 @@ export type TimeboxCommitment = {
   source: string;
   colour: string;
   quiet: boolean;
+  past: boolean;
 };
 
 export type TimeboxAllDay = { id: string; day: number; title: string; colour: string; quiet: boolean };
@@ -48,7 +53,28 @@ export type TimeboxBlock = {
   colour: AreaColour | undefined;
   done: boolean;
   inert: boolean;
+  past: boolean;
+  trip: TimeboxTrip | null;
+  taskId: string;
 };
+
+export type TimeboxTrip = { place: string; minutes: number };
+
+export type TimeboxPrediction = {
+  id: string;
+  taskId: string;
+  day: number;
+  start: number;
+  minutes: number;
+  title: string;
+  colour: AreaColour | undefined;
+  area: string | undefined;
+  guess: boolean;
+  fit: "peak" | "dip" | null;
+  trip: TimeboxTrip | null;
+};
+
+export type TimeboxEnergy = { curve: EnergyCurve; mode: EnergyMode };
 
 export type SleepEdge = { label: string; short: string; time: string };
 
@@ -168,6 +194,46 @@ const Tick = () => (
   </svg>
 );
 
+const GROUND_LABEL = "rounded-[4px] bg-(--tl-ground) box-decoration-clone px-1";
+
+const formatSpan = (minutes: number) => `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
+
+const outerOf = (start: number, minutes: number, trip: TimeboxTrip | null) => ({ start: start - (trip?.minutes ?? 0), end: start + minutes + (trip?.minutes ?? 0) });
+
+export const gapsBetween = (spans: readonly { start: number; end: number }[], from: number, until: number) => {
+  const edges = [{ start: from, end: from }, ...spans.filter((span) => span.end > from && span.start < until).toSorted((a, b) => a.start - b.start), { start: until, end: until }];
+  const gaps: { start: number; minutes: number }[] = [];
+  let reach = from;
+  for (const span of edges) {
+    if (span.start - reach >= SNAP_MINUTES) gaps.push({ start: reach, minutes: span.start - reach });
+    reach = Math.max(reach, span.end);
+  }
+  return gaps;
+};
+
+const TripBand = ({ trip, start, height, back, ruled }: { trip: TimeboxTrip; start: number; height: number; back: boolean; ruled: boolean }) => (
+  <span
+    className={cn(
+      "flex w-full shrink-0 items-center gap-1.5 overflow-hidden px-2.5 text-[0.625rem] leading-none text-current/70",
+      ruled && "border-dashed border-current/25 bg-[color-mix(in_oklab,var(--tl-ground)_50%,transparent)]",
+      ruled && (back ? "border-t" : "border-b"),
+    )}
+    style={{ height }}
+  >
+    {ruled && height >= 12 && (
+      <>
+        <Car weight="fill" aria-hidden="true" className="size-3 shrink-0" />
+        <span className="truncate">
+          {back ? `${trip.minutes} min back` : `${trip.minutes} min drive, leave by `}
+          {!back && <span className="font-mono">{formatClock(start - trip.minutes)}</span>}
+        </span>
+      </>
+    )}
+  </span>
+);
+
+type Movable = { id: string; day: number; start: number; minutes: number; inert: boolean; done: boolean };
+
 type Gesture = {
   id: string;
   mode: "move" | "resize";
@@ -195,6 +261,9 @@ export const Timebox = ({
   sleep = [],
   ghost,
   previews = [],
+  predictions = [],
+  energy = null,
+  reached = 0,
   workingHours,
   now,
   scrollKey,
@@ -206,6 +275,8 @@ export const Timebox = ({
   onToggle,
   onOpen,
   onRemove,
+  onKeep,
+  heads,
   className,
 }: {
   days: readonly TimeboxDay[];
@@ -215,6 +286,9 @@ export const Timebox = ({
   sleep?: readonly TimeboxSleep[];
   ghost: TimeboxGhost | null;
   previews?: readonly TimeboxPreview[];
+  predictions?: readonly TimeboxPrediction[];
+  energy?: TimeboxEnergy | null;
+  reached?: number;
   workingHours: { startMinute: number; endMinute: number };
   now: { day: number; minute: number } | null;
   scrollKey: string;
@@ -226,6 +300,8 @@ export const Timebox = ({
   onToggle: (id: string, done: boolean) => void;
   onOpen: (id: string) => void;
   onRemove: (id: string) => void;
+  onKeep?: (id: string, day: number, start: number) => void;
+  heads?: readonly ReactNode[];
   className?: string;
 }) => {
   const reduce = useReducedMotion();
@@ -269,12 +345,18 @@ export const Timebox = ({
     return new Map([...perDay.values()].flatMap((spans) => [...lanesOf(spans)]));
   }, [commitments, blocks]);
 
+  const predictionIds = useMemo(() => new Set(predictions.map((prediction) => prediction.id)), [predictions]);
+  const keep = (id: string, day: number, start: number) => {
+    haptic("drop");
+    onKeep?.(id, day, start);
+  };
+
   const dayAt = (clientX: number) => {
     const box = grid.current?.getBoundingClientRect();
     return box ? clamp(Math.floor(((clientX - box.left) / box.width) * count), 0, count - 1) : 0;
   };
 
-  const begin = (block: TimeboxBlock, mode: Gesture["mode"]) => (event: React.PointerEvent<HTMLElement>) => {
+  const begin = (block: Movable, mode: Gesture["mode"]) => (event: React.PointerEvent<HTMLElement>) => {
     if (gesture.current || block.inert || event.button !== 0) return;
     const box = grid.current?.getBoundingClientRect();
     if (!box) return;
@@ -296,7 +378,7 @@ export const Timebox = ({
     };
   };
 
-  const track = (block: TimeboxBlock) => (event: React.PointerEvent<HTMLElement>) => {
+  const track = (block: Movable) => (event: React.PointerEvent<HTMLElement>) => {
     const active = gesture.current;
     const box = grid.current?.getBoundingClientRect();
     if (!active || !box || active.pointerId !== event.pointerId) return;
@@ -323,23 +405,28 @@ export const Timebox = ({
     setLive({ id: active.id, mode: "resize", day: block.day, start: active.start, minutes: bounded + rubber(raw - bounded) });
   };
 
-  const finish = (block: TimeboxBlock) => (event: React.PointerEvent<HTMLElement>) => {
+  const finish = (block: Movable) => (event: React.PointerEvent<HTMLElement>) => {
     const active = gesture.current;
     if (!active || active.pointerId !== event.pointerId) return;
     gesture.current = null;
     setLive(null);
-    if (!active.moved || !live) return;
+    const predicted = predictionIds.has(block.id);
+    if (!active.moved || !live) {
+      if (predicted && event.type === "pointerup") keep(block.id, block.day, block.start);
+      return;
+    }
     haptic("drop");
     if (active.mode === "move") {
       const start = clamp(snapTo(live.start), 0, DAY_MINUTES - active.minutes);
-      if (start !== block.start || live.day !== block.day) onMove(block.id, live.day, start);
+      if (predicted) keep(block.id, live.day, start);
+      else if (start !== block.start || live.day !== block.day) onMove(block.id, live.day, start);
       return;
     }
     const minutes = clamp(snapTo(live.minutes), SNAP_MINUTES, DAY_MINUTES - active.start);
     if (minutes !== block.minutes) onResize(block.id, minutes);
   };
 
-  const nudge = (block: TimeboxBlock) => (event: React.KeyboardEvent<HTMLElement>) => {
+  const nudge = (block: Movable) => (event: React.KeyboardEvent<HTMLElement>) => {
     if (event.target !== event.currentTarget || event.metaKey || event.ctrlKey || event.altKey || block.inert) return;
     const vertical = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
     const sideways = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
@@ -348,6 +435,16 @@ export const Timebox = ({
       event.stopPropagation();
       setByKey(true);
     };
+    if (predictionIds.has(block.id)) {
+      if (vertical !== 0 && !event.shiftKey) {
+        handled();
+        keep(block.id, block.day, clamp(block.start + vertical * SNAP_MINUTES, 0, DAY_MINUTES - block.minutes));
+      } else if (event.key === "Enter" || event.key === " ") {
+        handled();
+        keep(block.id, block.day, block.start);
+      }
+      return;
+    }
     if (vertical !== 0 && event.shiftKey) {
       handled();
       const minutes = clamp(block.minutes + vertical * SNAP_MINUTES, SNAP_MINUTES, DAY_MINUTES - block.start);
@@ -399,7 +496,7 @@ export const Timebox = ({
   };
   const drawing = drawn && Math.abs(drawn.to - drawn.from) >= MIN_DRAW_MINUTES ? { day: drawn.day, start: Math.min(drawn.from, drawn.to), minutes: Math.abs(drawn.to - drawn.from) } : null;
 
-  const liveBlock = live && blocks.find((block) => block.id === live.id);
+  const liveBlock = live && (blocks.find((block) => block.id === live.id) ?? predictions.find((prediction) => prediction.id === live.id));
   const shown = live && {
     day: live.day,
     start: clamp(snapTo(live.start), 0, DAY_MINUTES - SNAP_MINUTES),
@@ -412,22 +509,55 @@ export const Timebox = ({
       (commitment) => !commitment.quiet && commitment.day === readout.day && readout.start < commitment.end && readout.start + readout.minutes > commitment.start,
     );
   const columns = { gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))` };
+  const lane = energy ? LANE_PX : 0;
+  const scale = HOUR_PX / 60;
+  const curveSpan = energy ? { from: energy.curve.points[0]?.minute ?? 0, to: energy.curve.points.at(-1)?.minute ?? 0 } : null;
+  const onCurve = now !== null && energy?.mode === "today" && curveSpan !== null && now.minute > curveSpan.from && now.minute < curveSpan.to;
+
+  const perTaskDay = new Map<string, number>();
+  for (const block of blocks) perTaskDay.set(`${block.taskId}:${block.day}`, (perTaskDay.get(`${block.taskId}:${block.day}`) ?? 0) + 1);
+  const keyOf = (taskId: string, day: number, fallback: string) => ((perTaskDay.get(`${taskId}:${day}`) ?? 0) <= 1 ? `t:${taskId}:${day}` : fallback);
+  const items = [
+    ...blocks.map((block) => ({ kind: "block" as const, key: keyOf(block.taskId, block.day, block.id), block })),
+    ...predictions.map((prediction) => ({ kind: "prediction" as const, key: keyOf(prediction.taskId, prediction.day, prediction.id), prediction })),
+  ];
+
+  const gapFrom = Math.max(workingHours.startMinute, reached);
+  const gaps =
+    count === 1 && gapFrom < workingHours.endMinute
+      ? gapsBetween(
+          [
+            ...blocks.map((block) => outerOf(block.start, block.minutes, block.trip)),
+            ...predictions.map((prediction) => outerOf(prediction.start, prediction.minutes, prediction.trip)),
+            ...commitments.filter((commitment) => !commitment.quiet).map((commitment) => ({ start: commitment.start, end: commitment.end })),
+          ],
+          gapFrom,
+          workingHours.endMinute,
+        )
+      : [];
 
   return (
-    <div ref={scroller} data-plan-scroll="timebox" className={cn("relative min-h-0 flex-1 overflow-y-auto overscroll-contain select-none", className)}>
-      <div className="sticky top-0 z-20 bg-surface-inset/90 pb-1.5 backdrop-blur-md" style={{ paddingLeft: `${GUTTER_REM}rem` }}>
+    <div
+      ref={scroller}
+      data-plan-scroll="timebox"
+      className={cn("relative min-h-0 flex-1 overflow-y-auto overscroll-contain select-none [--tl-ground:var(--surface-inset)]", className)}
+    >
+      <div className="sticky top-0 z-20 bg-surface-inset/90 pb-1.5 backdrop-blur-md" style={{ paddingLeft: GUTTER_PX }}>
         <div className={cn("grid", count === 1 && "sr-only")} style={columns}>
-          {days.map((day) => (
-            <div key={day.key} className="flex h-8 items-center justify-center gap-1.5 text-small">
-              <span className={cn(day.today ? "font-medium text-foreground" : "text-muted-foreground")}>{day.weekday}</span>
-              <span
-                className={cn(
-                  "grid h-5 min-w-5 place-items-center rounded-full px-1 font-mono text-micro",
-                  day.today ? "bg-brand font-medium text-brand-foreground" : "text-muted-foreground",
-                )}
-              >
-                {day.day}
-              </span>
+          {days.map((day, index) => (
+            <div key={day.key} className="min-w-0 px-1">
+              <div className="flex h-8 items-center justify-center gap-1.5 text-small">
+                <span className={cn(day.today ? "font-medium text-foreground" : "text-muted-foreground")}>{day.weekday}</span>
+                <span
+                  className={cn(
+                    "grid h-5 min-w-5 place-items-center rounded-full px-1 font-mono text-micro",
+                    day.today ? "bg-brand font-medium text-brand-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  {day.day}
+                </span>
+              </div>
+              {heads?.[index]}
             </div>
           ))}
         </div>
@@ -451,15 +581,48 @@ export const Timebox = ({
         )}
       </div>
       <div className="relative mt-2 mb-6" style={{ height: toPx(DAY_MINUTES) }}>
+        <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-0" style={{ width: GUTTER_PX }}>
+          {HOURS.map((hour) =>
+            hour === 0 ? null : (
+              <span
+                key={hour}
+                className={cn(
+                  "absolute -translate-y-1/2 font-mono text-[0.625rem] whitespace-nowrap text-faint-foreground transition-opacity duration-(--dur-fast)",
+                  now && Math.abs(hour * 60 - now.minute) * scale < 13 && "opacity-0",
+                )}
+                style={{ top: toPx(hour * 60), right: 18 + lane }}
+              >
+                {formatClock(hour * 60).replace(":00", "")}
+              </span>
+            ),
+          )}
+          <span
+            className="tl-rail absolute inset-y-0 w-[5px] [--tl-dot:color-mix(in_oklab,var(--foreground)_38%,transparent)]"
+            style={{ right: 5 + lane, backgroundSize: `5px ${HOUR_PX}px, 5px ${15 * scale}px`, backgroundPosition: `0 ${-HOUR_PX / 2}px, 0 ${-7.5 * scale}px` }}
+          />
+          <span className="tl-now absolute top-0 w-px rounded-full bg-foreground/55" style={{ height: toPx(clamp(reached, 0, DAY_MINUTES)), right: 7 + lane }} />
+          {energy && <EnergyLane curve={energy.curve} from={0} to={DAY_MINUTES} scale={scale} now={now?.minute ?? 0} width={LANE_PX} mode={energy.mode} className="right-[3px]" />}
+          {now && (
+            <>
+              {!onCurve && <span className="tl-now absolute size-[9px] -translate-y-1/2 rounded-full bg-brand shadow-[0_0_0_2px_var(--tl-ground)]" style={{ top: toPx(now.minute), right: 3 + lane }} />}
+              <span
+                className="tl-now absolute -translate-y-1/2 rounded-full bg-brand px-1.5 font-mono text-[0.625rem] leading-4 font-medium text-brand-foreground"
+                style={{ top: toPx(now.minute), right: 16 + lane }}
+              >
+                {formatClock(now.minute).replace(/ (am|pm)$/, "")}
+              </span>
+            </>
+          )}
+        </div>
         {HOURS.map((hour) => (
-          <div key={hour} className="absolute inset-x-0 flex -translate-y-1/2 items-center" style={{ top: toPx(hour * 60) }}>
-            <span className="shrink-0 pr-2 text-right font-mono text-micro text-faint-foreground" style={{ width: `${GUTTER_REM}rem` }}>
-              {hour === 0 ? "" : formatClock(hour * 60).replace(":00", "")}
-            </span>
-            <span className="h-px flex-1 bg-[radial-gradient(circle,var(--foreground)_0.5px,transparent_0.75px)] bg-[length:6px_1px] opacity-30" />
-          </div>
+          <span
+            key={hour}
+            aria-hidden="true"
+            className="absolute right-0 border-t border-dotted border-foreground/[0.09]"
+            style={{ top: toPx(hour * 60), left: GUTTER_PX }}
+          />
         ))}
-        <div ref={grid} className="absolute inset-y-0 right-0" style={{ left: `${GUTTER_REM}rem` }}>
+        <div ref={grid} className="absolute inset-y-0 right-0" style={{ left: GUTTER_PX }}>
           <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 bg-foreground/[0.028]" style={{ height: toPx(workingHours.startMinute) }} />
           <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 bg-foreground/[0.028]" style={{ top: toPx(workingHours.endMinute) }} />
           <div className="absolute inset-0 grid" style={columns}>
@@ -471,7 +634,12 @@ export const Timebox = ({
                 onPointerUp={onDraw ? drawEnd : undefined}
                 onPointerCancel={onDraw ? drawEnd : undefined}
                 data-no-select={onDraw ? "" : undefined}
-                className={cn("relative", onDraw && "cursor-crosshair", index > 0 && "shadow-[inset_1px_0_0_color-mix(in_oklab,var(--foreground)_6%,transparent)]")}
+                className={cn(
+                  "relative",
+                  onDraw && "cursor-crosshair",
+                  day.today && count > 1 && "bg-foreground/[0.03]",
+                  index > 0 && "shadow-[inset_1px_0_0_color-mix(in_oklab,var(--foreground)_6%,transparent)]",
+                )}
               >
                 {dayLayers?.[index]}
               </div>
@@ -481,6 +649,20 @@ export const Timebox = ({
             <SleepBand key={band.id} band={band} days={count} tight={tight} />
           ))}
           {zones}
+          {gaps.map((gap) => {
+            const hint = energyHint(energy?.curve ?? null, gap.start + gap.minutes / 2);
+            return (
+              <span
+                key={gap.start}
+                data-gap={gap.minutes < 30 ? "buffer" : "free"}
+                className="pointer-events-none absolute left-2.5 flex -translate-y-1/2 items-center gap-1.5 text-[0.625rem] leading-none whitespace-nowrap text-faint-foreground"
+                style={{ top: toPx(gap.start + gap.minutes / 2) }}
+              >
+                {gap.minutes < 30 ? "Buffer" : "Free"} <span className="font-mono">{formatSpan(gap.minutes)}</span>
+                {gap.minutes >= 30 && hint && <span>· {hint}</span>}
+              </span>
+            );
+          })}
           {drawing && (
             <div
               aria-hidden="true"
@@ -494,94 +676,131 @@ export const Timebox = ({
               <div
                 key={commitment.id}
                 title={`${commitment.title}, ${formatRange(commitment.start, commitment.end)}, ${commitment.source}`}
+                data-look={commitment.past ? "commitment-past" : "commitment"}
                 className={cn(
-                  "absolute flex flex-col overflow-hidden rounded-lg px-2 text-small",
-                  height < 40 ? "justify-center" : "py-1",
-                  commitment.quiet &&
-                    "bg-[repeating-linear-gradient(-45deg,transparent_0_5px,color-mix(in_oklab,var(--foreground)_6%,transparent)_5px_6px)] opacity-70",
+                  "tl-block absolute flex flex-col overflow-hidden px-2.5 text-small",
+                  height < 26 ? "rounded-md" : "rounded-[0.625rem]",
+                  height < 40 ? "justify-center" : "py-1.5",
+                  commitment.quiet && "opacity-60",
                 )}
                 style={{
                   ...slotStyle(commitment.day, count, places.get(commitment.id) ?? WHOLE),
                   top: toPx(commitment.start) + 1,
                   height: Math.max(height, 12),
-                  backgroundColor: `color-mix(in oklab, ${commitment.colour} ${commitment.quiet ? 6 : 13}%, var(--surface-inset))`,
+                  ["--a" as string]: commitment.colour,
                 }}
               >
-                <span className={cn("flex min-w-0 items-center gap-1.5", height < 26 && "text-micro")}>
-                  <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: commitment.colour }} />
-                  <span className="truncate font-medium" style={{ color: calendarInk(commitment.colour) }}>
-                    {commitment.title}
-                  </span>
+                <span className={cn("flex min-w-0 items-center gap-2", height < 26 && "text-micro")}>
+                  <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-full", commitment.past && "opacity-50")} style={{ backgroundColor: commitment.colour }} />
+                  <span className="truncate font-medium">{commitment.title}</span>
                 </span>
                 {height >= 40 && (
-                  <span className="flex min-w-0 gap-1.5 text-micro text-muted-foreground">
+                  <span className="flex min-w-0 gap-1.5 pl-4 text-micro text-current/65">
                     <span className="shrink-0 font-mono">{clockSpan(commitment.start, commitment.end)}</span>
-                    {!tight && <span className="truncate text-faint-foreground">{commitment.source}</span>}
+                    {!tight && <span className="truncate">{commitment.source}</span>}
                   </span>
                 )}
               </div>
             );
           })}
           <AnimatePresence initial={false}>
-            {blocks.map((block) => {
-              const moving = live?.id === block.id ? live : null;
-              const start = moving?.start ?? block.start;
-              const minutes = moving?.minutes ?? block.minutes;
-              const height = Math.max(toPx(minutes) - 2, 12);
-              const tint = tintOf(block.colour);
-              const range = formatRange(block.start, block.start + block.minutes);
-              const liveRange = moving && shown ? clockSpan(shown.start, shown.start + shown.minutes) : clockSpan(block.start, block.start + block.minutes);
+            {items.map((item) => {
+              const thing = item.kind === "block" ? item.block : item.prediction;
+              const predicted = item.kind === "prediction";
+              const block = item.kind === "block" ? item.block : null;
+              const done = block?.done === true;
+              const look = predicted ? "predicted" : block?.past ? (done ? "done" : "missed") : "kept";
+              const moving = live?.id === thing.id ? live : null;
+              const travel = thing.trip?.minutes ?? 0;
+              const start = moving?.start ?? thing.start;
+              const minutes = moving?.minutes ?? thing.minutes;
+              const main = Math.max(toPx(minutes) - 2, 12);
+              const slim = main < 26;
+              const tall = main >= 44;
+              const outer = main + toPx(travel) * 2;
+              const range = formatRange(thing.start, thing.start + thing.minutes);
+              const liveRange = moving && shown ? clockSpan(shown.start, shown.start + shown.minutes) : clockSpan(thing.start, thing.start + thing.minutes);
+              const movable: Movable = block ?? { ...thing, inert: false, done: false };
+              const meta = item.kind === "prediction" ? `${item.prediction.guess ? "~" : ""}${formatSpan(item.prediction.minutes)}${item.prediction.fit ? ` · at your ${item.prediction.fit}` : ""}` : "";
+              const label = predicted
+                ? `Predicted, ${thing.title}, ${range}${item.kind === "prediction" && item.prediction.fit ? `, at your ${item.prediction.fit}` : ""}. Click or press Enter to keep it, drag or use the arrow keys to keep it at another time.`
+                : `Work Block, ${thing.title}, ${range}${done ? ", done" : look === "missed" ? ", not done" : ""}. Arrow keys move it, Shift and arrow keys resize it, Backspace removes it.`;
               return (
                 <motion.div
-                  key={block.id}
-                  role="group"
+                  key={item.key}
+                  role={predicted ? "button" : "group"}
                   tabIndex={0}
-                  data-block-id={block.id}
+                  data-block-id={block ? block.id : undefined}
+                  data-prediction-id={predicted ? thing.id : undefined}
+                  data-look={look}
                   data-no-select=""
-                  aria-label={`Work Block, ${block.title}, ${range}${block.done ? ", done" : ""}. Arrow keys move it, Shift and arrow keys resize it, Backspace removes it.`}
-                  onPointerDown={begin(block, "move")}
-                  onPointerMove={track(block)}
-                  onPointerUp={finish(block)}
-                  onPointerCancel={finish(block)}
-                  onKeyDown={nudge(block)}
-                  onDoubleClick={() => onOpen(block.id)}
-                  initial={{ opacity: 0.6, y: toPx(start) + 1, height }}
-                  animate={{ opacity: block.done && !moving ? 0.5 : 1, y: toPx(start) + 1, height, scale: moving?.mode === "move" ? 1.02 : 1 }}
+                  aria-label={label}
+                  onPointerDown={begin(movable, "move")}
+                  onPointerMove={track(movable)}
+                  onPointerUp={finish(movable)}
+                  onPointerCancel={finish(movable)}
+                  onKeyDown={nudge(movable)}
+                  onDoubleClick={block ? () => onOpen(block.id) : undefined}
+                  initial={{ opacity: 0.6, y: toPx(start - travel) + 1, height: outer }}
+                  animate={{ opacity: 1, y: toPx(start - travel) + 1, height: outer, scale: moving?.mode === "move" ? 1.02 : 1 }}
                   exit={{ opacity: 0, transition: exit }}
                   transition={moving || reduce || byKey ? instant : springSettle}
                   className={cn(
-                    "group/block absolute top-0 flex touch-none overflow-hidden rounded-lg px-2 text-small outline-offset-2 transition-[left,width,box-shadow] duration-(--dur-fast) ease-out motion-reduce:transition-none",
-                    height < 40 ? "items-center" : "items-start py-1",
-                    moving ? "z-20 cursor-grabbing shadow-lift" : block.inert ? "cursor-default" : "cursor-grab",
+                    "tl-block group/block absolute top-0 flex flex-col touch-none overflow-hidden text-small outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    slim ? "rounded-md" : "rounded-[0.625rem]",
+                    moving ? "z-20 cursor-grabbing shadow-lift" : block?.inert ? "cursor-default" : predicted ? "cursor-pointer" : "cursor-grab",
                   )}
                   style={{
-                    ...slotStyle(moving?.day ?? block.day, count, moving ? WHOLE : (places.get(block.id) ?? WHOLE)),
-                    backgroundColor: `color-mix(in oklab, ${tint} 22%, var(--surface-inset))`,
-                  }}
+                    ...slotStyle(moving?.day ?? thing.day, count, moving || predicted ? WHOLE : (places.get(thing.id) ?? WHOLE)),
+                    ["--a" as string]: tintOf(thing.colour),
+                  } as CSSProperties}
                 >
-                  <button
-                    type="button"
-                    role="checkbox"
-                    aria-checked={block.done}
-                    aria-label={`Complete ${block.title}`}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onDoubleClick={(event) => event.stopPropagation()}
-                    onClick={() => onToggle(block.id, !block.done)}
-                    className={cn(
-                      "relative mr-1.5 grid size-3.5 shrink-0 place-items-center rounded-[5px] text-background transition-[background-color,box-shadow,scale] duration-(--dur-press) ease-out before:absolute before:-inset-2 active:scale-[0.85]",
-                      height >= 40 && "mt-[3px]",
-                      block.done ? "bg-foreground/55" : "shadow-[inset_0_0_0_1.5px_color-mix(in_oklab,var(--foreground)_38%,transparent)] hover:shadow-[inset_0_0_0_1.5px_color-mix(in_oklab,var(--foreground)_62%,transparent)]",
+                  {thing.trip && <TripBand trip={thing.trip} start={thing.start} height={toPx(travel)} back={false} ruled={!tight} />}
+                  <span className={cn("flex w-full shrink-0 gap-2", predicted ? "px-1.5" : "px-2.5", slim ? "items-center" : "items-start pt-1.5")} style={{ height: main }}>
+                    {block && (
+                      <button
+                        type="button"
+                        role="checkbox"
+                        aria-checked={done}
+                        aria-label={`Complete ${thing.title}`}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onDoubleClick={(event) => event.stopPropagation()}
+                        onClick={() => onToggle(block.id, !done)}
+                        className={cn(
+                          "relative grid shrink-0 place-items-center text-(--tl-ground) transition-[background-color,box-shadow,scale] duration-(--dur-press) ease-out before:absolute before:-inset-2 active:scale-[0.85]",
+                          slim ? "size-3 rounded-[4px]" : "mt-px size-3.5 rounded-[5px]",
+                          done ? "bg-current text-current" : "shadow-[inset_0_0_0_1.5px_var(--tl-box)]",
+                        )}
+                      >
+                        {done && (
+                          <span className="size-full text-(--tl-ground)">
+                            <Tick />
+                          </span>
+                        )}
+                      </button>
                     )}
-                  >
-                    {block.done && <Tick />}
-                  </button>
-                  <span className="min-w-0 flex-1">
-                    <span className={cn("block truncate font-medium", height < 26 && "text-micro", block.done && "line-through decoration-foreground/40")}>
-                      {block.title}
+                    <span className="min-w-0 flex-1">
+                      <span className={cn("block truncate font-medium", slim ? "text-micro leading-4" : "leading-[1.125rem]", done && "line-through decoration-current/45")}>
+                        <span className={cn(predicted && GROUND_LABEL)}>{thing.title}</span>
+                      </span>
+                      {tall && (
+                        <span className="mt-0.5 block truncate text-micro text-current/65">
+                          <span className={cn(predicted && GROUND_LABEL)}>
+                            {look === "missed" && !tight && "Not done · "}
+                            <MorphText className="font-mono">{liveRange}</MorphText>
+                            {predicted && !tight && ` · ${meta}`}
+                          </span>
+                        </span>
+                      )}
                     </span>
-                    {height >= 40 && <MorphText className="block truncate font-mono text-micro text-foreground/65">{liveRange}</MorphText>}
+                    {!tall && !tight && (
+                      <span className={cn("shrink-0 font-mono text-micro text-current/65", slim ? "leading-4" : "leading-[1.125rem]")}>
+                        <span className={cn(predicted && GROUND_LABEL)}>{formatClock(thing.start)}</span>
+                      </span>
+                    )}
                   </span>
-                  {!block.inert && (
+                  {thing.trip && <TripBand trip={thing.trip} start={thing.start} height={toPx(travel)} back ruled={!tight} />}
+                  {block && !block.inert && (
                     <span
                       aria-hidden="true"
                       onPointerDown={begin(block, "resize")}
@@ -598,44 +817,49 @@ export const Timebox = ({
             })}
           </AnimatePresence>
           <AnimatePresence>
-          {previews.map((preview, index) => (
-            <motion.div
-              key={preview.id}
-              aria-hidden="true"
-              data-spread-preview=""
-              initial={reduce ? { opacity: 0 } : { opacity: 0, transform: "translateY(4px)" }}
-              animate={{ opacity: 1, transform: "translateY(0px)" }}
-              exit={{ opacity: 0, transition: exit }}
-              transition={{ duration: reduce ? 0.12 : 0.22, ease: EASE_OUT, delay: reduce ? 0 : Math.min(index, 12) * 0.035 }}
-              className={cn(
-                "pointer-events-none absolute z-20 overflow-hidden rounded-lg px-2 text-small outline-[1.5px] -outline-offset-[1.5px] outline-dashed",
-                toPx(preview.minutes) < 26 ? "flex items-center py-0 leading-none" : "py-1",
-              )}
-              style={{
-                ...slotStyle(preview.day, count, WHOLE),
-                top: toPx(preview.start) + 1,
-                height: Math.max(toPx(preview.minutes) - 2, 12),
-                outlineColor: `color-mix(in oklab, ${tintOf(preview.colour)} 70%, transparent)`,
-                backgroundColor: `color-mix(in oklab, ${tintOf(preview.colour)} 10%, var(--surface-inset))`,
-              }}
-            >
-              <span className={cn("block truncate font-medium", toPx(preview.minutes) < 26 && "text-micro")}>{preview.title}</span>
-              {toPx(preview.minutes) >= 40 && (
-                <span className="block truncate font-mono text-micro text-foreground/65">{clockSpan(preview.start, preview.start + preview.minutes)}</span>
-              )}
-            </motion.div>
-          ))}
+            {previews.map((preview, index) => (
+              <motion.div
+                key={preview.id}
+                aria-hidden="true"
+                data-spread-preview=""
+                data-look="predicted"
+                initial={reduce ? { opacity: 0 } : { opacity: 0, transform: "translateY(4px)" }}
+                animate={{ opacity: 1, transform: "translateY(0px)" }}
+                exit={{ opacity: 0, transition: exit }}
+                transition={{ duration: reduce ? 0.12 : 0.22, ease: EASE_OUT, delay: reduce ? 0 : Math.min(index, 12) * 0.035 }}
+                className={cn(
+                  "tl-block pointer-events-none absolute z-20 overflow-hidden rounded-[0.625rem] px-1.5 text-small",
+                  toPx(preview.minutes) < 26 ? "flex items-center py-0 leading-none" : "py-1.5",
+                )}
+                style={{
+                  ...slotStyle(preview.day, count, WHOLE),
+                  top: toPx(preview.start) + 1,
+                  height: Math.max(toPx(preview.minutes) - 2, 12),
+                  ["--a" as string]: tintOf(preview.colour),
+                } as CSSProperties}
+              >
+                <span className={cn("block truncate font-medium", toPx(preview.minutes) < 26 && "text-micro")}>
+                  <span className={GROUND_LABEL}>{preview.title}</span>
+                </span>
+                {toPx(preview.minutes) >= 40 && (
+                  <span className="block truncate font-mono text-micro text-foreground/65">
+                    <span className={GROUND_LABEL}>{clockSpan(preview.start, preview.start + preview.minutes)}</span>
+                  </span>
+                )}
+              </motion.div>
+            ))}
           </AnimatePresence>
           {ghost && (
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute z-20 overflow-hidden rounded-lg px-2 py-1 text-small font-medium shadow-lift"
+              data-look="kept"
+              className="tl-block pointer-events-none absolute z-20 overflow-hidden rounded-[0.625rem] px-2.5 py-1.5 text-small font-medium shadow-lift"
               style={{
                 ...slotStyle(ghost.day, count, WHOLE),
                 top: toPx(ghost.start) + 1,
                 height: Math.max(toPx(ghost.minutes) - 2, 12),
-                backgroundColor: `color-mix(in oklab, ${tintOf(ghost.colour)} 22%, var(--surface-inset))`,
-              }}
+                ["--a" as string]: tintOf(ghost.colour),
+              } as CSSProperties}
             >
               <span className="block truncate">{ghost.title}</span>
             </div>
@@ -652,12 +876,9 @@ export const Timebox = ({
           {now && (
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute z-10 flex h-0 items-center"
+              className="tl-now pointer-events-none absolute z-10 h-px bg-brand"
               style={{ top: toPx(now.minute), left: `${(now.day * 100) / count}%`, width: `${100 / count}%` }}
-            >
-              <span className="-ml-1 size-2 shrink-0 rounded-full bg-brand" />
-              <span className="h-[1.5px] flex-1 bg-brand" />
-            </div>
+            />
           )}
         </div>
       </div>

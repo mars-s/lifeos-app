@@ -7,7 +7,7 @@ import { BLOCK_STEP_MINUTES, byDayPlan, dayLoad, dayShareCap } from "@lifeos/bac
 import type { CommitmentRow, PlanGhost, PlannerTask, WorkBlockRow } from "@lifeos/backend/types";
 import type { MeterSlice } from "@/components/lifeos/capacity";
 import type { LoadArea } from "@/components/lifeos/day-goal";
-import type { TimeboxAllDay, TimeboxBlock, TimeboxCommitment } from "@/components/lifeos/timebox";
+import type { TimeboxAllDay, TimeboxBlock, TimeboxCommitment, TimeboxTrip } from "@/components/lifeos/timebox";
 import { localDate, minuteOfDay, startOfLocalDay } from "../dates";
 import { useQuietView, useView, valueOf } from "../hooks";
 import { isOptimistic } from "../task-actions";
@@ -160,10 +160,12 @@ export const nextFreeSlot = (busy: readonly { start: number; end: number }[], mi
   return Math.min(candidate, DAY_MINUTES - minutes);
 };
 
-export const useTimebox = (dates: readonly IsoDate[]) => {
+export const useTimebox = (dates: readonly IsoDate[], today: IsoDate, now: number | null, trips: ReadonlyMap<string, TimeboxTrip>) => {
   const first = dates[0] ?? ("1970-01-01" as IsoDate);
   const { blocks, commitments } = useWindow(first, dates.length);
+  const nowMinute = now === null ? null : minuteOfDay(now);
   return useMemo(() => {
+    const isPast = (date: string, endMinute: number) => date < today || (date === today && nowMinute !== null && endMinute <= nowMinute);
     const dayIndex = new Map(dates.map((date, index) => [date, index] as const));
     const timed: TimeboxCommitment[] = [];
     const allDay: TimeboxAllDay[] = [];
@@ -174,7 +176,7 @@ export const useTimebox = (dates: readonly IsoDate[]) => {
         if (!span) return;
         const id = `${row._id}:${date}`;
         if (row.allDay) allDay.push({ id, day, title: row.title, colour: row.calendar.colour, quiet });
-        else timed.push({ id, day, ...span, title: row.title, source: row.calendar.title, colour: row.calendar.colour, quiet });
+        else timed.push({ id, day, ...span, title: row.title, source: row.calendar.title, colour: row.calendar.colour, quiet, past: isPast(date, span.end) });
       });
     }
     const shown = blocks.flatMap((block) => {
@@ -191,9 +193,12 @@ export const useTimebox = (dates: readonly IsoDate[]) => {
               colour: block.task.area?.colour,
               done: block.done || block.task.status.kind !== "open",
               inert: isOptimistic(block._id),
+              past: isPast(localDate(block.start), minuteOfDay(block.start) + block.minutes + (trips.get(block.taskId)?.minutes ?? 0)),
+              trip: trips.get(block.taskId) ?? null,
+              taskId: block.taskId,
             } satisfies TimeboxBlock,
           ];
     });
     return { commitments: timed, allDay, blocks: shown, rows: blocks };
-  }, [blocks, commitments, dates]);
+  }, [blocks, commitments, dates, today, nowMinute, trips]);
 };

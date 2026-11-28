@@ -510,3 +510,51 @@ li[data-selected]:has(+ li[data-selected]) .task-selected {
 .trip-map canvas {
   filter: saturate(0.55) contrast(0.96);
 }
+
+@property --tl-hatch { syntax: "<length>"; inherits: false; initial-value: 7px; }
+@property --tl-ink { syntax: "<color>"; inherits: false; initial-value: transparent; }
+@property --tl-edge { syntax: "<color>"; inherits: false; initial-value: transparent; }
+.tl-block {
+  --tl-hatch: 7px;
+  --tl-box: color-mix(in oklab, var(--a) 80%, transparent);
+  background-color: var(--tl-ground);
+  background-image: repeating-linear-gradient(135deg, var(--tl-ink) 0, var(--tl-ink) var(--tl-hatch), transparent var(--tl-hatch), transparent 7px);
+  box-shadow: inset 0 0 0 1px var(--tl-edge);
+  transition: --tl-hatch 360ms var(--ease-out), --tl-ink 360ms var(--ease-out), --tl-edge 360ms var(--ease-out), color 360ms var(--ease-out), scale var(--dur-press) var(--ease-out);
+}
+.tl-block[data-look="predicted"] {
+  --tl-hatch: 1px;
+  --tl-ink: color-mix(in oklab, var(--a) 46%, transparent);
+  --tl-edge: color-mix(in oklab, var(--a) 62%, transparent);
+}
+.tl-block[data-look="kept"] {
+  --tl-ink: color-mix(in oklab, var(--a) 30%, transparent);
+  --tl-edge: color-mix(in oklab, var(--a) 26%, transparent);
+}
+.tl-block[data-look="done"] {
+  --tl-ink: color-mix(in oklab, var(--foreground) 9%, transparent);
+  color: var(--muted-foreground);
+}
+.tl-block[data-look="missed"] {
+  --tl-ink: color-mix(in oklab, var(--foreground) 3.5%, transparent);
+  --tl-edge: color-mix(in oklab, var(--foreground) 34%, transparent);
+  --tl-box: color-mix(in oklab, var(--foreground) 48%, transparent);
+  color: var(--muted-foreground);
+}
+.tl-block[data-look^="commitment"] {
+  --tl-edge: color-mix(in oklab, var(--foreground) 17%, transparent);
+}
+.tl-block[data-look="commitment-past"] { color: var(--muted-foreground); }
+.tl-block[data-lifted="true"] { box-shadow: inset 0 0 0 1px var(--tl-edge), var(--shadow-float); scale: 1.015; z-index: 5; }
+button.tl-block:active { scale: 0.985; }
+.tl-rail {
+  background-image: radial-gradient(circle at center, var(--tl-dot) 1.75px, transparent 2.25px), radial-gradient(circle at center, var(--tl-dot) 0.9px, transparent 1.4px);
+  background-repeat: repeat-y;
+}
+.tl-now { transition: top 360ms var(--ease-out), height 360ms var(--ease-out); }
+.tl-bead { transition: cx 360ms var(--ease-out), cy 360ms var(--ease-out); }
+@media (prefers-reduced-motion: reduce) {
+  .tl-block { transition: --tl-ink 160ms linear, --tl-edge 160ms linear, color 160ms linear; }
+  .tl-block[data-lifted="true"], button.tl-block:active { scale: 1; }
+  .tl-now, .tl-bead { transition: none; }
+}

@@ -1,8 +1,8 @@
 "use client";
 
 import { arrayMove } from "@dnd-kit/sortable";
-import { ViewTransition, startTransition, useEffect, useEffectEvent, useRef, useState } from "react";
-import type { IsoDate } from "@lifeos/backend/date";
+import { ViewTransition, startTransition, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { addDays, type IsoDate } from "@lifeos/backend/date";
 import { blockMinutesFor } from "@lifeos/backend/plan";
 import type { PlannerTask } from "@lifeos/backend/types";
 import { Segmented } from "@/components/ui/segmented-control";
@@ -21,6 +21,8 @@ import { previewSpread, sleepOn, type SpreadPreview } from "../planner/spread";
 import { newDraft, smartBusy, useSmartActions, useSmartBlocks, useSmartFill, type SmartDraft } from "../planner/smart-blocks";
 import type { SmartFill } from "@lifeos/backend/smartBlocks";
 import { TimeboxPane, type TimeboxView } from "../planner/timebox-pane";
+import { predictDays, useEnergy, useTrips, type Pick } from "../planner/timeline";
+import { useNow } from "../hooks";
 import { arrowTarget } from "../row-window";
 import { selection } from "../selection";
 import type { PlannerTab } from "../route";
@@ -126,7 +128,35 @@ const Panes = ({
     const day = model.days[index];
     return day ? previewSpread({ day, model, sleep: [...sleepOn(nights, index), ...smartBusy(smartRange, date)], today, now: Date.now() }) : null;
   };
-  const [spread, setSpread] = useState<SpreadPreview | null>(() => (planCommands.pending ? previewOn(planCommands.pending) : null));
+  const tick = useNow();
+  const trips = useTrips(dates);
+  const energy = useEnergy([today, addDays(today, 1)], today);
+  const predicted = useMemo(
+    () =>
+      tick === null
+        ? []
+        : predictDays({
+            model,
+            today,
+            now: tick,
+            busyOf: (date, index) => [...sleepOn(nights, index), ...smartBusy(smartRange, date)],
+            trips,
+            energy,
+          }),
+    [model, today, tick, nights, smartRange, trips, energy],
+  );
+  const predictedOn = (date: IsoDate) => predicted.find((day) => day.date === date);
+  const keep = (pick: Pick, date: IsoDate, minute: number) => actions.createBlock(pick.task, date, minute, pick.minutes, true);
+  const keepAll = (on: readonly IsoDate[]) => {
+    const picks = predicted.filter((day) => on.includes(day.date)).flatMap((day) => day.picks.map((pick) => ({ ...pick, date: day.date })));
+    if (picks.length === 0) return false;
+    haptic("drop");
+    actions.keepAll(picks);
+    return true;
+  };
+  const [spread, setSpread] = useState<SpreadPreview | null>(() =>
+    planCommands.pending && !predictedOn(planCommands.pending) ? previewOn(planCommands.pending) : null,
+  );
 
   const showDate = (date: IsoDate) => {
     setView(view.mode === "day" || startOfWeek(date) !== startOfWeek(view.anchor) ? { mode: view.mode, anchor: date } : view);
@@ -153,6 +183,12 @@ const Panes = ({
   });
 
   const startSpread = useEffectEvent((date: IsoDate) => {
+    if (predictedOn(date)) {
+      keepAll([date]);
+      setView(view.mode === "day" || startOfWeek(date) !== startOfWeek(view.anchor) ? { mode: view.mode, anchor: date } : view);
+      if (tabbed) setPane("timebox");
+      return;
+    }
     const preview = previewOn(date);
     if (!preview) return;
     setSmartDraft(null);
@@ -220,6 +256,11 @@ const Panes = ({
     if (event.defaultPrevented || isTyping(event.target) || event.altKey || event.shiftKey) return;
     if (document.querySelector(BLOCKED_BY)) return;
     const command = event.metaKey || event.ctrlKey;
+    if (command && event.key === "Enter") {
+      const shown = view.mode === "day" ? [view.anchor] : Array.from({ length: 7 }, (_, index) => addDays(startOfWeek(view.anchor), index));
+      if (keepAll(shown)) event.preventDefault();
+      return;
+    }
     const focused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const onRow = focused?.closest<HTMLElement>("[data-task-key]")?.dataset.taskKey;
     if (!command && event.key.toLowerCase() === "b") {
@@ -318,6 +359,10 @@ const Panes = ({
         spread={spread}
         onApplySpread={applySpread}
         onCancelSpread={() => setSpread(null)}
+        predicted={predicted}
+        trips={trips}
+        onKeep={keep}
+        onKeepAll={keepAll}
         smart={{ draft: smartDraft, fill: smartFill, pending: smartPending, setDraft: editSmartBlock, onAccept: acceptSmartBlock }}
         className={cn("w-full", week ? "@4xl/planner:min-w-0 @4xl/planner:flex-1" : "@4xl/planner:w-[21rem] @4xl/planner:shrink-0", shows("timebox", pane, true))}
       />

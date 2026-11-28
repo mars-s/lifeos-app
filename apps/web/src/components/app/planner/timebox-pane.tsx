@@ -6,7 +6,8 @@ import { AnimatePresence } from "motion/react";
 import { useEffect, useMemo } from "react";
 import { addDays, type IsoDate } from "@lifeos/backend/date";
 import type { PlannerTask } from "@lifeos/backend/types";
-import { Timebox, type TimeboxDay, type TimeboxGhost, type TimeboxPreview } from "@/components/lifeos/timebox";
+import { Timebox, type TimeboxDay, type TimeboxGhost, type TimeboxPrediction, type TimeboxPreview, type TimeboxTrip } from "@/components/lifeos/timebox";
+import { HatchSwatch } from "@/components/lifeos/timeline-dots";
 import { Button, IconButton } from "@/components/ui/action-button";
 import { KeyCombo } from "@/components/ui/key-hint";
 import { MorphText } from "@/components/ui/morph-text";
@@ -26,11 +27,14 @@ import { useSleep } from "./sleep";
 import type { SpreadPreview } from "./spread";
 import { draftOf, fillPreviews, newDraft, SmartBlockBar, SmartZones, useSmartActions, useSmartBlocks, type SmartDraft } from "./smart-blocks";
 import type { SmartFill } from "@lifeos/backend/smartBlocks";
+import { energyModeOf, railCurveOf, useEnergy, type DayPrediction, type Pick } from "./timeline";
 
 export type TimeboxMode = "day" | "week";
 export type TimeboxView = { mode: TimeboxMode; anchor: IsoDate };
 
 const NARROW_DAYS = 3;
+
+const formatSpan = (minutes: number) => `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
 
 const modes = (narrow: boolean) =>
   [
@@ -55,8 +59,16 @@ export const TimeboxPane = ({
   onApplySpread,
   onCancelSpread,
   smart,
+  predicted,
+  trips,
+  onKeep,
+  onKeepAll,
   className,
 }: {
+  predicted: readonly DayPrediction[];
+  trips: ReadonlyMap<string, TimeboxTrip>;
+  onKeep: (pick: Pick, date: IsoDate, minute: number) => void;
+  onKeepAll: (dates: readonly IsoDate[]) => void;
   smart: {
     draft: SmartDraft | null;
     fill: SmartFill | null;
@@ -83,7 +95,9 @@ export const TimeboxPane = ({
       ? Array.from({ length: NARROW_DAYS }, (_, index) => addDays(anchor, index))
       : Array.from({ length: 7 }, (_, index) => addDays(startOfWeek(anchor), index));
   }, [mode, anchor, narrow]);
-  const data = useTimebox(dates);
+  const now = useNow();
+  const data = useTimebox(dates, today, now, trips);
+  const energyDays = useEnergy(dates, today);
   const smartRange = useSmartBlocks(dates);
   const smartActions = useSmartActions();
   const smartOn = smartRange?.on === true;
@@ -91,7 +105,6 @@ export const TimeboxPane = ({
   const sleep = useSleep(dates, today);
   const held = useGhost();
   const draftBlocks = useDraftBlocks();
-  const now = useNow();
   const first = dates[0] ?? anchor;
   const last = dates.at(-1) ?? anchor;
   const step = dates.length;
@@ -131,6 +144,35 @@ export const TimeboxPane = ({
     ...(pendingDay === -1 || !smart.pending ? [] : fillPreviews(smart.pending.fill, pendingDay)),
   ];
   const rowOf = (id: string) => data.rows.find((row) => row._id === id);
+  const shownPredictions = predicted.filter((day) => dates.includes(day.date));
+  const predictionOf = new Map<string, { pick: Pick; date: IsoDate }>(
+    shownPredictions.flatMap((day) => day.picks.map((pick) => [`predict:${pick.task._id}:${day.date}`, { pick, date: day.date }] as const)),
+  );
+  const predictions = shownPredictions.flatMap((day) =>
+    day.picks.map(
+      (pick) =>
+        ({
+          id: `predict:${pick.task._id}:${day.date}`,
+          taskId: pick.task._id,
+          day: dates.indexOf(day.date),
+          start: pick.start,
+          minutes: pick.minutes,
+          title: pick.task.title,
+          colour: pick.task.area?.colour,
+          area: pick.task.area?.title,
+          guess: pick.guess,
+          fit: pick.fit,
+          trip: pick.trip,
+        }) satisfies TimeboxPrediction,
+    ),
+  );
+  const predictedMinutes = predictions.reduce((sum, prediction) => sum + prediction.minutes, 0);
+  const unfit = shownPredictions.reduce((sum, day) => sum + day.unfit.length, 0);
+  const lastShown = dates.at(-1) ?? anchor;
+  const reached = showsToday && now !== null ? minuteOfDay(now) : lastShown < today ? 24 * 60 : 0;
+  const railDate = mode === "day" ? anchor : showsToday ? today : null;
+  const railCurve = railDate ? railCurveOf(energyDays.get(railDate)) : null;
+  const energy = railDate && railCurve ? { curve: railCurve, mode: energyModeOf(railDate, today, energyDays.get(railDate)) } : null;
   const sameMonth = first.slice(0, 7) === last.slice(0, 7);
   const [label, shortLabel] =
     mode === "day"
@@ -167,6 +209,25 @@ export const TimeboxPane = ({
           <Segmented label="Timebox view" options={modes(narrow)} value={mode} onValueChange={(next) => onView({ mode: next, anchor })} className="ml-1" />
         </div>
       </header>
+      {(predictions.length > 0 || unfit > 0) && (
+        <p aria-live="polite" className="mb-1.5 flex min-h-8 shrink-0 items-center gap-2 pr-3 pl-4 text-micro text-muted-foreground">
+          {predictions.length > 0 && <HatchSwatch />}
+          <span className="min-w-0 truncate">
+            {predictions.length > 0 && (
+              <>
+                {predictions.length} predicted{mode === "day" && anchor === today ? " later" : ""}, <span className="font-mono">{formatSpan(predictedMinutes)}</span>
+              </>
+            )}
+            {predictions.length > 0 && unfit > 0 && " · "}
+            {unfit > 0 && `${unfit} did not fit`}
+          </span>
+          {predictions.length > 0 && (
+            <Button variant="secondary" size="sm" className="ml-auto shrink-0" onClick={() => onKeepAll(shownPredictions.map((day) => day.date))}>
+              Keep all <KeyCombo keys="mod+enter" />
+            </Button>
+          )}
+        </p>
+      )}
       <Fold show={spread !== null} className="mx-0 shrink-0 px-0">
         {spread && <SpreadBar spread={spread} isToday={spread.date === today} onApply={onApplySpread} onCancel={onCancelSpread} />}
       </Fold>
@@ -190,6 +251,14 @@ export const TimeboxPane = ({
         sleep={sleep}
         ghost={ghost}
         previews={[...previews, ...smartPreviews, ...draftPreviews]}
+        predictions={spread || smart.draft ? [] : predictions}
+        energy={energy}
+        reached={reached}
+        onKeep={(id, day, start) => {
+          const found = predictionOf.get(id);
+          const date = dates[day];
+          if (found && date) onKeep(found.pick, date, start);
+        }}
         workingHours={workingHours}
         now={now !== null && showsToday ? { day: dates.indexOf(today), minute: minuteOfDay(now) } : null}
         scrollKey={`${mode}:${dates.length}`}

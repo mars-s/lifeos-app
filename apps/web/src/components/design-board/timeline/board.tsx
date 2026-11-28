@@ -8,7 +8,7 @@ import { PlannerWindow } from "./desktop";
 import { EnergyAnatomy, EnergyStates } from "./energy-specimens";
 import { PhoneDay, PhoneWeek } from "./iphone";
 import { CompactSwatches, DragDemo, NowDemo, StateSwatches } from "./motion";
-import { TIMELINE_CSS, TimelineWorld } from "./parts";
+import { TimelineWorld } from "./parts";
 import { TODAY_INDEX } from "./sample";
 
 const SECTIONS = [
@@ -50,9 +50,6 @@ export const TimelineBoard = () => {
   return (
     <ThemeContext value={theme}>
       <TimelineWorld>
-        <style href="lifeos-timeline" precedence="default">
-          {TIMELINE_CSS}
-        </style>
         <div className="mx-auto w-full max-w-[90rem] px-4 pb-32 [--tl-ground:var(--surface-inset)] sm:px-8 lg:px-12">
           <header className="sticky top-0 z-40 -mx-4 flex h-16 items-center gap-6 bg-background/85 px-4 backdrop-blur-md sm:-mx-8 sm:px-8 lg:-mx-12 lg:px-12">
             <a href="/design" className="flex items-center gap-2 rounded-md">

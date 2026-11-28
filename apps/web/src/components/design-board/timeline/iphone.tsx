@@ -5,7 +5,8 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { cn } from "@/lib/utils";
 import { EnergySpark } from "./energy";
 import { at, capacityOf, clock, energyModeOf, loadOf, span, type Day } from "./model";
-import { CapacityRing, DayTimeline, DayTrack, HatchSwatch, LoadDots, NowLine, Rail, useDayFacts, useEntries, useWorld } from "./parts";
+import { CapacityRing, HatchSwatch, LoadDots } from "@/components/lifeos/timeline-dots";
+import { DayTimeline, DayTrack, NowLine, Rail, useDayFacts, useEntries, useWorld } from "./parts";
 import { NOW, TODAY_INDEX, WEEK } from "./sample";
 
 const SCREEN = { width: 390, height: 800 } as const;

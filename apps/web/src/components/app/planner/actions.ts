@@ -32,6 +32,8 @@ const patchPlanDay =
 
 export type SpreadPick = { task: PlannerTask; start: number; minutes: number };
 
+export type KeepPick = SpreadPick & { date: IsoDate };
+
 const isPlannedOn = (task: PlannerTask, date: IsoDate, today: IsoDate) =>
   task.when.kind === "scheduled" && (task.when.date === date || (date === today && task.when.date <= today));
 
@@ -112,8 +114,7 @@ export const usePlanActions = (today: IsoDate) => {
         });
       },
 
-      createBlock: (task: PlannerTask, date: IsoDate, minute: number) => {
-        const minutes = blockMinutesFor(task.estimateMinutes);
+      createBlock: (task: PlannerTask, date: IsoDate, minute: number, minutes = blockMinutesFor(task.estimateMinutes), kept = false) => {
         const start = momentAt(date, minute);
         const stays = isPlannedOn(task, date, today);
         const evening = task.when.kind === "scheduled" && task.when.evening;
@@ -128,7 +129,7 @@ export const usePlanActions = (today: IsoDate) => {
           task: { ...task, when },
         } satisfies WorkBlockRow;
         void change({
-          title: `Work Block at ${clockTime(start)} for ${formatMinutes(minutes)}`,
+          title: kept ? `Kept ${task.title} at ${clockTime(start)}` : `Work Block at ${clockTime(start)} for ${formatMinutes(minutes)}`,
           mutation: api.planner.workBlocks.create,
           args: { taskId: task._id, start, minutes, timeZone: localZone(), ...(stays ? {} : { date }) },
           apply: both(putBlock(block), stays ? nothing : patchTask(task._id, (current) => ({ ...current, when }))),
@@ -161,6 +162,31 @@ export const usePlanActions = (today: IsoDate) => {
         const count = `${placed.length} Work Block${placed.length === 1 ? "" : "s"}`;
         void change({
           title: unfit > 0 ? `${count} placed. ${unfit} did not fit` : `${count} placed across the day`,
+          mutation: api.planner.workBlocks.spread,
+          args: {
+            timeZone: localZone(),
+            blocks: placed.map(({ taskId, start, minutes }) => ({ taskId: taskId as Id<"tasks">, start, minutes })),
+          },
+          apply: both(...placed.map(putBlock)),
+          revert: both(...placed.map((block) => dropBlockAt(block.taskId, block.start))),
+        });
+      },
+
+      keepAll: (picks: readonly KeepPick[]) => {
+        const placed = picks.map(({ task, date, start, minutes }) => {
+          blockCount += 1;
+          return {
+            _id: `${OPTIMISTIC_BLOCK}${blockCount}` as Id<"workBlocks">,
+            taskId: drafts.realId(task._id),
+            start: momentAt(date, start),
+            minutes,
+            done: false,
+            task,
+          } satisfies WorkBlockRow;
+        });
+        if (placed.length === 0) return;
+        void change({
+          title: `Kept ${placed.length} prediction${placed.length === 1 ? "" : "s"}`,
           mutation: api.planner.workBlocks.spread,
           args: {
             timeZone: localZone(),
