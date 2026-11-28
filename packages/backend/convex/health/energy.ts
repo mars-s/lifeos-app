@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { err, ok, Result } from "neverthrow";
 import { parseTimeZone, zonedIso, zonedMoment } from "../calendar/model";
+import type { QueryCtx } from "../_generated/server";
 import { ownerQuery } from "../platform/access";
 import { addDays, daysBetween, parseIsoDate, type IsoDate } from "../../shared/date";
 import { serialise } from "../../shared/result";
@@ -200,25 +201,24 @@ const parseArgs = (args: { from: string; to: string; today: string; timeZone: st
     parseTimeZone(args.timeZone).mapErr(() => invalidRange),
   ]).andThen(([from, to, today, timeZone]) => parseRange(from, to).map((span) => ({ from, span, today, timeZone })));
 
+export const energyDays = async (ctx: QueryCtx, { from, span, today, timeZone }: { from: IsoDate; span: number; today: IsoDate; timeZone: string }) => {
+  const connection = await ctx.db.query("ouraConnection").first();
+  const oura: OuraLink = connection ? { syncedAt: lastSyncOf(connection.sync) } : null;
+  const last = addDays(from, span);
+  const newest = last < today ? last : today;
+  const oldest = addDays(from < today ? from : today, -LOOKBACK_DAYS);
+  const rows = oura
+    ? await ctx.db
+        .query("healthDays")
+        .withIndex("by_source_and_day", (q) => q.eq("source", "oura").gt("day", oldest).lte("day", newest))
+        .take(LOOKBACK_DAYS + MAX_RANGE_DAYS + 1)
+    : [];
+  return Array.from({ length: span + 1 }, (_, index) =>
+    energyDay({ date: addDays(from, index), today, timeZone, days: rows, oura }),
+  );
+};
+
 export const days = ownerQuery({
   args: { from: v.string(), to: v.string(), today: v.string(), timeZone: v.string() },
-  handler: async (ctx, args) =>
-    serialise(
-      await parseArgs(args).asyncMap(async ({ from, span, today, timeZone }) => {
-        const connection = await ctx.db.query("ouraConnection").first();
-        const oura: OuraLink = connection ? { syncedAt: lastSyncOf(connection.sync) } : null;
-        const last = addDays(from, span);
-        const newest = last < today ? last : today;
-        const oldest = addDays(from < today ? from : today, -LOOKBACK_DAYS);
-        const rows = oura
-          ? await ctx.db
-              .query("healthDays")
-              .withIndex("by_source_and_day", (q) => q.eq("source", "oura").gt("day", oldest).lte("day", newest))
-              .take(LOOKBACK_DAYS + MAX_RANGE_DAYS + 1)
-          : [];
-        return Array.from({ length: span + 1 }, (_, index) =>
-          energyDay({ date: addDays(from, index), today, timeZone, days: rows, oura }),
-        );
-      }),
-    ),
+  handler: async (ctx, args) => serialise(await parseArgs(args).asyncMap((range) => energyDays(ctx, range))),
 });

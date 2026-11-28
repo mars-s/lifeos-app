@@ -7,9 +7,9 @@ import { featureReady } from "../platform/features";
 import { capacityDays } from "../calendar/capacity";
 import { commitmentsBetween } from "../calendar/commitments";
 import { blocksTime, MINUTE_MS, parseTimeZone, zonedDate, zonedMoment } from "../calendar/model";
+import { energyDays } from "../health/energy";
 import { chosenTrip } from "../places/trips";
 import { addDays, parseIsoDate, type IsoDate } from "../../shared/date";
-import { standInEnergy } from "../../shared/energyStandIn";
 import { dayShareCap } from "../../shared/plan";
 import { serialise } from "../../shared/result";
 import { inkLoad, PREDICT_DAYS, predictDay } from "../../shared/timeline";
@@ -59,17 +59,18 @@ export const loadTimeline = async (ctx: QueryCtx, from: IsoDate, days: number, t
   const starts = [...dates, addDays(dates.at(-1) ?? from, 1)].map((date) => zonedMoment(date, 0, timeZone));
   const rangeStart = starts[0] ?? 0;
   const rangeEnd = starts.at(-1) ?? rangeStart;
-  const [blocks, commitments, plan, capacity] = await Promise.all([
+  const [blocks, commitments, plan, capacity, curves] = await Promise.all([
     blocksBetween(ctx, rangeStart, rangeEnd),
     commitmentsBetween(ctx, rangeStart, rangeEnd),
     loadWeek(ctx, today, PREDICT_DAYS, timeZone),
     capacityDays(ctx, from, days, timeZone),
+    energyDays(ctx, { from, span: days - 1, today, timeZone }),
   ]);
   const predicting = new Map(plan.days.map((day) => [day.date as string, day]));
   const guesses = new Map<string, number>(plan.guesses.map((guess) => [guess.taskId, guess.minutes]));
   const taskIds = [...new Set([...blocks.map((block) => block.taskId), ...plan.days.flatMap((day) => day.tasks.map((task) => task._id))])];
   const trips = await tripsFor(ctx, taskIds);
-  const energy = new Map(standInEnergy(from, days, today).map((day) => [day.date as string, day]));
+  const energy = new Map(curves.map((day) => [day.date as string, day]));
   const { startMinute, endMinute } = plan.workingHours;
 
   return {
@@ -119,7 +120,7 @@ export const loadTimeline = async (ctx: QueryCtx, from: IsoDate, days: number, t
             busy,
             window,
             cap: dayShareCap(day.goalMinutes),
-            energy: dayEnergy && dayEnergy.kind !== "none" && dayEnergy.kind !== "learning" ? dayEnergy : null,
+            energy: dayEnergy && (dayEnergy.kind === "solid" || dayEnergy.kind === "usual") ? dayEnergy : null,
           })
         : { placed: [], unfit: [] };
       const byId = new Map(tasks.map((task) => [task._id as string, task]));
