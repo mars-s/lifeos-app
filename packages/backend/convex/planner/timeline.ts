@@ -1,19 +1,21 @@
 import { v } from "convex/values";
-import { err, ok, Result } from "neverthrow";
+import { Effect, Result } from "effect";
 import type { QueryCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
-import { ownerQuery } from "../platform/access";
+import { ownerQuery, reading } from "../platform/effect";
 import { featureReady } from "../platform/features";
 import { capacityDays } from "../calendar/capacity";
 import { commitmentsBetween } from "../calendar/commitments";
 import { blocksTime, MINUTE_MS, parseTimeZone, zonedDate, zonedMoment } from "../calendar/model";
 import { energyDays } from "../health/energy";
 import { chosenTrip } from "../places/trips";
-import { addDays, parseIsoDate, type IsoDate } from "../../shared/date";
+import { addDays, type IsoDate } from "../../shared/date";
+import { fromNeverthrow } from "../../shared/effect/bridge";
+import { parseIsoDate } from "../../shared/effect/date";
+import { asWire } from "../../shared/effect/wire";
 import { dayShareCap } from "../../shared/plan";
-import { serialise } from "../../shared/result";
 import { inkLoad, PREDICT_DAYS, predictDay } from "../../shared/timeline";
-import type { PlannerError } from "./model";
+import { InvalidPlan } from "./errors";
 import { enrich, isLive } from "./rows";
 import { loadWeek } from "./plan";
 
@@ -21,12 +23,23 @@ const MAX_TIMELINE_DAYS = 14;
 const BLOCK_LIMIT = 1000;
 const DAY_MINUTES = 24 * 60;
 
-const invalid = (reason: "range" | "time_zone") => ({ kind: "invalid_plan", reason }) satisfies PlannerError;
+const outOfRange = () => new InvalidPlan({ reason: "range" });
 
-const parseDays = (days: number) =>
-  Number.isInteger(days) && days >= 1 && days <= MAX_TIMELINE_DAYS ? ok<number, PlannerError>(days) : err<number, PlannerError>(invalid("range"));
+const parseDays = (days: number) => {
+  const parsed: Result.Result<number, InvalidPlan> =
+    Number.isInteger(days) && days >= 1 && days <= MAX_TIMELINE_DAYS ? Result.succeed(days) : Result.fail(outOfRange());
+  return parsed;
+};
 
-const parseNow = (now: number) => (Number.isSafeInteger(now) && now > 0 ? ok<number, PlannerError>(now) : err<number, PlannerError>(invalid("range")));
+const parseNow = (now: number) => {
+  const parsed: Result.Result<number, InvalidPlan> = Number.isSafeInteger(now) && now > 0 ? Result.succeed(now) : Result.fail(outOfRange());
+  return parsed;
+};
+
+const parseZone = (timeZone: string) => {
+  const zone: Result.Result<string, unknown> = fromNeverthrow(parseTimeZone(timeZone));
+  return Result.mapError(zone, () => new InvalidPlan({ reason: "time_zone" }));
+};
 
 const blocksBetween = async (ctx: QueryCtx, from: number, to: number) => {
   const blocks = await ctx.db
@@ -158,13 +171,18 @@ export const loadTimeline = async (ctx: QueryCtx, from: IsoDate, days: number, t
 
 export const days = ownerQuery({
   args: { from: v.string(), days: v.number(), timeZone: v.string(), now: v.number() },
-  handler: async (ctx, args) => {
-    const parsed = Result.combine([
-      parseIsoDate(args.from).mapErr<PlannerError>(() => invalid("range")),
-      parseDays(args.days),
-      parseTimeZone(args.timeZone).mapErr<PlannerError>(() => invalid("time_zone")),
-      parseNow(args.now),
-    ]);
-    return serialise(await parsed.asyncMap(([from, count, timeZone, now]) => loadTimeline(ctx, from, count, timeZone, now)));
-  },
+  handler: (args) =>
+    asWire(
+      Effect.gen(function* () {
+        const [from, count, timeZone, now] = yield* Effect.fromResult(
+          Result.all([
+            Result.mapError(parseIsoDate(args.from), outOfRange),
+            parseDays(args.days),
+            parseZone(args.timeZone),
+            parseNow(args.now),
+          ]),
+        );
+        return yield* reading((ctx) => loadTimeline(ctx, from, count, timeZone, now));
+      }),
+    ),
 });

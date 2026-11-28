@@ -1,16 +1,18 @@
 import { v } from "convex/values";
-import { Result } from "neverthrow";
+import { Effect, Result } from "effect";
 import type { QueryCtx } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
-import { ownerQuery } from "../platform/access";
+import { ownerQuery, reading } from "../platform/effect";
 import { featureReady } from "../platform/features";
 import { commitmentsBetween } from "../calendar/commitments";
 import { blocksTime, parseTimeZone, zonedMoment } from "../calendar/model";
 import { chosenTrip } from "../places/trips";
-import { addDays, parseIsoDate, type IsoDate } from "../../shared/date";
-import { serialise } from "../../shared/result";
+import { addDays, type IsoDate } from "../../shared/date";
+import { fromNeverthrow } from "../../shared/effect/bridge";
+import { parseIsoDate } from "../../shared/effect/date";
+import { asWire } from "../../shared/effect/wire";
+import { InvalidPlan } from "./errors";
 import { currentFocus } from "./focus";
-import type { PlannerError } from "./model";
 import { loadWeek } from "./plan";
 import { compare, enrich, isLive } from "./rows";
 import { openTodayTasks } from "./today";
@@ -27,8 +29,6 @@ const TRIP_LIMIT = 12;
 type AreaSummary = { readonly title: string; readonly colour: Doc<"areas">["colour"] } | undefined;
 
 const areaOf = (area: AreaSummary) => (area ? { name: area.title, colour: area.colour } : undefined);
-
-const invalid = (reason: "range" | "time_zone") => ({ kind: "invalid_plan", reason }) satisfies PlannerError;
 
 const blocksOn = async (ctx: QueryCtx, from: number, to: number) => {
   const blocks = await ctx.db
@@ -146,12 +146,20 @@ const loadSnapshot = async (ctx: QueryCtx, date: IsoDate, timeZone: string) => {
 
 export type WidgetSnapshot = Awaited<ReturnType<typeof loadSnapshot>>;
 
-const parseZone = (timeZone: string) => parseTimeZone(timeZone).mapErr<PlannerError>(() => invalid("time_zone"));
+const parseZone = (timeZone: string) => {
+  const zone: Result.Result<string, unknown> = fromNeverthrow(parseTimeZone(timeZone));
+  return Result.mapError(zone, () => new InvalidPlan({ reason: "time_zone" }));
+};
 
 export const snapshot = ownerQuery({
   args: { date: v.string(), timeZone: v.string() },
-  handler: async (ctx, args) => {
-    const parsed = Result.combine([parseIsoDate(args.date).mapErr<PlannerError>(() => invalid("range")), parseZone(args.timeZone)]);
-    return serialise(await parsed.asyncMap(([date, timeZone]) => loadSnapshot(ctx, date, timeZone)));
-  },
+  handler: (args) =>
+    asWire(
+      Effect.gen(function* () {
+        const [date, timeZone] = yield* Effect.fromResult(
+          Result.all([Result.mapError(parseIsoDate(args.date), () => new InvalidPlan({ reason: "range" })), parseZone(args.timeZone)]),
+        );
+        return yield* reading((ctx) => loadSnapshot(ctx, date, timeZone));
+      }),
+    ),
 });
