@@ -55,6 +55,10 @@ _Avoid_: event (in code), meeting.
 **Goal**: how much planned work Avi wants on one date. It defaults to that day's Capacity. He can set it per day (4:00 on a light day, 8:00 on a push) and reset it to the default. The day meter compares the day's load with the Goal and with Capacity.
 _Avoid_: target, quota.
 
+**Prediction**: where LifeOS expects a Task to land on today or tomorrow: the Spread, run all the time, drawn hollow and hatched on the timeline. It is worked out, never saved. Keeping it (a tap, Enter or a drag) makes it a Work Block.
+
+**Energy Curve**: an estimate of how Avi's energy rises and falls through a day, from his Oura sleep. It is drawn beside the time rail, places focus work at the peak and admin in the dip, and is always labelled an estimate. It shows no number.
+
 **Day Load**: everything planned for one date, in minutes: each Task's Work Blocks on that day, or else its Estimate, or else its Smart Estimate (shown as a guess). Tasks with none of these are counted as "not estimated". Tasks without an Area count like any other, in a neutral tint. An Estimate or Smart Estimate bigger than the day's Goal (or than one four-hour session when the Goal is zero) counts only up to that cap, and the rest shows on the Task as left for other days. Work Blocks always count in full. Upcoming occurrences of a Recurrence Rule that are not made yet count too, as faint ghost rows.
 
 **Spread**: placing the day's Tasks on the Timebox in one step, Sunsama style. Each Task without a Work Block that day gets one, in Day Plan order, in the free gaps inside Working Hours around External Commitments, the Sleep Window and existing Work Blocks, with ten minutes between them. It is previewed as ghost blocks first, and one undo removes the whole Spread. Tasks that do not fit stay unscheduled. Spread never places a Task inside a Smart Block, filled or not: that time is reserved, and Tasks get there by filling the Smart Block.
