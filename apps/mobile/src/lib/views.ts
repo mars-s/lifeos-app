@@ -1,8 +1,8 @@
+import { Result } from "effect";
 import { useQueries } from "convex/react";
 import { getFunctionName, makeFunctionReference, type FunctionArgs, type FunctionReference, type FunctionReturnType } from "convex/server";
 import { convexToJson, jsonToConvex, type JSONValue, type Value } from "convex/values";
 import { SQLiteStorage } from "expo-sqlite/kv-store";
-import { Result } from "neverthrow";
 import { useMemo, useSyncExternalStore } from "react";
 import { AppState } from "react-native";
 import { noReverted, readReverted, subscribeReverted, withReverted } from "@lifeos/backend/client/reverted";
@@ -17,20 +17,22 @@ const savedViews = new SQLiteStorage("lifeos-views");
 const unsavedViews = new Map<string, unknown>();
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
-const parseSaved = Result.fromThrowable(
-  (raw: string) => jsonToConvex(JSON.parse(raw.slice(raw.indexOf("|") + 1)) as JSONValue),
-  () => "unreadable" as const,
-);
-const encodeView = Result.fromThrowable(
-  (value: unknown) => JSON.stringify(convexToJson(value as Value)),
-  () => "unencodable" as const,
-);
+const parseSaved = (raw: string) =>
+  Result.try({
+    try: () => jsonToConvex(JSON.parse(raw.slice(raw.indexOf("|") + 1)) as JSONValue),
+    catch: () => "unreadable" as const,
+  });
+const encodeView = (value: unknown) =>
+  Result.try({ try: () => JSON.stringify(convexToJson(value as Value)), catch: () => "unencodable" as const });
 
 const saveViews = () => {
   clearTimeout(saveTimer);
   saveTimer = undefined;
   const at = Date.now();
-  const rows = [...unsavedViews].flatMap(([key, value]) => encodeView(value).match((json) => [[key, `${at}|${json}`] as [string, string]], () => []));
+  const rows = [...unsavedViews].flatMap(([key, value]) => Result.match(encodeView(value), {
+      onSuccess: (json) => [[key, `${at}|${json}`] as [string, string]],
+      onFailure: () => [],
+    }));
   unsavedViews.clear();
   if (rows.length > 0) void savedViews.multiSet(rows);
 };
@@ -38,7 +40,7 @@ const saveViews = () => {
 keepViewsOn({
   read: (key) => {
     const raw = savedViews.getItemSync(key);
-    return raw === null ? undefined : parseSaved(raw).unwrapOr(undefined);
+    return raw === null ? undefined : Result.getOrUndefined(parseSaved(raw));
   },
   write: (key, value) => {
     unsavedViews.set(key, value);

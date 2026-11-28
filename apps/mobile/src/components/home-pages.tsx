@@ -3,11 +3,12 @@ import { accessibilityLabel, pickerStyle, tag } from "@expo/ui/swift-ui/modifier
 import { Stack } from "expo-router";
 import { TopTabs, type MaterialTopTabBarProps } from "expo-router/js-top-tabs";
 import { useHeaderHeight } from "expo-router/react-navigation";
-import { SQLiteStorage } from "expo-sqlite/kv-store";
-import { Result } from "neverthrow";
+import { Schema } from "effect";
+import { Atom } from "effect/reactivity";
 import { createContext, use, useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useReducedMotion } from "react-native-reanimated";
+import { prefsRuntime, registry } from "@/lib/atoms";
 import { useCounts } from "@/components/tabs-layout";
 import { haptic } from "@/lib/haptics";
 import { useKit } from "@/lib/kit";
@@ -19,13 +20,16 @@ import { Pressable } from "react-native";
 const KEPT_PAGE = "home-page";
 const BAR_GAP = 4;
 
-const prefs = new SQLiteStorage("lifeos-prefs");
+const keptPageAtom = Atom.kvs({
+  runtime: prefsRuntime,
+  key: KEPT_PAGE,
+  schema: Schema.NullOr(Schema.String),
+  defaultValue: () => null,
+}).pipe(Atom.keepAlive);
 
-const keptPage = Result.fromThrowable(() => prefs.getItemSync(KEPT_PAGE))().unwrapOr(null);
+const keptPage = registry.get(keptPageAtom);
 
-const keepPage = (name: string) => {
-  prefs.setItemAsync(KEPT_PAGE, name).catch(() => undefined);
-};
+const keepPage = (name: string) => registry.set(keptPageAtom, name);
 
 const Shown = createContext({ settle: () => undefined as void, show: (_page: string) => undefined as void });
 

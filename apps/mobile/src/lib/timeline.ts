@@ -1,12 +1,14 @@
+import { useAtomValue } from "@effect/atom-react";
 import type { FunctionReturnType } from "convex/server";
-import { SQLiteStorage } from "expo-sqlite/kv-store";
-import { Result } from "neverthrow";
+import { Schema } from "effect";
+import { Atom } from "effect/reactivity";
 import { useSyncExternalStore } from "react";
 import { AppState } from "react-native";
 import { api } from "@lifeos/backend/api";
 import type { Id } from "@lifeos/backend/dataModel";
 import { inkLoad } from "@lifeos/backend/timeline";
 import type { OptimisticLocalStore } from "convex/browser";
+import { prefsRuntime, registry } from "@/lib/atoms";
 import { change } from "@/lib/change";
 import { haptic } from "@/lib/haptics";
 import { useView, valueOf } from "@/lib/views";
@@ -15,26 +17,21 @@ export type TimelineView = Extract<FunctionReturnType<typeof api.planner.timelin
 export type TimelineDay = TimelineView["days"][number];
 export type TimelineBlock = TimelineDay["blocks"][number];
 export type TimelinePrediction = TimelineDay["predictions"][number];
-export type Face = "list" | "timeline";
+
+const FaceSchema = Schema.Literals(["list", "timeline"]);
+
+export type Face = typeof FaceSchema.Type;
 
 const FACE_KEY = "today-face";
 const NOW_STEP_MS = 60_000;
-const prefs = new SQLiteStorage("lifeos-prefs");
-const faceListeners = new Set<() => void>();
-let face: Face = Result.fromThrowable(() => prefs.getItemSync(FACE_KEY))().unwrapOr(null) === "timeline" ? "timeline" : "list";
 
-export const setFace = (next: Face) => {
-  face = next;
-  prefs.setItemAsync(FACE_KEY, next).catch(() => undefined);
-  faceListeners.forEach((listener) => listener());
-};
+const faceAtom = Atom.kvs({ runtime: prefsRuntime, key: FACE_KEY, schema: FaceSchema, defaultValue: () => "list" as const }).pipe(
+  Atom.keepAlive,
+);
 
-const subscribeFace = (listener: () => void) => {
-  faceListeners.add(listener);
-  return () => void faceListeners.delete(listener);
-};
+export const setFace = (next: Face) => registry.set(faceAtom, next);
 
-export const useFace = () => useSyncExternalStore(subscribeFace, () => face, () => face);
+export const useFace = () => useAtomValue(faceAtom);
 
 const subscribeMinute = (onChange: () => void) => {
   const timer = setInterval(onChange, NOW_STEP_MS / 4);

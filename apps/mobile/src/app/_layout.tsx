@@ -1,3 +1,4 @@
+import { RegistryContext } from "@effect/atom-react";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { GeistMono_400Regular, GeistMono_500Medium } from "@expo-google-fonts/geist-mono";
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, useFonts } from "@expo-google-fonts/inter";
@@ -14,6 +15,7 @@ import { FocusSignals } from "@/components/focus-signals";
 import { OwnerGate } from "@/components/owner-gate";
 import { Toaster } from "@/components/ui/toast";
 import { WidgetSync } from "@/components/widget-sync";
+import { registry } from "@/lib/atoms";
 import { addMissingArrayMethods } from "@/lib/array-methods";
 import { addMissingRandomValues } from "@/lib/random";
 import { undoLatest } from "@/lib/change";
@@ -67,25 +69,27 @@ export default function RootLayout() {
   }, [fontsLoaded]);
   if (!fontsLoaded) return null;
   return (
-    <GestureHandlerRootView style={styles.root}>
-      <KeyboardProvider>
-        <AppTheme>
-          {convex ? (
-            <ConvexAuthProvider
-              client={convex}
-              storage={secureStorage}
-              api={{ refreshSession: api.auth.refreshSession, signOut: api.auth.signOut, isAuthenticated: api.auth.isAuthenticated }}
-            >
-              <OwnerGate>
-                <Screens />
-              </OwnerGate>
-            </ConvexAuthProvider>
-          ) : (
-            <Screens />
-          )}
-        </AppTheme>
-      </KeyboardProvider>
-    </GestureHandlerRootView>
+    <RegistryContext.Provider value={registry}>
+      <GestureHandlerRootView style={styles.root}>
+        <KeyboardProvider>
+          <AppTheme>
+            {convex ? (
+              <ConvexAuthProvider
+                client={convex}
+                storage={secureStorage}
+                api={{ refreshSession: api.auth.refreshSession, signOut: api.auth.signOut, isAuthenticated: api.auth.isAuthenticated }}
+              >
+                <OwnerGate>
+                  <Screens />
+                </OwnerGate>
+              </ConvexAuthProvider>
+            ) : (
+              <Screens />
+            )}
+          </AppTheme>
+        </KeyboardProvider>
+      </GestureHandlerRootView>
+    </RegistryContext.Provider>
   );
 }
 
