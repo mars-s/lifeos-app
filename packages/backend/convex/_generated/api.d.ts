@@ -76,6 +76,7 @@ import type * as planner_selection from "../planner/selection.js";
 import type * as planner_shape from "../planner/shape.js";
 import type * as planner_sidebar from "../planner/sidebar.js";
 import type * as planner_smartBlocks from "../planner/smartBlocks.js";
+import type * as planner_smartEstimateErrors from "../planner/smartEstimateErrors.js";
 import type * as planner_smartEstimateModel from "../planner/smartEstimateModel.js";
 import type * as planner_smartEstimateTrial from "../planner/smartEstimateTrial.js";
 import type * as planner_smartEstimates from "../planner/smartEstimates.js";
@@ -182,6 +183,7 @@ declare const fullApi: ApiFromModules<{
   "planner/shape": typeof planner_shape;
   "planner/sidebar": typeof planner_sidebar;
   "planner/smartBlocks": typeof planner_smartBlocks;
+  "planner/smartEstimateErrors": typeof planner_smartEstimateErrors;
   "planner/smartEstimateModel": typeof planner_smartEstimateModel;
   "planner/smartEstimateTrial": typeof planner_smartEstimateTrial;
   "planner/smartEstimates": typeof planner_smartEstimates;
