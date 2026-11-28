@@ -1,26 +1,14 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/reactivity";
 import type { Id } from "@lifeos/backend/dataModel";
+import { registry } from "../../../lib/atoms";
 
 type Opened = { jobId: Id<"jobs">; at: number } | null;
 
-let opened: Opened = null;
-const listeners = new Set<() => void>();
+const openedAtom = Atom.make<Opened>(null).pipe(Atom.keepAlive);
 
-export const openRun = (jobId: Id<"jobs"> | null) => {
-  opened = jobId ? { jobId, at: Date.now() } : null;
-  for (const listener of listeners) listener();
-};
+export const openRun = (jobId: Id<"jobs"> | null) => registry.set(openedAtom, jobId ? { jobId, at: Date.now() } : null);
 
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-};
-
-export const useOpenRun = () =>
-  useSyncExternalStore(
-    subscribe,
-    () => opened,
-    () => null,
-  );
+export const useOpenRun = () => useAtomValue(openedAtom);
