@@ -14,9 +14,9 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
+import { Result } from "effect";
 import { generateKeyBetween } from "fractional-indexing";
 import { useReducedMotion } from "motion/react";
-import { Result } from "neverthrow";
 import { createContext, use, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { IsoDate } from "@lifeos/backend/date";
@@ -58,7 +58,8 @@ const useDrag = () => {
   return drag;
 };
 
-const keyBetween = Result.fromThrowable(generateKeyBetween, () => "unordered" as const);
+const keyBetween = (before: string | null, after: string | null) =>
+  Result.try({ try: () => generateKeyBetween(before, after), catch: () => "unordered" as const });
 
 export const usePlacedRows = (container: string, rows: readonly PlanRow[]) => {
   const { hold, registry } = useDrag();
@@ -110,8 +111,8 @@ export const usePlanCommit = (today: IsoDate, actions: PlanActions) => {
       }
       const at = rows.findIndex((row) => row.task._id === task._id);
       const order = keyBetween(rows[at - 1]?.task.order ?? null, rows[at + 1]?.task.order ?? null);
-      if (order.isErr()) return false;
-      tasksDo.reorder(task, order.value);
+      if (Result.isFailure(order)) return false;
+      tasksDo.reorder(task, order.success);
       return true;
     },
     [actions, tasksDo],

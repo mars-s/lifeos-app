@@ -5,9 +5,9 @@ import { DndContext, MouseSensor, closestCenter, useSensor, useSensors, type Dra
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { Result } from "effect";
 import { generateKeyBetween } from "fractional-indexing";
 import { AnimatePresence, motion, useReducedMotion, type Transition } from "motion/react";
-import { Result } from "neverthrow";
 import { memo, useCallback, useEffect, useEffectEvent, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { PlannerTask, TaskRepeat } from "@lifeos/backend/types";
 import { AreaDot, areaVar } from "@/components/lifeos/area";
@@ -619,7 +619,8 @@ const DRAG_MODIFIERS = [restrictToVerticalAxis];
 
 const savedIdOf = (id: PlannerTask["_id"]) => (isDraftTask(id) ? undefined : drafts.realId(id));
 
-const keyBetween = Result.fromThrowable(generateKeyBetween, () => "unordered" as const);
+const keyBetween = (before: string | null, after: string | null) =>
+  Result.try({ try: () => generateKeyBetween(before, after), catch: () => "unordered" as const });
 
 export const useHasDrafts = () => useDraftCount(routeHref(useShell().route)) > 0;
 
@@ -678,8 +679,8 @@ export const TaskItems = ({
       return true;
     }
     const order = keyBetween(others[to - 1]?.task.order ?? null, others[to]?.task.order ?? null);
-    if (order.isErr()) return false;
-    actions.reorder(moved.task, order.value);
+    if (Result.isFailure(order)) return false;
+    actions.reorder(moved.task, order.success);
     return true;
   };
 
