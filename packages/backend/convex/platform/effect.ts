@@ -80,6 +80,9 @@ export const runChange = <A extends object, E>(ctx: MutationCtx, actor: Actor, a
 export const legacyRead = <A, E extends WireError>(ctx: QueryCtx, effect: Effect.Effect<A, E, Reads>) =>
   runAtEdge(Effect.result(effect).pipe(withReads(ctx))).then(toNeverthrow);
 
+export const legacyWrite = <A, E extends WireError>(ctx: MutationCtx, effect: Effect.Effect<A, E, Reads | Writes>) =>
+  runAtEdge(Effect.result(effect).pipe(withWrites(ctx))).then(toNeverthrow);
+
 export const legacyChange = <A, E extends WireError>(ctx: QueryCtx, record: Recording, effect: Effect.Effect<A, E, Reads | Recorder>) =>
   runAtEdge(Effect.result(effect).pipe(Effect.provideService(Recorder, record), withReads(ctx))).then(toNeverthrow);
 

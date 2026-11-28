@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { ok } from "neverthrow";
+import { Effect } from "effect";
 import type { WithoutSystemFields } from "convex/server";
 import type { QueryCtx } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
@@ -16,9 +16,8 @@ import {
   type FeatureStatus,
   type FeatureUses,
 } from "../../shared/features";
-import { ownerQuery } from "./access";
 import type { Recorder } from "./activity";
-import { changeMutation } from "./change";
+import { changeMutation, ownerQuery, Reads, reading, recording } from "./effect";
 import { secretAvailable } from "./secrets";
 
 type FeatureRow<F extends FeatureId> = Extract<Doc<"features">, { feature: F }>;
@@ -70,7 +69,7 @@ export const featureUses = <F extends FeatureId>(ctx: QueryCtx, _from: F, used: 
 
 export const list = ownerQuery({
   args: {},
-  handler: (ctx) => Promise.all(FEATURE_IDS.map((feature) => featureState(ctx, feature))),
+  handler: () => reading((ctx) => Promise.all(FEATURE_IDS.map((feature) => featureState(ctx, feature)))),
 });
 
 export const writeFeature = async (ctx: QueryCtx, record: Recorder, feature: FeatureId, fields: Partial<Pick<FeatureFields, "enabled" | "settings">>) => {
@@ -81,15 +80,19 @@ export const writeFeature = async (ctx: QueryCtx, record: Recorder, feature: Fea
   return true;
 };
 
+const changeFeature = Effect.fn("features.change")(function* (feature: FeatureId, fields: Partial<Pick<FeatureFields, "enabled" | "settings">>) {
+  const ctx = yield* Reads;
+  return { changed: yield* recording((record) => writeFeature(ctx, record, feature, fields)) };
+});
+
 export const setEnabled = changeMutation({
   action: "features.setEnabled",
   args: { feature: vFeatureId, enabled: v.boolean() },
-  handler: async (ctx, { feature, enabled }, record) => ok<{ changed: boolean }, never>({ changed: await writeFeature(ctx, record, feature, { enabled }) }),
+  handler: ({ feature, enabled }) => changeFeature(feature, { enabled }),
 });
 
 export const configure = changeMutation({
   action: "features.configure",
   args: { choice: vFeatureChoice },
-  handler: async (ctx, { choice }, record) =>
-    ok<{ changed: boolean }, never>({ changed: await writeFeature(ctx, record, choice.feature, { settings: choice.settings }) }),
+  handler: ({ choice }) => changeFeature(choice.feature, { settings: choice.settings }),
 });

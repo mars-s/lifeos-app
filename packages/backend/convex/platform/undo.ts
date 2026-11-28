@@ -1,10 +1,11 @@
 import { v } from "convex/values";
-import { err, ok } from "neverthrow";
-import type { MutationCtx } from "../_generated/server";
+import { Clock, Effect } from "effect";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
-import { serialise } from "../../shared/result";
+import { asWire } from "../../shared/effect/wire";
 import { fromStored, recordedFields, sameValue, startRecording } from "./activity";
-import { ownerMutation } from "./access";
+import { CurrentActor, legacyWrite, ownerMutation, reading, writing } from "./effect";
+import { ActivityNotFound, AlreadyUndone, ChangedSince, NothingToUndo, NotUndoable, RunActive } from "./errors";
 import { vEntityRef, type Actor, type EntityRef, type RecordRef, type UndoTarget } from "./tables";
 
 export type UndoError =
@@ -24,26 +25,33 @@ const LINKABLE_TABLES = new Set<string>(vEntityRef.members.map((member) => membe
 
 const isLinkable = (entity: RecordRef): entity is EntityRef => LINKABLE_TABLES.has(entity.table);
 
-const changesOf = (ctx: MutationCtx, activityId: Id<"activity">) =>
-  ctx.db
-    .query("activityChanges")
-    .withIndex("by_activity_seq", (q) => q.eq("activityId", activityId))
-    .take(4000);
+const changesOf = (activityId: Id<"activity">) =>
+  reading((ctx) =>
+    ctx.db
+      .query("activityChanges")
+      .withIndex("by_activity_seq", (q) => q.eq("activityId", activityId))
+      .take(4000),
+  );
 
-const runUndone = async (ctx: MutationCtx, jobId: Id<"jobs">) =>
-  (await ctx.db
-    .query("activity")
-    .withIndex("by_undoes_run", (q) => q.eq("undoes.jobId", jobId))
-    .first()) !== null;
+const runUndone = (jobId: Id<"jobs">) =>
+  reading(
+    async (ctx) =>
+      (await ctx.db
+        .query("activity")
+        .withIndex("by_undoes_run", (q) => q.eq("undoes.jobId", jobId))
+        .first()) !== null,
+  );
 
-const isUndone = async (ctx: MutationCtx, activity: Doc<"activity">) => {
-  const direct = await ctx.db
-    .query("activity")
-    .withIndex("by_undoes_activity", (q) => q.eq("undoes.activityId", activity._id))
-    .first();
+const isUndone = Effect.fn("undo.isUndone")(function* (activity: Doc<"activity">) {
+  const direct = yield* reading((ctx) =>
+    ctx.db
+      .query("activity")
+      .withIndex("by_undoes_activity", (q) => q.eq("undoes.activityId", activity._id))
+      .first(),
+  );
   if (direct) return true;
-  return activity.actor.kind === "agentRun" && runUndone(ctx, activity.actor.jobId);
-};
+  return activity.actor.kind === "agentRun" && (yield* runUndone(activity.actor.jobId));
+});
 
 const expectedState = (changes: Doc<"activityChanges">[]) => {
   const expected = new Map<string, Expected>();
@@ -62,7 +70,7 @@ const expectedState = (changes: Doc<"activityChanges">[]) => {
   return [...expected.values()];
 };
 
-const dependentsOf = async (ctx: MutationCtx, entity: RecordRef) => {
+const dependentsOf = async (ctx: QueryCtx, entity: RecordRef) => {
   if (!isLinkable(entity)) return [];
   const links = [
     ...(await ctx.db
@@ -113,7 +121,7 @@ const transientIn = (changes: Doc<"activityChanges">[]) => {
   return new Set([...first].flatMap(([id, kind]) => (kind === "insert" && last.get(id) === "delete" ? [id] : [])));
 };
 
-const firstConflict = async (ctx: MutationCtx, changes: Doc<"activityChanges">[]) => {
+const firstConflict = async (ctx: QueryCtx, changes: Doc<"activityChanges">[]) => {
   const removedByUndo = releasedIn(changes);
   for (const { entity, fields, exact } of expectedState(changes)) {
     const doc = await ctx.db.get(entity.id);
@@ -130,9 +138,7 @@ const firstConflict = async (ctx: MutationCtx, changes: Doc<"activityChanges">[]
   return null;
 };
 
-const revert = async (ctx: MutationCtx, actor: Actor, undoes: UndoTarget, changes: Doc<"activityChanges">[]) => {
-  const conflict = await firstConflict(ctx, changes);
-  if (conflict) return err<{ undoActivityId: Id<"activity"> | null }, UndoError>({ kind: "changed_since", entity: conflict });
+const revertAll = async (ctx: MutationCtx, actor: Actor, undoes: UndoTarget, changes: Doc<"activityChanges">[]) => {
   const record = startRecording(ctx, actor, "undo", undoes);
   const transient = transientIn(changes);
   for (const { entity, change } of changes.toReversed()) {
@@ -141,45 +147,59 @@ const revert = async (ctx: MutationCtx, actor: Actor, undoes: UndoTarget, change
     else if (change.kind === "patch") await record.patch(entity.table, entity.id, fromStored(change.before));
     else await record.insert(entity.table, fromStored(change.before) as never);
   }
-  return ok<{ undoActivityId: Id<"activity"> | null }, UndoError>({ undoActivityId: await record.finish() });
+  return record.finish();
 };
 
-export const undoActivity = async (ctx: MutationCtx, actor: Actor, activityId: Id<"activity">) => {
-  const activity = await ctx.db.get("activity", activityId);
-  if (!activity) return err<never, UndoError>({ kind: "not_found" });
-  if (activity.undoes) return err<never, UndoError>({ kind: "not_undoable", reason: "undo" });
+const revert = Effect.fn("undo.revert")(function* (actor: Actor, undoes: UndoTarget, changes: Doc<"activityChanges">[]) {
+  const conflict = yield* reading((ctx) => firstConflict(ctx, changes));
+  if (conflict) return yield* new ChangedSince({ entity: conflict });
+  return { undoActivityId: yield* writing((ctx) => revertAll(ctx, actor, undoes, changes)) };
+});
+
+export const undoActivityFx = Effect.fn("undo.activity")(function* (actor: Actor, activityId: Id<"activity">) {
+  const activity = yield* reading((ctx) => ctx.db.get("activity", activityId));
+  if (!activity) return yield* new ActivityNotFound();
+  if (activity.undoes) return yield* new NotUndoable({ reason: "undo" });
   if (activity.actor.kind === "things" || activity.actor.kind === "recurrence") {
-    return err<never, UndoError>({ kind: "not_undoable", reason: activity.actor.kind });
+    return yield* new NotUndoable({ reason: activity.actor.kind });
   }
-  if (PERMANENT_ACTIONS.has(activity.action)) return err<never, UndoError>({ kind: "not_undoable", reason: "permanent" });
-  if (await isUndone(ctx, activity)) return err<never, UndoError>({ kind: "already_undone" });
-  return revert(ctx, actor, { kind: "activity", activityId }, await changesOf(ctx, activityId));
-};
+  if (PERMANENT_ACTIONS.has(activity.action)) return yield* new NotUndoable({ reason: "permanent" });
+  if (yield* isUndone(activity)) return yield* new AlreadyUndone();
+  return yield* revert(actor, { kind: "activity", activityId }, yield* changesOf(activityId));
+});
 
-export const undoAgentRun = async (ctx: MutationCtx, actor: Actor, jobId: Id<"jobs">) => {
-  if (await runUndone(ctx, jobId)) return err<never, UndoError>({ kind: "already_undone" });
-  const run = await ctx.db.get("jobs", jobId);
-  if (run?.status.kind === "claimed" && run.status.leaseUntil >= Date.now()) return err<never, UndoError>({ kind: "run_active" });
-  const groups = await ctx.db
-    .query("activity")
-    .withIndex("by_run", (q) => q.eq("actor.jobId", jobId))
-    .take(1000);
+export const undoAgentRunFx = Effect.fn("undo.agentRun")(function* (actor: Actor, jobId: Id<"jobs">) {
+  if (yield* runUndone(jobId)) return yield* new AlreadyUndone();
+  const run = yield* reading((ctx) => ctx.db.get("jobs", jobId));
+  const now = yield* Clock.currentTimeMillis;
+  if (run?.status.kind === "claimed" && run.status.leaseUntil >= now) return yield* new RunActive();
+  const groups = yield* reading((ctx) =>
+    ctx.db
+      .query("activity")
+      .withIndex("by_run", (q) => q.eq("actor.jobId", jobId))
+      .take(1000),
+  );
   const standing = [];
   for (const group of groups) {
-    if (group.undoes || (await isUndone(ctx, group))) continue;
+    if (group.undoes || (yield* isUndone(group))) continue;
     standing.push(group);
   }
-  if (standing.length === 0) return err<never, UndoError>({ kind: "nothing_to_undo" });
-  const changes = (await Promise.all(standing.map((group) => changesOf(ctx, group._id)))).flat();
-  return revert(ctx, actor, { kind: "run", jobId }, changes);
-};
+  if (standing.length === 0) return yield* new NothingToUndo();
+  const changes = (yield* Effect.forEach(standing, (group) => changesOf(group._id))).flat();
+  return yield* revert(actor, { kind: "run", jobId }, changes);
+});
+
+export const undoActivity = (ctx: MutationCtx, actor: Actor, activityId: Id<"activity">) =>
+  legacyWrite(ctx, undoActivityFx(actor, activityId));
+
+export const undoAgentRun = (ctx: MutationCtx, actor: Actor, jobId: Id<"jobs">) => legacyWrite(ctx, undoAgentRunFx(actor, jobId));
 
 export const undo = ownerMutation({
   args: { activityId: v.id("activity") },
-  handler: async (ctx, { activityId }, actor) => serialise(await undoActivity(ctx, actor, activityId)),
+  handler: ({ activityId }) => Effect.flatMap(CurrentActor, (actor) => asWire(undoActivityFx(actor, activityId))),
 });
 
 export const undoRun = ownerMutation({
   args: { jobId: v.id("jobs") },
-  handler: async (ctx, { jobId }, actor) => serialise(await undoAgentRun(ctx, actor, jobId)),
+  handler: ({ jobId }) => Effect.flatMap(CurrentActor, (actor) => asWire(undoAgentRunFx(actor, jobId))),
 });

@@ -1,12 +1,14 @@
 import { tool, type ToolDefinition } from "@convex-dev/mcp";
 import { ConvexError, v } from "convex/values";
-import type { Result } from "neverthrow";
+import { Clock, Effect } from "effect";
 import { internal } from "../_generated/api";
 import type { QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
-import { agentMutation, agentQuery, MCP_SCOPES } from "./access";
+import { MCP_SCOPES, type AgentRunActor } from "./access";
 import { endMcpRun, isLiveRun, isRunOf, latestMcpRun } from "./agentRuns";
-import { undoActivity, undoAgentRun, type UndoError } from "./undo";
+import { agentMutation, agentQuery, reading, writing } from "./effect";
+import type { UndoFailure } from "./errors";
+import { undoActivityFx, undoAgentRunFx, type UndoError } from "./undo";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
@@ -72,23 +74,24 @@ export const describeActivity = async (ctx: QueryCtx, entry: Doc<"activity">) =>
 
 export const recentActivity = agentQuery({
   args: { runId: v.optional(v.string()), limit: v.optional(v.number()), cursor: v.optional(v.string()) },
-  handler: async (ctx, args) => {
-    const numItems = Math.min(Math.max(Math.trunc(args.limit ?? DEFAULT_LIMIT), 1), MAX_LIMIT);
-    const paginationOpts = { numItems, cursor: args.cursor ?? null };
-    const jobId = args.runId === undefined ? undefined : ctx.db.normalizeId("jobs", args.runId);
-    if (args.runId !== undefined && !jobId) throw new ConvexError(`No Agent Run has the id "${args.runId}".`);
-    const page = jobId
-      ? await ctx.db
-          .query("activity")
-          .withIndex("by_run", (q) => q.eq("actor.jobId", jobId))
-          .order("desc")
-          .paginate(paginationOpts)
-      : await ctx.db.query("activity").order("desc").paginate(paginationOpts);
-    return {
-      entries: await Promise.all(page.page.map((entry) => describeActivity(ctx, entry))),
-      ...(page.isDone ? {} : { nextCursor: page.continueCursor }),
-    };
-  },
+  handler: (args) =>
+    reading(async (ctx) => {
+      const numItems = Math.min(Math.max(Math.trunc(args.limit ?? DEFAULT_LIMIT), 1), MAX_LIMIT);
+      const paginationOpts = { numItems, cursor: args.cursor ?? null };
+      const jobId = args.runId === undefined ? undefined : ctx.db.normalizeId("jobs", args.runId);
+      if (args.runId !== undefined && !jobId) throw new ConvexError(`No Agent Run has the id "${args.runId}".`);
+      const page = jobId
+        ? await ctx.db
+            .query("activity")
+            .withIndex("by_run", (q) => q.eq("actor.jobId", jobId))
+            .order("desc")
+            .paginate(paginationOpts)
+        : await ctx.db.query("activity").order("desc").paginate(paginationOpts);
+      return {
+        entries: await Promise.all(page.page.map((entry) => describeActivity(ctx, entry))),
+        ...(page.isDone ? {} : { nextCursor: page.continueCursor }),
+      };
+    }),
 });
 
 const undoRefusals = {
@@ -113,33 +116,49 @@ const undoRefusals = {
 
 const notYours = "You can only undo changes this connection made. Avi undoes his own changes in the app.";
 
-const undone = (result: Result<{ undoActivityId: Id<"activity"> | null }, UndoError>) => {
-  if (result.isErr()) throw new ConvexError(undoRefusals[result.error.kind](result.error));
-  return result.value.undoActivityId ? { undoActivityId: result.value.undoActivityId as string } : {};
-};
+const refuse = (message: string) => Effect.die(new ConvexError(message));
+
+const undone = <E extends UndoFailure, R>(undoing: Effect.Effect<{ undoActivityId: Id<"activity"> | null }, E, R>) =>
+  undoing.pipe(
+    Effect.map(({ undoActivityId }) => (undoActivityId ? { undoActivityId: undoActivityId as string } : {})),
+    Effect.catch((error: UndoFailure) => refuse(undoRefusals[error.kind](error))),
+  );
+
+const undoOneChange = Effect.fn("agentTools.undoOneChange")(function* (
+  activityId: string,
+  run: Effect.Effect<AgentRunActor>,
+  connectionId: string,
+) {
+  const id = yield* reading(async (ctx) => ctx.db.normalizeId("activity", activityId));
+  const entry = id ? yield* reading((ctx) => ctx.db.get("activity", id)) : null;
+  if (!id || !entry) return yield* refuse(`No Activity entry has the id "${activityId}". recent_activity lists them.`);
+  const owner = entry.actor.kind === "agentRun" ? yield* readJob(entry.actor.jobId) : null;
+  if (!isRunOf(owner, connectionId)) return yield* refuse(notYours);
+  const actor = yield* run;
+  return { ...(yield* undone(undoActivityFx(actor, id))), undid: "activity" as const };
+});
+
+const readJob = (jobId: Id<"jobs">) => reading((ctx) => ctx.db.get("jobs", jobId));
+
+const undoWholeRun = Effect.fn("agentTools.undoWholeRun")(function* (runId: string | undefined, connectionId: string) {
+  const now = yield* Clock.currentTimeMillis;
+  const latest = yield* reading((ctx) => latestMcpRun(ctx, connectionId));
+  const jobId = runId === undefined ? latest?._id : yield* reading(async (ctx) => ctx.db.normalizeId("jobs", runId));
+  if (!jobId) return yield* refuse(runId === undefined ? "This connection has made no changes yet." : `No Agent Run has the id "${runId}".`);
+  const target = yield* readJob(jobId);
+  if (!target || !isRunOf(target, connectionId)) return yield* refuse(notYours);
+  if (isLiveRun(target, now)) yield* writing((ctx) => endMcpRun(ctx, target, now));
+  return { ...(yield* undone(undoAgentRunFx({ kind: "agentRun", jobId }, jobId))), undid: "run" as const, runId: jobId as string };
+});
 
 export const undo = agentMutation({
   args: { activityId: v.optional(v.string()), runId: v.optional(v.string()), currentRun: v.optional(v.boolean()) },
-  handler: async (ctx, args, run, caller) => {
+  handler: Effect.fn("agentTools.undo")(function* (args, run, caller) {
     const targets = [args.activityId, args.runId, args.currentRun ? true : undefined].filter((target) => target !== undefined);
-    if (targets.length !== 1) throw new ConvexError("Give exactly one of activityId, runId or currentRun: true.");
-    if (args.activityId !== undefined) {
-      const activityId = ctx.db.normalizeId("activity", args.activityId);
-      const entry = activityId && (await ctx.db.get("activity", activityId));
-      if (!activityId || !entry) throw new ConvexError(`No Activity entry has the id "${args.activityId}". recent_activity lists them.`);
-      const owner = entry.actor.kind === "agentRun" ? await ctx.db.get("jobs", entry.actor.jobId) : null;
-      if (!isRunOf(owner, caller.connectionId)) throw new ConvexError(notYours);
-      return { ...undone(await undoActivity(ctx, await run(), activityId)), undid: "activity" as const };
-    }
-    const now = Date.now();
-    const latest = await latestMcpRun(ctx, caller.connectionId);
-    const jobId = args.runId === undefined ? latest?._id : ctx.db.normalizeId("jobs", args.runId);
-    if (!jobId) throw new ConvexError(args.runId === undefined ? "This connection has made no changes yet." : `No Agent Run has the id "${args.runId}".`);
-    const target = await ctx.db.get("jobs", jobId);
-    if (!target || !isRunOf(target, caller.connectionId)) throw new ConvexError(notYours);
-    if (isLiveRun(target, now)) await endMcpRun(ctx, target, now);
-    return { ...undone(await undoAgentRun(ctx, { kind: "agentRun", jobId }, jobId)), undid: "run" as const, runId: jobId as string };
-  },
+    if (targets.length !== 1) return yield* refuse("Give exactly one of activityId, runId or currentRun: true.");
+    if (args.activityId !== undefined) return yield* undoOneChange(args.activityId, run, caller.connectionId);
+    return yield* undoWholeRun(args.runId, caller.connectionId);
+  }),
 });
 
 export const platformTools: Record<string, ToolDefinition> = {

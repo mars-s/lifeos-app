@@ -1,16 +1,20 @@
 import { v } from "convex/values";
-import { err, ok } from "neverthrow";
+import { Effect, Schema } from "effect";
 import { expect, test } from "vitest";
 import { newBackend } from "../backend.test-utils";
-import { changeAs, changeMutation } from "./change";
+import { changeAs } from "./change";
+import { changeMutation, recording } from "./effect";
+
+class Refused extends Schema.TaggedError<Refused>()("ChangeTestRefused", { kind: Schema.tag("refused") }) {}
 
 const addThenMaybeRefuse = changeMutation({
   action: "test.addThenMaybeRefuse",
   args: { refuse: v.boolean() },
-  handler: async (_ctx, { refuse }, record) => {
-    await record.insert("areas", { title: "Half done", colour: "teal", order: "a0" });
-    return refuse ? err({ kind: "refused" as const }) : ok({ done: true });
-  },
+  handler: Effect.fn("test.addThenMaybeRefuse")(function* ({ refuse }) {
+    yield* recording((record) => record.insert("areas", { title: "Half done", colour: "teal", order: "a0" }));
+    if (refuse) return yield* new Refused();
+    return { done: true };
+  }),
 });
 
 const counts = (t: Awaited<ReturnType<typeof newBackend>>) =>

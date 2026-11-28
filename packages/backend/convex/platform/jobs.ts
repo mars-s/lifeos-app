@@ -1,10 +1,11 @@
 import { v } from "convex/values";
-import { err, ok } from "neverthrow";
-import { internalMutation, type MutationCtx } from "../_generated/server";
-import type { Doc, Id } from "../_generated/dataModel";
-import { serialise } from "../../shared/result";
+import { Clock, Effect } from "effect";
+import type { MutationCtx } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
+import { asWire } from "../../shared/effect/wire";
+import { CurrentWorker, internalMutation, reading, workerMutation, writing } from "./effect";
+import { NotClaimed } from "./errors";
 import { vJob, type Capability, type Job, type JobKind } from "./tables";
-import { workerMutation } from "./access";
 
 export const jobKinds = {
   agent: { maxAttempts: 1, leaseMs: 15 * 60_000 },
@@ -30,7 +31,7 @@ export const enqueueJob = async (ctx: MutationCtx, job: Job, idempotencyKey: str
 
 export const enqueue = internalMutation({
   args: { job: vJob, idempotencyKey: v.string() },
-  handler: (ctx, { job, idempotencyKey }) => enqueueJob(ctx, job, idempotencyKey),
+  handler: ({ job, idempotencyKey }) => writing((ctx) => enqueueJob(ctx, job, idempotencyKey)),
 });
 
 const nextQueued = (ctx: MutationCtx, kind: JobKind, now: number) =>
@@ -63,68 +64,67 @@ const isJobKind = (capability: Capability): capability is JobKind => capability 
 
 export const claim = workerMutation({
   args: {},
-  handler: async (ctx, _args, worker) => {
-    const now = Date.now();
+  handler: Effect.fn("jobs.claim")(function* () {
+    const worker = yield* CurrentWorker;
+    const now = yield* Clock.currentTimeMillis;
     for (const kind of worker.capabilities.filter(isJobKind)) {
-      const job = await claimableOf(ctx, kind, now);
+      const job = yield* writing((ctx) => claimableOf(ctx, kind, now));
       if (!job) continue;
       const leaseUntil = now + jobKinds[kind].leaseMs;
       const attempts = job.attempts + 1;
-      await ctx.db.patch("jobs", job._id, {
-        status: { kind: "claimed", workerId: worker._id, leaseUntil, heartbeatAt: now },
-        attempts,
-      });
+      yield* writing((ctx) =>
+        ctx.db.patch("jobs", job._id, {
+          status: { kind: "claimed", workerId: worker._id, leaseUntil, heartbeatAt: now },
+          attempts,
+        }),
+      );
       return { jobId: job._id, job: job.job, attempts, leaseUntil };
     }
     return null;
-  },
+  }),
 });
 
-const heldBy = async (ctx: MutationCtx, worker: Doc<"workers">, jobId: Id<"jobs">, attempt: number) => {
-  const job = await ctx.db.get("jobs", jobId);
-  const held = job?.status.kind === "claimed" && job.status.workerId === worker._id && job.attempts === attempt;
-  return held ? ok<Doc<"jobs">, JobError>(job) : err<Doc<"jobs">, JobError>({ kind: "not_claimed", jobId });
-};
+const heldBy = Effect.fn("jobs.heldBy")(function* (jobId: Id<"jobs">, attempt: number) {
+  const worker = yield* CurrentWorker;
+  const job = yield* reading((ctx) => ctx.db.get("jobs", jobId));
+  if (job?.status.kind !== "claimed" || job.status.workerId !== worker._id || job.attempts !== attempt) {
+    return yield* new NotClaimed({ jobId });
+  }
+  return { ...job, status: job.status };
+});
 
 export const heartbeat = workerMutation({
   args: { jobId: v.id("jobs"), attempt: v.number() },
-  handler: async (ctx, { jobId, attempt }, worker) =>
-    serialise(
-      await (await heldBy(ctx, worker, jobId, attempt)).asyncMap(async (job) => {
-        const now = Date.now();
-        const leaseUntil = now + jobKinds[job.job.kind].leaseMs;
-        if (job.status.kind === "claimed") {
-          await ctx.db.patch("jobs", jobId, { status: { ...job.status, leaseUntil, heartbeatAt: now } });
-        }
-        return { leaseUntil };
-      }),
-    ),
+  handler: Effect.fn("jobs.heartbeat")(function* ({ jobId, attempt }) {
+    const job = yield* heldBy(jobId, attempt);
+    const now = yield* Clock.currentTimeMillis;
+    const leaseUntil = now + jobKinds[job.job.kind].leaseMs;
+    yield* writing((ctx) => ctx.db.patch("jobs", jobId, { status: { ...job.status, leaseUntil, heartbeatAt: now } }));
+    return { leaseUntil };
+  }, asWire),
 });
 
 export const complete = workerMutation({
   args: { jobId: v.id("jobs"), attempt: v.number(), receipt: v.any() },
-  handler: async (ctx, { jobId, attempt, receipt }, worker) =>
-    serialise(
-      await (await heldBy(ctx, worker, jobId, attempt)).asyncMap(async () => {
-        await ctx.db.patch("jobs", jobId, { status: { kind: "done", at: Date.now(), receipt } });
-        return { jobId };
-      }),
-    ),
+  handler: Effect.fn("jobs.complete")(function* ({ jobId, attempt, receipt }) {
+    yield* heldBy(jobId, attempt);
+    const at = yield* Clock.currentTimeMillis;
+    yield* writing((ctx) => ctx.db.patch("jobs", jobId, { status: { kind: "done", at, receipt } }));
+    return { jobId };
+  }, asWire),
 });
 
 export const fail = workerMutation({
   args: { jobId: v.id("jobs"), attempt: v.number(), error: v.string(), retry: v.boolean() },
-  handler: async (ctx, { jobId, attempt, error, retry }, worker) =>
-    serialise(
-      await (await heldBy(ctx, worker, jobId, attempt)).asyncMap(async (job) => {
-        const now = Date.now();
-        const retrying = retry && job.attempts < jobKinds[job.job.kind].maxAttempts;
-        await ctx.db.patch("jobs", jobId, {
-          status: retrying
-            ? { kind: "queued", availableAt: now + retryDelayMs(job.attempts) }
-            : { kind: "failed", at: now, error },
-        });
-        return { retrying };
+  handler: Effect.fn("jobs.fail")(function* ({ jobId, attempt, error, retry }) {
+    const job = yield* heldBy(jobId, attempt);
+    const now = yield* Clock.currentTimeMillis;
+    const retrying = retry && job.attempts < jobKinds[job.job.kind].maxAttempts;
+    yield* writing((ctx) =>
+      ctx.db.patch("jobs", jobId, {
+        status: retrying ? { kind: "queued", availableAt: now + retryDelayMs(job.attempts) } : { kind: "failed", at: now, error },
       }),
-    ),
+    );
+    return { retrying };
+  }, asWire),
 });
