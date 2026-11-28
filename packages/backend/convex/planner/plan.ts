@@ -1,18 +1,19 @@
 import { v } from "convex/values";
-import { Result, err, ok } from "neverthrow";
+import { Effect, Result } from "effect";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
-import { ownerQuery } from "../platform/access";
 import type { Recorder } from "../platform/activity";
-import { changeMutation } from "../platform/change";
+import { changeMutation, legacyChange, ownerQuery, reading, recording } from "../platform/effect";
 import { capacityDays } from "../calendar/capacity";
 import { parseTimeZone, zonedMoment } from "../calendar/model";
-import { addDays, parseIsoDate, type IsoDate } from "../../shared/date";
+import { addDays, type IsoDate } from "../../shared/date";
+import { fromNeverthrow, toNeverthrow } from "../../shared/effect/bridge";
+import { parseIsoDate } from "../../shared/effect/date";
+import { asWire } from "../../shared/effect/wire";
 import { byDayPlan, dayLoad, dayShareCap, goalMinutesOf, MAX_GOAL_MINUTES, placeInDay } from "../../shared/plan";
 import { uncreatedDates } from "../../shared/recurrence";
+import { InvalidPlan, NotFound } from "./errors";
 import { isPaused } from "./recurrence";
-import { serialise } from "../../shared/result";
-import type { PlannerError } from "./model";
 import { enrich, isLive } from "./rows";
 import { homeSummary } from "./shape";
 import { guessesFor } from "./smartEstimates";
@@ -24,14 +25,22 @@ const PLAN_BLOCK_LIMIT = 1000;
 const MAX_DAY_TASKS = 500;
 const PLAN_RULE_LIMIT = 500;
 
-const invalid = (reason: "range" | "time_zone" | "order" | "goal") => ({ kind: "invalid_plan", reason }) satisfies PlannerError;
+type PlanFault = (typeof InvalidPlan.fields.reason)["Type"];
 
-const parseDays = (days: number) =>
-  Number.isInteger(days) && days >= 1 && days <= MAX_PLAN_DAYS ? ok<number, PlannerError>(days) : err<number, PlannerError>(invalid("range"));
+const invalid = (reason: PlanFault) => new InvalidPlan({ reason });
 
-const parsePlanDate = (date: string) => parseIsoDate(date).mapErr<PlannerError>(() => invalid("range"));
+const parseDays = (days: number) => {
+  const parsed: Result.Result<number, InvalidPlan> =
+    Number.isInteger(days) && days >= 1 && days <= MAX_PLAN_DAYS ? Result.succeed(days) : Result.fail(invalid("range"));
+  return parsed;
+};
 
-const parseZone = (timeZone: string) => parseTimeZone(timeZone).mapErr<PlannerError>(() => invalid("time_zone"));
+const parsePlanDate = (date: string) => parseIsoDate(date).pipe(Result.mapError(() => invalid("range")));
+
+const parseZone = (timeZone: string) => {
+  const zone: Result.Result<string, unknown> = fromNeverthrow(parseTimeZone(timeZone));
+  return Result.mapError(zone, () => invalid("time_zone"));
+};
 
 const isOpen = (task: Doc<"tasks">) => isLive(task) && task.status.kind === "open";
 
@@ -137,65 +146,84 @@ export const loadWeek = async (ctx: QueryCtx, from: IsoDate, days: number, timeZ
 
 export const week = ownerQuery({
   args: { from: v.string(), days: v.number(), timeZone: v.string() },
-  handler: async (ctx, args) => {
-    const parsed = Result.combine([parsePlanDate(args.from), parseDays(args.days), parseZone(args.timeZone)]);
-    return serialise(await parsed.asyncMap(([from, days, timeZone]) => loadWeek(ctx, from, days, timeZone)));
-  },
+  handler: (args) =>
+    asWire(
+      Effect.gen(function* () {
+        const [from, days, timeZone] = yield* Effect.fromResult(Result.all([parsePlanDate(args.from), parseDays(args.days), parseZone(args.timeZone)]));
+        return yield* reading((ctx) => loadWeek(ctx, from, days, timeZone));
+      }),
+    ),
 });
 
-export const parseNewPlace = (place: { date: string; order: Id<"tasks">[]; at: number }) =>
-  parsePlanDate(place.date).andThen((date) =>
-    Number.isInteger(place.at) && place.at >= 0 && place.at <= place.order.length && place.order.length < MAX_DAY_TASKS && new Set(place.order).size === place.order.length
-      ? ok<{ date: IsoDate; order: Id<"tasks">[]; at: number }, PlannerError>({ ...place, date })
-      : err<{ date: IsoDate; order: Id<"tasks">[]; at: number }, PlannerError>(invalid("order")),
-  );
+const parseSpot = <P extends { order: Id<"tasks">[]; at: number }>(place: P) => {
+  const { order, at } = place;
+  const parsed: Result.Result<P, InvalidPlan> =
+    Number.isInteger(at) && at >= 0 && at <= order.length && order.length < MAX_DAY_TASKS && new Set(order).size === order.length
+      ? Result.succeed(place)
+      : Result.fail(invalid("order"));
+  return parsed;
+};
 
-export const placeOnDay = async (ctx: MutationCtx, record: Recorder, task: Doc<"tasks">, date: IsoDate, order: Id<"tasks">[], evening: boolean) => {
-  if (!order.includes(task._id) || order.length > MAX_DAY_TASKS || new Set(order).size !== order.length)
-    return err<{ moved: number }, PlannerError>(invalid("order"));
-  const loaded = await Promise.all(order.map((id) => (id === task._id ? task : ctx.db.get("tasks", id))));
+export const parseNewPlaceFx = (place: { date: string; order: Id<"tasks">[]; at: number }) =>
+  Result.flatMap(parsePlanDate(place.date), (date) => parseSpot({ ...place, date }));
+
+export const parseNewPlace = (place: { date: string; order: Id<"tasks">[]; at: number }) => toNeverthrow(parseNewPlaceFx(place));
+
+export const placeOnDayFx = Effect.fn("plan.placeOnDay")(function* (
+  task: Doc<"tasks">,
+  date: IsoDate,
+  order: Id<"tasks">[],
+  evening: boolean,
+) {
+  if (!order.includes(task._id) || order.length > MAX_DAY_TASKS || new Set(order).size !== order.length) return yield* invalid("order");
+  const loaded = yield* reading((ctx) => Promise.all(order.map((id) => (id === task._id ? task : ctx.db.get("tasks", id)))));
   const present = loaded.flatMap((other) => (other ? [other] : []));
   const others = present.filter((other) => other._id !== task._id);
   const marks = placeInDay(others, task._id, present.findIndex((other) => other._id === task._id), date);
   let moved = 0;
   for (const mark of marks) {
     const fields = mark.taskId === task._id ? { plan: mark.plan, when: { kind: "scheduled" as const, date, evening } } : { plan: mark.plan };
-    if (await record.patch("tasks", mark.taskId, fields)) moved += 1;
+    if (yield* recording((record) => record.patch("tasks", mark.taskId, fields))) moved += 1;
   }
-  return ok<{ moved: number }, PlannerError>({ moved });
-};
+  return { moved };
+});
+
+export const placeOnDay = (ctx: MutationCtx, record: Recorder, task: Doc<"tasks">, date: IsoDate, order: Id<"tasks">[], evening: boolean) =>
+  legacyChange(ctx, record, placeOnDayFx(task, date, order, evening));
 
 export const place = changeMutation({
   action: "plan.place",
   args: { taskId: v.id("tasks"), date: v.string(), order: v.array(v.id("tasks")), evening: v.optional(v.boolean()) },
-  handler: async (ctx, { taskId, date, order, evening }, record) => {
-    const day = parsePlanDate(date);
-    if (day.isErr()) return err<{ moved: number }, PlannerError>(day.error);
-    const task = await ctx.db.get("tasks", taskId);
-    if (!task) return err<{ moved: number }, PlannerError>({ kind: "not_found", table: "tasks", id: taskId });
-    return placeOnDay(ctx, record, task, day.value, order, evening ?? (task.when.kind === "scheduled" && task.when.evening));
-  },
+  handler: Effect.fn("plan.place")(function* ({ taskId, date, order, evening }) {
+    const day = yield* Effect.fromResult(parsePlanDate(date));
+    const task = yield* reading((ctx) => ctx.db.get("tasks", taskId));
+    if (!task) return yield* new NotFound({ table: "tasks", id: taskId });
+    return yield* placeOnDayFx(task, day, order, evening ?? (task.when.kind === "scheduled" && task.when.evening));
+  }),
 });
 
-const parseGoal = (minutes: number | null) =>
-  minutes === null || (Number.isInteger(minutes) && minutes >= 0 && minutes <= MAX_GOAL_MINUTES)
-    ? ok<number | undefined, PlannerError>(minutes ?? undefined)
-    : err<number | undefined, PlannerError>(invalid("goal"));
+const parseGoal = (minutes: number | null) => {
+  const parsed: Result.Result<number | undefined, InvalidPlan> =
+    minutes === null || (Number.isInteger(minutes) && minutes >= 0 && minutes <= MAX_GOAL_MINUTES)
+      ? Result.succeed(minutes ?? undefined)
+      : Result.fail(invalid("goal"));
+  return parsed;
+};
 
 export const setGoal = changeMutation({
   action: "plan.goal",
   args: { date: v.string(), minutes: v.union(v.number(), v.null()) },
-  handler: async (ctx, args, record) => {
-    const parsed = Result.combine([parsePlanDate(args.date), parseGoal(args.minutes)]);
-    if (parsed.isErr()) return err<{ changed: boolean }, PlannerError>(parsed.error);
-    const [date, goalMinutes] = parsed.value;
-    const row = await ctx.db
-      .query("dayPlans")
-      .withIndex("by_date", (q) => q.eq("date", date))
-      .unique();
-    if (row) return ok<{ changed: boolean }, PlannerError>({ changed: await record.patch("dayPlans", row._id, { goalMinutes }) });
-    if (goalMinutes === undefined) return ok<{ changed: boolean }, PlannerError>({ changed: false });
-    await record.insert("dayPlans", { date, goalMinutes });
-    return ok<{ changed: boolean }, PlannerError>({ changed: true });
-  },
+  handler: Effect.fn("plan.setGoal")(function* (args) {
+    const [date, goalMinutes] = yield* Effect.fromResult(Result.all([parsePlanDate(args.date), parseGoal(args.minutes)]));
+    const row = yield* reading((ctx) =>
+      ctx.db
+        .query("dayPlans")
+        .withIndex("by_date", (q) => q.eq("date", date))
+        .unique(),
+    );
+    if (row) return { changed: yield* recording((record) => record.patch("dayPlans", row._id, { goalMinutes })) };
+    if (goalMinutes === undefined) return { changed: false };
+    yield* recording((record) => record.insert("dayPlans", { date, goalMinutes }));
+    return { changed: true };
+  }),
 });
