@@ -12,6 +12,9 @@ import { useCounts } from "@/components/tabs-layout";
 import { haptic } from "@/lib/haptics";
 import { useKit } from "@/lib/kit";
 import { LIST_TITLES } from "@/lib/route";
+import { setFace, useFace } from "@/lib/timeline";
+import { CalendarDays, List } from "lucide-react-native";
+import { Pressable } from "react-native";
 
 const KEPT_PAGE = "home-page";
 const BAR_GAP = 4;
@@ -81,6 +84,28 @@ const PageSwitch = ({ state, navigateToTab }: MaterialTopTabBarProps) => {
 
 const renderSwitch = (props: MaterialTopTabBarProps) => <PageSwitch {...props} />;
 
+const FaceSwitch = () => {
+  const { colors } = useKit();
+  const face = useFace();
+  const Icon = face === "timeline" ? List : CalendarDays;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={face === "timeline" ? "Show the list" : "Show the timeline"}
+      hitSlop={10}
+      onPress={() => {
+        haptic("toggle");
+        setFace(face === "timeline" ? "list" : "timeline");
+      }}
+      style={styles.faceButton}
+    >
+      <Icon size={21} color={colors.foreground} strokeWidth={1.75} />
+    </Pressable>
+  );
+};
+
+const faceSwitch = () => <FaceSwitch />;
+
 export const HomePages = () => {
   const { colors } = useKit();
   const reduced = useReducedMotion();
@@ -90,7 +115,7 @@ export const HomePages = () => {
   const title = page === "inbox" ? LIST_TITLES.inbox : LIST_TITLES.today;
   return (
     <>
-      <Stack.Screen options={{ title }} />
+      <Stack.Screen options={{ title, ...(page === "inbox" ? {} : { headerRight: faceSwitch }) }} />
       <Shown value={shown}>
         <TopTabs tabBar={renderSwitch} screenOptions={{ animationEnabled: settled && !reduced, sceneStyle: { backgroundColor: colors.background } }}>
           <TopTabs.Screen name="index" />
@@ -104,4 +129,5 @@ export const HomePages = () => {
 const styles = StyleSheet.create({
   bar: { paddingHorizontal: 16, paddingBottom: 8 },
   switch: { width: "100%" },
+  faceButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
 });

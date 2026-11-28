@@ -7,6 +7,8 @@ import type { Id } from "@lifeos/backend/dataModel";
 import type { IsoDate } from "@lifeos/backend/date";
 import type { PlannerTask, TaskGroup } from "@lifeos/backend/types";
 import { EmptyNote, TaskList, taskItems, type ListItem } from "@/components/task-list";
+import { TimelineFace } from "@/components/timeline-face";
+import { useFace } from "@/lib/timeline";
 import { usePlanner } from "@/lib/kit-theme";
 import type { Slot } from "@/lib/magic-plus";
 import { LIST_TITLES, projectHref } from "@/lib/route";
@@ -68,7 +70,9 @@ export const InboxScreen = () => {
   );
 };
 
-export const TodayScreen = () => {
+export const TodayScreen = () => (useFace() === "timeline" ? <TimelineFace /> : <TodayList />);
+
+const TodayList = () => {
   const today = useLocalDate();
   const view = valueOf(useView(api.planner.today.get, { date: today }));
   const slot = useMemo(() => ({ when: { kind: "scheduled", date: today, evening: false }, parent: LOOSE, label: "Today" }) satisfies Slot, [today]);
