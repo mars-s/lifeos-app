@@ -13,6 +13,7 @@ import type * as ai_agent from "../ai/agent.js";
 import type * as ai_aiIndex from "../ai/aiIndex.js";
 import type * as ai_capabilities from "../ai/capabilities.js";
 import type * as ai_embeddings from "../ai/embeddings.js";
+import type * as ai_errors from "../ai/errors.js";
 import type * as ai_indexRows from "../ai/indexRows.js";
 import type * as ai_memory from "../ai/memory.js";
 import type * as ai_migrations from "../ai/migrations.js";
@@ -118,6 +119,7 @@ declare const fullApi: ApiFromModules<{
   "ai/aiIndex": typeof ai_aiIndex;
   "ai/capabilities": typeof ai_capabilities;
   "ai/embeddings": typeof ai_embeddings;
+  "ai/errors": typeof ai_errors;
   "ai/indexRows": typeof ai_indexRows;
   "ai/memory": typeof ai_memory;
   "ai/migrations": typeof ai_migrations;
