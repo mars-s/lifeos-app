@@ -92,6 +92,9 @@ _Avoid_: sleep block, sleep event.
 
 **Health Day**: one day of Oura data (sleep, sleep score, readiness), filed under the morning the night ended.
 
+**Energy Curve**: an estimate of how alert Avi is likely to be through a day, from waking to bedtime, worked out from his sleep (the two-process model: sleep pressure since waking plus a daily rhythm anchored on his wake). Today's comes from last night's real sleep, coming days from his usual pattern. It is always labelled an estimate and shows no number.
+_Avoid_: energy score, battery.
+
 ## Rituals
 
 **Brain Dump**: fast, unsorted capture. In the data it is the Inbox.

@@ -34,6 +34,7 @@ import type * as calendar_sync from "../calendar/sync.js";
 import type * as calendar_tables from "../calendar/tables.js";
 import type * as calendar_workingHours from "../calendar/workingHours.js";
 import type * as crons from "../crons.js";
+import type * as health_energy from "../health/energy.js";
 import type * as health_model from "../health/model.js";
 import type * as health_oura from "../health/oura.js";
 import type * as health_sleep from "../health/sleep.js";
@@ -129,6 +130,7 @@ declare const fullApi: ApiFromModules<{
   "calendar/tables": typeof calendar_tables;
   "calendar/workingHours": typeof calendar_workingHours;
   crons: typeof crons;
+  "health/energy": typeof health_energy;
   "health/model": typeof health_model;
   "health/oura": typeof health_oura;
   "health/sleep": typeof health_sleep;

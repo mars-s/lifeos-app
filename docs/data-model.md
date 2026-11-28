@@ -551,11 +551,11 @@ One row per Oura day (the date Avi woke up), keyed by `source` (`oura`) and `day
 | optional `sleepTime` | From `sleep_time`: Oura's `status` (`not_enough_nights`, `not_enough_recent_nights`, `bad_sleep_quality`, `only_recommended_found`, `optimal_found`), its `recommendation`, and the bedtime `window` (`startOffset`, `endOffset` in seconds from that day's local midnight, negative before midnight, and `dayTz`) |
 | `syncedAt` | When the row was last written |
 
-Index: `by_source_and_day` (the sync upserts by day, the Sleep Window reads a range of days and the latest 30).
+Index: `by_source_and_day` (the sync upserts by day, the Sleep Window reads a range of days and the latest 30, the Energy Curve reads its range and the 30 days before it).
 
 ### `ouraConnection`
 
-One row, absent until Avi connects Oura. `accessToken`, `refreshToken`, `expiresAt`, the granted `scope`, `connectedAt`, and `sync` (`never`, `ok` with `at`, or `failed` with `at`, the error and the last good sync). Only internal functions read the tokens. `health/sleep:status` returns `sync` and nothing else from this row. Oura's refresh tokens are single use, so a refresh only writes when the stored refresh token is still the one it used.
+One row, absent until Avi connects Oura. `accessToken`, `refreshToken`, `expiresAt`, the granted `scope`, `connectedAt`, and `sync` (`never`, `ok` with `at`, or `failed` with `at`, the error and the last good sync). Only internal functions read the tokens. `health/sleep:status` returns `sync` and nothing else from this row, and `health/energy:days` returns only the time of the last good sync. Oura's refresh tokens are single use, so a refresh only writes when the stored refresh token is still the one it used.
 
 ### `ouraAuthStates`
 
@@ -576,6 +576,17 @@ One row per Connect in flight: `state`, the PKCE `verifier`, `expiresAt` (10 min
 - An earlier night with no record shows nothing.
 
 `health/sleep:status({ today })` says whether Oura is set up (`OURA_CLIENT_ID` and `OURA_CLIENT_SECRET` are on the deployment) and connected, the last sync, Oura's latest status and recommendation, the plan, and how many nights it counted.
+
+### The Energy Curve
+
+`health/energy:days({ from, to, today, timeZone })` returns one estimate per date from `from` to `to` (at most 62 days), worked out on every read from `healthDays` and never saved. The model and its limits are in `docs/research/energy-estimate.md`; the pure function is `energyDay` in `convex/health/energy.ts`.
+
+- `none`: Oura is not connected.
+- `learning`: fewer than 5 recorded nights in the 30 days up to the day, with `reading.nights`.
+- `solid`: the day has its own recorded night, so the curve starts from that real wake and that night's sleep and readiness. Today after Oura has synced last night, and every past day that had a night.
+- `usual`: from the usual pattern (Usual Wake, the median night's sleep). Coming days, and today or a past day with no recorded night.
+- A curve has `points` (`minute` on the wall clock of `timeZone`, past 1440 after midnight, and `level` 0 to 1) at wake, every quarter hour, and bedtime; `wake`, `bedtime` (Oura's bedtime window start, or Usual Bedtime, `bedtimeFrom` says which), `peak` and `dip` windows, `low` (a night under 6 hours, or a low overall estimate), and `reading` (`asleepMinutes` and `readiness` on a solid day, `debtMinutes` over the last 14 nights, `nights`, and `syncedAt`).
+- A day only uses nights up to itself (up to today for coming days), so a past day shows the estimate it started with.
 
 ## Places module (`convex/places`)
 
