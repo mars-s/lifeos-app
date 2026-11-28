@@ -719,8 +719,9 @@ export const Timebox = ({
               const movable: Movable = block ?? { ...thing, inert: false, done: false };
               const meta = item.kind === "prediction" ? `${item.prediction.guess ? "~" : ""}${formatSpan(item.prediction.minutes)}${item.prediction.fit ? ` · at your ${item.prediction.fit}` : ""}` : "";
               const drive = thing.trip ? `, ${thing.trip.minutes} min drive each way, leave by ${formatClock(thing.start - thing.trip.minutes)}` : "";
+              const shownText = tall ? `${thing.title} ${liveRange}${tight ? "" : ` · ${meta}`}` : thing.title;
               const label = predicted
-                ? `Predicted, ${thing.title}, ${range}${drive}${item.kind === "prediction" && item.prediction.fit ? `, at your ${item.prediction.fit}` : ""}. Click or press Enter to keep it, drag or use the arrow keys to keep it at another time.`
+                ? `${shownText}, predicted, ${range}${drive}${item.kind === "prediction" && item.prediction.fit ? `, at your ${item.prediction.fit}` : ""}. Click or press Enter to keep it, drag or use the arrow keys to keep it at another time.`
                 : `Work Block, ${thing.title}, ${range}${drive}${done ? ", done" : look === "missed" ? ", not done" : ""}. Arrow keys move it, Shift and arrow keys resize it, Backspace removes it.`;
               return (
                 <motion.div
