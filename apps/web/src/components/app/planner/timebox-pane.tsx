@@ -246,9 +246,9 @@ export const TimeboxPane = ({
         </div>
       </header>
       {(predictions.length > 0 || unfit > 0) && (
-        <p aria-live="polite" className="mb-1.5 flex min-h-8 shrink-0 items-center gap-2 pr-3 pl-4 text-micro text-muted-foreground">
+        <div className="mb-1.5 flex min-h-8 shrink-0 items-center gap-2 pr-3 pl-4 text-micro text-muted-foreground">
           {predictions.length > 0 && <HatchSwatch />}
-          <span className="min-w-0 truncate">
+          <span role="status" className="min-w-0 truncate">
             {predictions.length > 0 && (
               <>
                 {predictions.length} predicted{mode === "day" && anchor === today ? " later" : ""}, <span className="font-mono">{formatSpan(predictedMinutes)}</span>
@@ -262,7 +262,7 @@ export const TimeboxPane = ({
               Keep all <KeyCombo keys="mod+enter" />
             </Button>
           )}
-        </p>
+        </div>
       )}
       <Fold show={spread !== null} className="mx-0 shrink-0 px-0">
         {spread && <SpreadBar spread={spread} isToday={spread.date === today} onApply={onApplySpread} onCancel={onCancelSpread} />}

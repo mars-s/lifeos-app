@@ -655,7 +655,7 @@ export const Timebox = ({
               <span
                 key={gap.start}
                 data-gap={gap.minutes < 30 ? "buffer" : "free"}
-                className="pointer-events-none absolute left-2.5 flex -translate-y-1/2 items-center gap-1.5 text-[0.625rem] leading-none whitespace-nowrap text-faint-foreground"
+                className="pointer-events-none absolute left-2.5 flex -translate-y-1/2 items-center gap-1.5 text-[0.625rem] leading-none whitespace-nowrap text-muted-foreground"
                 style={{ top: toPx(gap.start + gap.minutes / 2) }}
               >
                 {gap.minutes < 30 ? "Buffer" : "Free"} <span className="font-mono">{formatSpan(gap.minutes)}</span>
@@ -693,6 +693,7 @@ export const Timebox = ({
                 <span className={cn("flex min-w-0 items-center gap-2", height < 26 && "text-micro")}>
                   <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-full", commitment.past && "opacity-50")} style={{ backgroundColor: commitment.colour }} />
                   <span className="truncate font-medium">{commitment.title}</span>
+                  {height < 40 && <span className="sr-only">, {formatRange(commitment.start, commitment.end)}, {commitment.source}</span>}
                 </span>
                 {height >= 40 && (
                   <span className="flex min-w-0 gap-1.5 pl-4 text-micro text-current/65">
@@ -722,9 +723,10 @@ export const Timebox = ({
               const liveRange = moving && shown ? clockSpan(shown.start, shown.start + shown.minutes) : clockSpan(thing.start, thing.start + thing.minutes);
               const movable: Movable = block ?? { ...thing, inert: false, done: false };
               const meta = item.kind === "prediction" ? `${item.prediction.guess ? "~" : ""}${formatSpan(item.prediction.minutes)}${item.prediction.fit ? ` · at your ${item.prediction.fit}` : ""}` : "";
+              const drive = thing.trip ? `, ${thing.trip.minutes} min drive each way, leave by ${formatClock(thing.start - thing.trip.minutes)}` : "";
               const label = predicted
-                ? `Predicted, ${thing.title}, ${range}${item.kind === "prediction" && item.prediction.fit ? `, at your ${item.prediction.fit}` : ""}. Click or press Enter to keep it, drag or use the arrow keys to keep it at another time.`
-                : `Work Block, ${thing.title}, ${range}${done ? ", done" : look === "missed" ? ", not done" : ""}. Arrow keys move it, Shift and arrow keys resize it, Backspace removes it.`;
+                ? `Predicted, ${thing.title}, ${range}${drive}${item.kind === "prediction" && item.prediction.fit ? `, at your ${item.prediction.fit}` : ""}. Click or press Enter to keep it, drag or use the arrow keys to keep it at another time.`
+                : `Work Block, ${thing.title}, ${range}${drive}${done ? ", done" : look === "missed" ? ", not done" : ""}. Arrow keys move it, Shift and arrow keys resize it, Backspace removes it.`;
               return (
                 <motion.div
                   key={item.key}
@@ -746,7 +748,7 @@ export const Timebox = ({
                   exit={{ opacity: 0, transition: exit }}
                   transition={moving || reduce || byKey ? instant : springSettle}
                   className={cn(
-                    "tl-block group/block absolute top-0 flex flex-col touch-none overflow-hidden text-small outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "tl-block group/block absolute top-0 flex flex-col touch-none overflow-hidden text-small",
                     slim ? "rounded-md" : "rounded-[0.625rem]",
                     moving ? "z-20 cursor-grabbing shadow-lift" : block?.inert ? "cursor-default" : predicted ? "cursor-pointer" : "cursor-grab",
                   )}
@@ -767,7 +769,7 @@ export const Timebox = ({
                         onDoubleClick={(event) => event.stopPropagation()}
                         onClick={() => onToggle(block.id, !done)}
                         className={cn(
-                          "relative grid shrink-0 place-items-center text-(--tl-ground) transition-[background-color,box-shadow,scale] duration-(--dur-press) ease-out before:absolute before:-inset-2 active:scale-[0.85]",
+                          "relative grid shrink-0 place-items-center text-(--tl-ground) transition-[background-color,box-shadow,scale] duration-(--dur-press) ease-out before:absolute before:-inset-3.5 active:scale-[0.85]",
                           slim ? "size-3 rounded-[4px]" : "mt-px size-3.5 rounded-[5px]",
                           done ? "bg-current text-current" : "shadow-[inset_0_0_0_1.5px_var(--tl-box)]",
                         )}

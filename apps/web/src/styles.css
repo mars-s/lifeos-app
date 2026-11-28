@@ -547,6 +547,7 @@ li[data-selected]:has(+ li[data-selected]) .task-selected {
 .tl-block[data-look="commitment-past"] { color: var(--muted-foreground); }
 .tl-block[data-lifted="true"] { box-shadow: inset 0 0 0 1px var(--tl-edge), var(--shadow-float); scale: 1.015; z-index: 5; }
 button.tl-block:active { scale: 0.985; }
+.tl-block:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .tl-rail {
   background-image: radial-gradient(circle at center, var(--tl-dot) 1.75px, transparent 2.25px), radial-gradient(circle at center, var(--tl-dot) 0.9px, transparent 1.4px);
   background-repeat: repeat-y;
