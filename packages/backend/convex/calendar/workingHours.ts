@@ -1,8 +1,8 @@
 import { v } from "convex/values";
+import { Effect } from "effect";
 import type { QueryCtx } from "../_generated/server";
-import { ownerQuery } from "../platform/access";
-import { changeMutation } from "../platform/change";
-import { DEFAULT_WORKING_HOURS, parseWorkingHours, type WorkingHours } from "./model";
+import { changeMutation, ownerQuery, reading, recording } from "../platform/effect";
+import { DEFAULT_WORKING_HOURS, parseWorkingHours } from "./model";
 
 export const workingHoursOf = async (ctx: QueryCtx) => {
   const row = await ctx.db.query("workingHours").first();
@@ -11,17 +11,17 @@ export const workingHoursOf = async (ctx: QueryCtx) => {
 
 export const get = ownerQuery({
   args: {},
-  handler: workingHoursOf,
+  handler: () => reading(workingHoursOf),
 });
 
 export const set = changeMutation({
   action: "calendar.workingHours",
   args: { startMinute: v.number(), endMinute: v.number() },
-  handler: async (ctx, hours, record) =>
-    parseWorkingHours(hours).asyncMap(async (valid: WorkingHours) => {
-      const row = await ctx.db.query("workingHours").first();
-      if (row) await record.patch("workingHours", row._id, valid);
-      else await record.insert("workingHours", valid);
-      return { ...valid };
-    }),
+  handler: Effect.fn("workingHours.set")(function* (hours) {
+    const valid = yield* Effect.fromResult(parseWorkingHours(hours));
+    const row = yield* reading((ctx) => ctx.db.query("workingHours").first());
+    if (row) yield* recording((record) => record.patch("workingHours", row._id, valid));
+    else yield* recording((record) => record.insert("workingHours", valid));
+    return { ...valid };
+  }),
 });

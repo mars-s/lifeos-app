@@ -1,6 +1,8 @@
-import { err, ok } from "neverthrow";
+import { Result } from "effect";
 import type { IsoDate } from "../../shared/date";
+import { toNeverthrow } from "../../shared/effect/bridge";
 import { localDateIn, zonedFormatter } from "../../shared/recurrence";
+import { InvalidCalendarTimeZone, InvalidWorkingHours } from "./errors";
 import type { Availability, CalendarKind, Response } from "./tables";
 
 export type CalendarError =
@@ -52,14 +54,16 @@ export const capacityOfDay = (window: Interval, commitments: readonly (Interval 
   return { workingMinutes, busyMinutes, freeMinutes: workingMinutes - busyMinutes };
 };
 
-export const parseTimeZone = (timeZone: string) => {
-  try {
-    zonedFormatter(timeZone);
-    return ok<string, CalendarError>(timeZone);
-  } catch {
-    return err<string, CalendarError>({ kind: "invalid_time_zone", timeZone });
-  }
-};
+export const parseTimeZoneFx = (timeZone: string) =>
+  Result.try({
+    try: () => {
+      zonedFormatter(timeZone);
+      return timeZone;
+    },
+    catch: () => new InvalidCalendarTimeZone({ timeZone }),
+  });
+
+export const parseTimeZone = (timeZone: string) => toNeverthrow(parseTimeZoneFx(timeZone));
 
 const offsetAt = (instant: number, timeZone: string) => {
   const parts = zonedFormatter(timeZone).formatToParts(instant);
@@ -95,7 +99,8 @@ export const parseWorkingHours = (hours: WorkingHours) => {
   const { startMinute, endMinute } = hours;
   const valid =
     Number.isInteger(startMinute) && Number.isInteger(endMinute) && startMinute >= 0 && endMinute <= 24 * 60 && startMinute < endMinute;
-  return valid ? ok<WorkingHours, CalendarError>(hours) : err<WorkingHours, CalendarError>({ kind: "invalid_hours" });
+  const parsed: Result.Result<WorkingHours, InvalidWorkingHours> = valid ? Result.succeed(hours) : Result.fail(new InvalidWorkingHours());
+  return parsed;
 };
 
 const channel = (value: number) =>

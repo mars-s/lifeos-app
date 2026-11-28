@@ -1,19 +1,22 @@
 import { v } from "convex/values";
-import { err, ok, Result } from "neverthrow";
+import { Effect, Result } from "effect";
 import type { QueryCtx } from "../_generated/server";
-import { ownerQuery } from "../platform/access";
-import { addDays, parseIsoDate, type IsoDate } from "../../shared/date";
-import { serialise } from "../../shared/result";
+import { addDays, type IsoDate } from "../../shared/date";
+import { parseIsoDate } from "../../shared/effect/date";
+import { asWire } from "../../shared/effect/wire";
+import { ownerQuery, reading } from "../platform/effect";
 import { commitmentsBetween } from "./commitments";
-import { capacityOfDay, parseTimeZone, workingWindow, type CalendarError } from "./model";
+import { InvalidCalendarRange } from "./errors";
+import { capacityOfDay, parseTimeZoneFx, workingWindow } from "./model";
 import { workingHoursOf } from "./workingHours";
 
 const MAX_DAYS = 62;
 
-const parseDays = (days: number) =>
-  Number.isInteger(days) && days >= 1 && days <= MAX_DAYS
-    ? ok<number, CalendarError>(days)
-    : err<number, CalendarError>({ kind: "invalid_range" });
+const parseDays = (days: number) => {
+  const parsed: Result.Result<number, InvalidCalendarRange> =
+    Number.isInteger(days) && days >= 1 && days <= MAX_DAYS ? Result.succeed(days) : Result.fail(new InvalidCalendarRange());
+  return parsed;
+};
 
 export const capacityDays = async (ctx: QueryCtx, from: IsoDate, days: number, timeZone: string) => {
   const hours = await workingHoursOf(ctx);
@@ -32,9 +35,10 @@ export const capacityDays = async (ctx: QueryCtx, from: IsoDate, days: number, t
 
 export const days = ownerQuery({
   args: { from: v.string(), days: v.number(), timeZone: v.string() },
-  handler: async (ctx, args) => {
-    const from = parseIsoDate(args.from).mapErr(() => ({ kind: "invalid_range" }) satisfies CalendarError);
-    const parsed = Result.combine([from, parseDays(args.days), parseTimeZone(args.timeZone)]);
-    return serialise(await parsed.asyncMap(([date, count, timeZone]) => capacityDays(ctx, date, count, timeZone)));
-  },
+  handler: Effect.fn("capacity.days")(function* (args) {
+    const from = yield* Effect.fromResult(Result.mapError(parseIsoDate(args.from), () => new InvalidCalendarRange()));
+    const count = yield* Effect.fromResult(parseDays(args.days));
+    const timeZone = yield* Effect.fromResult(parseTimeZoneFx(args.timeZone));
+    return yield* reading((ctx) => capacityDays(ctx, from, count, timeZone));
+  }, asWire),
 });

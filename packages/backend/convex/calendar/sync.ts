@@ -1,12 +1,13 @@
 import { v, type Infer } from "convex/values";
-import { err, ok } from "neverthrow";
+import { Clock, Effect, Result } from "effect";
 import type { MutationCtx } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
-import { workerMutation } from "../platform/access";
+import { asWire } from "../../shared/effect/wire";
 import { sameValue } from "../platform/activity";
+import { CurrentWorker, workerMutation, writing } from "../platform/effect";
 import { requireCapability } from "../platform/workers";
-import { serialise } from "../../shared/result";
-import { DAY_MS, hexColour, includedByDefault, type CalendarError } from "./model";
+import { InvalidWindow } from "./errors";
+import { DAY_MS, hexColour, includedByDefault } from "./model";
 import { calendarFields, commitmentFields } from "./tables";
 
 const MAX_WINDOW_MS = 120 * DAY_MS;
@@ -27,10 +28,13 @@ export type SyncReport = {
   commitments: { inserted: number; updated: number; unchanged: number; removed: number; skipped: number };
 };
 
-const parseWindow = (window: Window) =>
-  Number.isFinite(window.start) && Number.isFinite(window.end) && window.end > window.start && window.end - window.start <= MAX_WINDOW_MS
-    ? ok<Window, CalendarError>(window)
-    : err<Window, CalendarError>({ kind: "invalid_window" });
+const parseWindow = (window: Window) => {
+  const parsed: Result.Result<Window, InvalidWindow> =
+    Number.isFinite(window.start) && Number.isFinite(window.end) && window.end > window.start && window.end - window.start <= MAX_WINDOW_MS
+      ? Result.succeed(window)
+      : Result.fail(new InvalidWindow());
+  return parsed;
+};
 
 const changedFields = <T extends object>(current: T, next: Partial<T>) =>
   Object.fromEntries(
@@ -119,8 +123,8 @@ const syncCommitments = async (
   return report;
 };
 
-const recordSync = async (ctx: MutationCtx, window: Window) => {
-  const fields = { syncedAt: Date.now(), windowStart: window.start, windowEnd: window.end };
+const recordSync = async (ctx: MutationCtx, window: Window, syncedAt: number) => {
+  const fields = { syncedAt, windowStart: window.start, windowEnd: window.end };
   const state = await ctx.db.query("calendarSync").first();
   if (state) await ctx.db.replace("calendarSync", state._id, fields);
   else await ctx.db.insert("calendarSync", fields);
@@ -132,14 +136,15 @@ export const applyWindow = workerMutation({
     calendars: v.array(vCalendarIn),
     commitments: v.array(vCommitmentIn),
   },
-  handler: async (ctx, { window, calendars, commitments }, worker) => {
+  handler: Effect.fn("sync.applyWindow")(function* ({ window, calendars, commitments }) {
+    const worker = yield* CurrentWorker;
     requireCapability(worker, "calendar");
-    const parsed = parseWindow(window);
-    if (parsed.isErr()) return serialise(err<SyncReport, CalendarError>(parsed.error));
-    const calendarReport = await syncCalendars(ctx, calendars);
+    const valid = yield* Effect.fromResult(parseWindow(window));
+    const calendarReport = yield* writing((ctx) => syncCalendars(ctx, calendars));
     const calendarIds = new Set(calendars.map((calendar) => calendar.calendarId));
-    const commitmentReport = await syncCommitments(ctx, parsed.value, commitments, calendarIds);
-    await recordSync(ctx, parsed.value);
-    return serialise(ok<SyncReport, CalendarError>({ calendars: calendarReport, commitments: commitmentReport }));
-  },
+    const commitmentReport = yield* writing((ctx) => syncCommitments(ctx, valid, commitments, calendarIds));
+    const syncedAt = yield* Clock.currentTimeMillis;
+    yield* writing((ctx) => recordSync(ctx, valid, syncedAt));
+    return { calendars: calendarReport, commitments: commitmentReport } satisfies SyncReport;
+  }, asWire),
 });

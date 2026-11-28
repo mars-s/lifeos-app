@@ -1,9 +1,11 @@
 import { v } from "convex/values";
-import { err, ok } from "neverthrow";
+import { Effect, Result } from "effect";
 import type { QueryCtx } from "../_generated/server";
-import { ownerQuery } from "../platform/access";
-import { serialise } from "../../shared/result";
-import { DAY_MS, MAX_COMMITMENT_SPAN_MS, type CalendarError } from "./model";
+import { toNeverthrow } from "../../shared/effect/bridge";
+import { asWire } from "../../shared/effect/wire";
+import { ownerQuery, reading } from "../platform/effect";
+import { InvalidCalendarRange } from "./errors";
+import { DAY_MS, MAX_COMMITMENT_SPAN_MS } from "./model";
 
 const MAX_RANGE_MS = 100 * DAY_MS;
 const COMMITMENT_LIMIT = 2000;
@@ -26,13 +28,20 @@ export const commitmentsBetween = async (ctx: QueryCtx, from: number, to: number
   });
 };
 
-export const parseRange = (from: number, to: number) =>
-  Number.isFinite(from) && Number.isFinite(to) && to > from && to - from <= MAX_RANGE_MS
-    ? ok<{ from: number; to: number }, CalendarError>({ from, to })
-    : err<{ from: number; to: number }, CalendarError>({ kind: "invalid_range" });
+export const parseRangeFx = (from: number, to: number) => {
+  const parsed: Result.Result<{ from: number; to: number }, InvalidCalendarRange> =
+    Number.isFinite(from) && Number.isFinite(to) && to > from && to - from <= MAX_RANGE_MS
+      ? Result.succeed({ from, to })
+      : Result.fail(new InvalidCalendarRange());
+  return parsed;
+};
+
+export const parseRange = (from: number, to: number) => toNeverthrow(parseRangeFx(from, to));
 
 export const range = ownerQuery({
   args: { from: v.number(), to: v.number() },
-  handler: async (ctx, { from, to }) =>
-    serialise(await parseRange(from, to).asyncMap((window) => commitmentsBetween(ctx, window.from, window.to))),
+  handler: Effect.fn("commitments.range")(function* ({ from, to }) {
+    const window = yield* Effect.fromResult(parseRangeFx(from, to));
+    return yield* reading((ctx) => commitmentsBetween(ctx, window.from, window.to));
+  }, asWire),
 });
