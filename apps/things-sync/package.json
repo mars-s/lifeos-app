@@ -12,6 +12,7 @@
   "dependencies": {
     "@lifeos/backend": "workspace:*",
     "convex": "^1.51.0",
+    "effect": "4.1.7",
     "neverthrow": "^8.2.0"
   },
   "devDependencies": {

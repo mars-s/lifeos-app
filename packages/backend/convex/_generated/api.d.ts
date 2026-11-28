@@ -56,6 +56,7 @@ import type * as planner_areas from "../planner/areas.js";
 import type * as planner_checklist from "../planner/checklist.js";
 import type * as planner_containers from "../planner/containers.js";
 import type * as planner_convert from "../planner/convert.js";
+import type * as planner_errors from "../planner/errors.js";
 import type * as planner_focus from "../planner/focus.js";
 import type * as planner_labels from "../planner/labels.js";
 import type * as planner_lists from "../planner/lists.js";
@@ -152,6 +153,7 @@ declare const fullApi: ApiFromModules<{
   "planner/checklist": typeof planner_checklist;
   "planner/containers": typeof planner_containers;
   "planner/convert": typeof planner_convert;
+  "planner/errors": typeof planner_errors;
   "planner/focus": typeof planner_focus;
   "planner/labels": typeof planner_labels;
   "planner/lists": typeof planner_lists;

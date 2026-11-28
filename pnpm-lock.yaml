@@ -8,9 +8,15 @@ importers:
 
   .:
     devDependencies:
+      '@effect/language-service':
+        specifier: 0.87.5
+        version: 0.87.5
       '@interfere/landmines':
         specifier: 0.1.0
         version: 0.1.0(oxlint@1.94.0)
+      effect:
+        specifier: 4.1.7
+        version: 4.1.7
       oxlint:
         specifier: ^1.94.0
         version: 1.94.0
@@ -56,6 +62,9 @@ importers:
       '@convex-dev/auth':
         specifier: 2.0.0
         version: 2.0.0(@standard-schema/spec@1.1.0)(convex@1.51.0(react@19.3.0))(hono@4.13.19)(prettier@3.10.1)(react@19.3.0)(typescript@6.0.3)(zod@4.6.6)
+      '@effect/atom-react':
+        specifier: 4.1.7
+        version: 4.1.7(effect@4.1.7)(react@19.3.0)(scheduler@0.28.0)
       '@expo-google-fonts/geist-mono':
         specifier: ^0.4.3
         version: 0.4.3
@@ -74,6 +83,9 @@ importers:
       convex:
         specifier: ^1.51.0
         version: 1.51.0(react@19.3.0)
+      effect:
+        specifier: 4.1.7
+        version: 4.1.7
       expo:
         specifier: ~58.0.26
         version: 58.0.26(@babel/core@7.29.13)(@expo/dom-webview@58.0.2)(@expo/metro-runtime@58.0.17)(expo-router@58.0.32)(react-dom@19.3.0(react@19.3.0))(react-native-web@0.21.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react-native-webview@14.0.1(react-native@0.88.1(@babel/core@7.29.13)(@react-native/metro-config@0.88.1(@babel/core@7.29.13))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0))(react-native-worklets@0.13.0(@babel/core@7.29.13)(@react-native/metro-config@0.88.1(@babel/core@7.29.13))(react-native@0.88.1(@babel/core@7.29.13)(@react-native/metro-config@0.88.1(@babel/core@7.29.13))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0))(react-native@0.88.1(@babel/core@7.29.13)(@react-native/metro-config@0.88.1(@babel/core@7.29.13))(@types/react@19.3.0)(react@19.3.0))(react-server-dom-webpack@19.3.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(webpack@5.112.2))(react@19.3.0)(typescript@6.0.3)
@@ -226,6 +238,9 @@ importers:
       convex:
         specifier: ^1.51.0
         version: 1.51.0(react@19.3.1)
+      effect:
+        specifier: 4.1.7
+        version: 4.1.7
       neverthrow:
         specifier: ^8.2.0
         version: 8.2.0
@@ -275,6 +290,9 @@ importers:
       '@dnd-kit/utilities':
         specifier: ^3.2.2
         version: 3.2.2(react@19.3.1)
+      '@effect/atom-react':
+        specifier: 4.1.7
+        version: 4.1.7(effect@4.1.7)(react@19.3.1)(scheduler@0.28.0)
       '@fontsource-variable/geist-mono':
         specifier: ^5.3.0
         version: 5.3.0
@@ -314,6 +332,9 @@ importers:
       convex:
         specifier: ^1.51.0
         version: 1.51.0(react@19.3.1)
+      effect:
+        specifier: 4.1.7
+        version: 4.1.7
       fractional-indexing:
         specifier: ^3.4.0
         version: 3.4.0
@@ -369,6 +390,9 @@ importers:
         specifier: 13.6.33
         version: 13.6.33
     devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.7
+        version: 4.1.7(effect@4.1.7)(vitest@5.1.1(@edge-runtime/vm@5.0.0)(@types/node@24.19.2)(msw@2.15.0(@types/node@24.19.2)(typescript@6.0.3))(vite@8.3.8(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)))
       '@tailwindcss/vite':
         specifier: ^4.3.5
         version: 4.3.5(vite@8.3.8(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2))
@@ -420,6 +444,9 @@ importers:
       convex-helpers:
         specifier: ^0.1.137
         version: 0.1.137(@standard-schema/spec@1.1.0)(convex@1.51.0(react@19.3.1))(hono@4.13.19)(prettier@3.10.1)(react@19.3.1)(typescript@6.0.3)(zod@4.6.6)
+      effect:
+        specifier: 4.1.7
+        version: 4.1.7
       fractional-indexing:
         specifier: ^3.2.0
         version: 3.4.0
@@ -430,6 +457,9 @@ importers:
       '@edge-runtime/vm':
         specifier: ^5.0.0
         version: 5.0.0
+      '@effect/vitest':
+        specifier: 4.1.7
+        version: 4.1.7(effect@4.1.7)(vitest@5.1.1(@edge-runtime/vm@5.0.0)(@types/node@24.19.2)(msw@2.15.0(@types/node@24.19.2)(typescript@6.0.3))(vite@8.3.8(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)))
       '@types/node':
         specifier: ^24.19.2
         version: 24.19.2
@@ -1148,6 +1178,23 @@ packages:
   '@edge-runtime/vm@5.0.0':
     resolution: {integrity: sha512-NKBGBSIKUG584qrS1tyxVpX/AKJKQw5HgjYEnPLC0QsTw79JrGn+qUr8CXFb955Iy7GUdiiUv1rJ6JBGvaKb6w==}
     engines: {node: '>=18'}
+
+  '@effect/atom-react@4.1.7':
+    resolution: {integrity: sha512-DDyKohcd4NsdHygwNW2BPzqoR4axSocMOhwQN2rEHfMYKo6EqpRcAsoFRs+rkyHp7YasFcYI8KyasW2sQhvQDQ==}
+    peerDependencies:
+      effect: ^4.1.7
+      react: '>=19.0.0 <20.0.0'
+      scheduler: '>=0.25.0 <0.29.0'
+
+  '@effect/language-service@0.87.5':
+    resolution: {integrity: sha512-np/zJgk71/PyHxtoqyUKLYcpQhoRBI+L6+1Z0ILk35JSQ/lvXzwlwOwddYZLDkeC4bdF2ukKekqKlla/F88R5w==}
+    hasBin: true
+
+  '@effect/vitest@4.1.7':
+    resolution: {integrity: sha512-4Rj7db3Zol7HtCkuQ2KZ26KrbIWIKAS2rpvH5s3drB1sMZh93nSaK6zXZ6EOtMtWl2CM/flz7tJ8ADaMCRHUWw==}
+    peerDependencies:
+      effect: ^4.1.7
+      vitest: '>=5.0.0 <6.0.0'
 
   '@emnapi/core@1.11.2':
     resolution: {integrity: sha512-TC8MkTuZUtcTSiFeuC0ksCh9QIJ5+F21MvZ4Wn4ORfYaFJ/0dsiudv5tVkejgwZlwQ39jL9WWDe2lz8x0WglOA==}
@@ -4270,6 +4317,9 @@ packages:
 
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
+
+  effect@4.1.7:
+    resolution: {integrity: sha512-8QUe2XO3auHF5r7+bfIDWxyXlLA0sso4Sia1QYP+vrYA7qb3sq1u2eJmhyXGmKc8yZ+TY2SNxPozeMdyKmWing==}
 
   electron-to-chromium@1.5.489:
     resolution: {integrity: sha512-1cF87WItryk9lj5wg5SLsNegUihdkcHuOfrANPpO02y/d2krm1Oc3GjA9KBwlT5o145FTa1bbjdLc7pZnvtnYQ==}
@@ -7450,6 +7500,25 @@ snapshots:
   '@edge-runtime/vm@5.0.0':
     dependencies:
       '@edge-runtime/primitives': 6.0.0
+
+  '@effect/atom-react@4.1.7(effect@4.1.7)(react@19.3.0)(scheduler@0.28.0)':
+    dependencies:
+      effect: 4.1.7
+      react: 19.3.0
+      scheduler: 0.28.0
+
+  '@effect/atom-react@4.1.7(effect@4.1.7)(react@19.3.1)(scheduler@0.28.0)':
+    dependencies:
+      effect: 4.1.7
+      react: 19.3.1
+      scheduler: 0.28.0
+
+  '@effect/language-service@0.87.5': {}
+
+  '@effect/vitest@4.1.7(effect@4.1.7)(vitest@5.1.1(@edge-runtime/vm@5.0.0)(@types/node@24.19.2)(msw@2.15.0(@types/node@24.19.2)(typescript@6.0.3))(vite@8.3.8(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)))':
+    dependencies:
+      effect: 4.1.7
+      vitest: 5.1.1(@edge-runtime/vm@5.0.0)(@types/node@24.19.2)(msw@2.15.0(@types/node@24.19.2)(typescript@6.0.3))(vite@8.3.8(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2))
 
   '@emnapi/core@1.11.2':
     dependencies:
@@ -10721,6 +10790,8 @@ snapshots:
   eastasianwidth@0.2.0: {}
 
   ee-first@1.1.1: {}
+
+  effect@4.1.7: {}
 
   electron-to-chromium@1.5.489: {}
 

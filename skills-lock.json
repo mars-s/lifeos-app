@@ -1,6 +1,13 @@
 {
   "version": 2,
   "skills": {
+    "effect-ts": {
+      "source": "Effect-TS/skills",
+      "commit": "155c50c911f9c99c294ef8a4461981c5bbe6453e",
+      "sourceType": "github",
+      "skillPath": "skills/effect-ts/SKILL.md",
+      "computedHash": "0e5d926566561f7fe206f5f60c1c53e21d1519fd6de8408a7e3c9934d55ad04f"
+    },
     "mcp-builder": {
       "source": "anthropics/skills",
       "commit": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
